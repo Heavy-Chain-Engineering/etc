@@ -2,7 +2,7 @@
   "master": {
     "tasks": [
       {
-        "id": "1",
+        "id": 1,
         "title": "Create Standards Directory Structure",
         "description": "Create the foundational directory structure for engineering standards organized by concern area",
         "details": "Create directories under ~/.claude/standards/ for process, code, testing, architecture, security, and quality. This establishes the genotype layer of the platform where all engineering rules and conventions are stored. Use mkdir -p to create all directories at once, then verify the structure matches the expected hierarchy.",
@@ -52,7 +52,7 @@
         "updatedAt": "2026-02-25T17:53:37.737Z"
       },
       {
-        "id": "2",
+        "id": 2,
         "title": "Create Process Standards",
         "description": "Define mandatory development processes including TDD workflow, SDLC phases, code review process, and definition of done",
         "details": "Create 4 critical process standards files: tdd-workflow.md (mandatory red/green/refactor cycle), sdlc-phases.md (agent activation rules), code-review-process.md (review checklist and output format), and definition-of-done.md (completion criteria). These files establish the core development methodology that all agents must follow.",
@@ -114,7 +114,7 @@
         "updatedAt": "2026-02-25T19:12:00.249Z"
       },
       {
-        "id": "3",
+        "id": 3,
         "title": "Create Code Standards",
         "description": "Define Python coding conventions, clean code standards, typing requirements, and error handling patterns",
         "details": "Create 4 code standard files: python-conventions.md (Python 3.14+ syntax, naming, imports, Pydantic/FastAPI patterns), clean-code.md (size limits, complexity rules, naming principles), typing-standards.md (mypy strict mode, annotation rules), and error-handling.md (exception hierarchy, logging, API responses). These enforce code quality and consistency.",
@@ -172,7 +172,7 @@
         "updatedAt": "2026-02-25T19:12:02.123Z"
       },
       {
-        "id": "4",
+        "id": 4,
         "title": "Create Testing Standards",
         "description": "Define testing requirements including coverage thresholds, test tiers, LLM evaluation, and naming conventions",
         "details": "Create 3 testing standard files: testing-standards.md (98% coverage requirement, test tiers, AAA pattern, mocking rules), llm-evaluation.md (golden answer tests, failure mode separation), and test-naming.md (should_behavior_when_condition pattern). These establish the testing methodology that ensures quality.",
@@ -220,7 +220,7 @@
         "updatedAt": "2026-02-25T19:12:03.994Z"
       },
       {
-        "id": "5",
+        "id": 5,
         "title": "Create Architecture Standards",
         "description": "Define layer boundaries, abstraction rules, and ADR process for architectural decisions",
         "details": "Create 3 architecture standard files: layer-boundaries.md (dependency direction, framework isolation), abstraction-rules.md (twice before abstracting, YAGNI principles), and adr-process.md (when to write ADRs, template format). These prevent architectural drift and over-engineering.",
@@ -268,7 +268,7 @@
         "updatedAt": "2026-02-25T19:12:05.829Z"
       },
       {
-        "id": "6",
+        "id": 6,
         "title": "Create Security and Quality Standards",
         "description": "Define OWASP security checklist, data handling requirements, and quality metrics",
         "details": "Create 3 files: owasp-checklist.md (injection prevention, auth/authz, secrets management), data-handling.md (data classification, sanitization, logging rules), and metrics.md (tracked metrics for process evaluation). These establish security and quality baselines.",
@@ -316,7 +316,7 @@
         "updatedAt": "2026-02-25T19:12:07.641Z"
       },
       {
-        "id": "7",
+        "id": 7,
         "title": "Create Strategy and Design Agent Definitions",
         "description": "Define product management and design agents for the spec and design phases",
         "details": "Create 4 agent files: product-manager.md (pragmatic PRD writer, scope guardian), product-owner.md (stakeholder advocate, acceptance criteria writer), ux-designer.md (user flow designer, accessibility-first), ui-designer.md (component designer, design system maintainer). These agents handle requirements and design phases.",
@@ -374,7 +374,7 @@
         "updatedAt": "2026-02-25T19:24:21.307Z"
       },
       {
-        "id": "8",
+        "id": 8,
         "title": "Create Architecture Agent Definitions",
         "description": "Define architect and domain modeler agents for system design and domain validation",
         "details": "Create 2 agent files: architect.md (system boundaries, ADR writer, anti-over-engineering), domain-modeler.md (ubiquitous language guardian, bounded context validator). These agents ensure architectural consistency and domain model integrity.",
@@ -415,7 +415,7 @@
         "updatedAt": "2026-02-25T19:24:23.144Z"
       },
       {
-        "id": "9",
+        "id": 9,
         "title": "Create Implementation Agent Definitions",
         "description": "Define backend, frontend, and DevOps agents for the build phase",
         "details": "Create 3 agent files: backend-developer.md (TDD zealot, Python/FastAPI expert, red/green cycle enforcer), frontend-developer.md (component thinker, accessibility-aware), devops-engineer.md (infrastructure-as-code, CI/CD automation). These are the primary implementation agents.",
@@ -465,7 +465,7 @@
         "updatedAt": "2026-02-25T19:24:24.916Z"
       },
       {
-        "id": "10",
+        "id": 10,
         "title": "Create Quality Agent Definitions",
         "description": "Replace existing code-reviewer and create verifier and security-reviewer agents",
         "details": "Back up existing code-reviewer.md, then replace with harness version that reads all standards before reviewing. Create verifier.md (mechanical gatekeeper, hard quality gate) and security-reviewer.md (OWASP-trained, paranoid security reviewer). These enforce quality standards.",
@@ -520,7 +520,7 @@
         "updatedAt": "2026-02-25T19:24:26.695Z"
       },
       {
-        "id": "11",
+        "id": 11,
         "title": "Create Evaluation, Support, and Bootstrap Agent Definitions",
         "description": "Define process evaluator, technical writer, and brownfield bootstrapper agents",
         "details": "Create 3 agent files: process-evaluator.md (data-driven metrics collector, trend analyzer), technical-writer.md (docs-as-code, .meta/ maintainer), brownfield-bootstrapper.md (archaeologist, derives .meta/ tree from existing code). These provide continuous improvement and documentation.",
@@ -569,7 +569,7 @@
         "updatedAt": "2026-02-25T19:24:28.477Z"
       },
       {
-        "id": "12",
+        "id": 12,
         "title": "Create Hook Scripts Directory and TDD Enforcement Hook",
         "description": "Create hooks directory and implement PreToolUse hook that enforces test-first development",
         "details": "Create ~/.claude/hooks/ directory and implement check-test-exists.sh as a PreToolUse hook. This script blocks edits to production source files unless a corresponding test file exists, enforcing the 'red' part of red/green TDD. Uses jq to parse JSON input and find command to locate test files.",
@@ -621,7 +621,7 @@
         "updatedAt": "2026-02-25T19:29:56.006Z"
       },
       {
-        "id": "13",
+        "id": 13,
         "title": "Create Workspace Dirty Marker Hook",
         "description": "Implement PostToolUse hook that marks workspace as dirty when production code changes",
         "details": "Create mark-dirty.sh as a PostToolUse hook that touches a .tdd-dirty marker file when production source code is modified. This creates a breadcrumb for the Stop hook to know when verification is needed. Zero-cost operation that never blocks.",
@@ -661,7 +661,7 @@
         "updatedAt": "2026-02-25T19:29:57.845Z"
       },
       {
-        "id": "14",
+        "id": 14,
         "title": "Create Verification Gate Hook",
         "description": "Implement Stop hook that runs full verification suite when production code was modified",
         "details": "Create verify-green.sh as a Stop hook that runs tests with 98% coverage, mypy type checking, and ruff linting when .tdd-dirty marker exists. This is the hard quality gate that blocks completion if any verification fails. Cleans up marker on success.",
@@ -725,7 +725,7 @@
         "updatedAt": "2026-02-25T19:29:59.684Z"
       },
       {
-        "id": "15",
+        "id": 15,
         "title": "Wire Hooks into Claude Settings",
         "description": "Add hooks configuration to ~/.claude/settings.json to activate the enforcement system",
         "details": "Add hooks section to existing ~/.claude/settings.json with PreToolUse and PostToolUse configurations for Edit|Write operations. Preserve all existing settings (env, permissions, statusLine, enabledPlugins, mcpServers). The Stop hook will be wired at project level, not user level.",
@@ -767,7 +767,7 @@
         "updatedAt": "2026-02-25T19:30:28.865Z"
       },
       {
-        "id": "16",
+        "id": 16,
         "title": "Add TDD Marker to Global Gitignore",
         "description": "Ensure .tdd-dirty marker files are never committed to version control",
         "details": "Add .tdd-dirty to ~/.gitignore (create if doesn't exist) and configure as global gitignore if not already set. This prevents the transient marker files from being accidentally committed to any repository.",
@@ -831,7 +831,7 @@
         "updatedAt": "2026-02-25T19:30:50.927Z"
       },
       {
-        "id": "17",
+        "id": 17,
         "title": "Full Platform Verification",
         "description": "Comprehensive verification that all platform components are correctly installed and functional",
         "details": "Run complete verification suite: check directory structure (16 standards files, 18+ agents, 3 hooks), verify all hooks are executable, validate agent frontmatter, and test hook integration against Bald Eagle project to ensure real-world functionality.",
@@ -914,7 +914,7 @@
         "updatedAt": "2026-02-25T19:38:15.493Z"
       },
       {
-        "id": "18",
+        "id": 18,
         "title": "Commit Implementation Plan",
         "description": "Version control the implementation plan in the etc-system-engineering repository",
         "details": "Commit the implementation plan document to the etc-system-engineering repo with descriptive commit message. The implementation artifacts live in ~/.claude/ (user-level), but the plan itself should be versioned for reference and future phases.",
@@ -923,7 +923,7 @@
         "dependencies": [
           "17"
         ],
-        "status": "in-progress",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -999,46 +999,237 @@
         "complexity": 2,
         "recommendedSubtasks": 0,
         "expansionPrompt": "No expansion needed - standard git commit operation.",
-        "updatedAt": "2026-02-25T20:00:37.861Z"
+        "updatedAt": "2026-02-25T20:05:56.323Z"
       },
       {
-        "id": "19",
+        "id": 19,
         "title": "Integrate TaskMaster as Formal Harness Dependency",
         "description": "Integrate TaskMaster as the official task decomposition layer between Spec and Build phases, updating documentation and project templates to formalize its role in the SDLC workflow.",
         "details": "Update sdlc-phases.md to explicitly reference TaskMaster as the bridge between Spec and Build phases, positioned after PRD creation but before implementation begins. Add TaskMaster MCP server configuration to the project template's .claude/settings.json with proper server definition, connection parameters, and tool permissions. Create comprehensive documentation showing how PM and Architect agents leverage TaskMaster to transform high-level PRDs into granular, executable task breakdowns with proper dependencies, acceptance criteria, and implementation guidance. Include examples of TaskMaster integration points: PM agent using TaskMaster for initial task decomposition from PRDs, Architect agent using TaskMaster for technical task refinement and dependency mapping, and the handoff process from decomposed tasks to implementation agents. Ensure TaskMaster server configuration includes appropriate timeout settings, error handling, and integration with existing MCP infrastructure.",
         "testStrategy": "Verify sdlc-phases.md contains explicit TaskMaster references in the workflow between Spec and Build phases. Confirm project template includes valid TaskMaster MCP server configuration in settings.json with correct server path, arguments, and permissions. Validate documentation includes concrete examples of PM and Architect agent workflows using TaskMaster for task decomposition. Test TaskMaster MCP server connectivity and verify it can be invoked through the configured settings. Ensure integration documentation clearly explains the handoff process from TaskMaster-generated tasks to implementation agents.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "8",
           "9"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-02-25T20:00:37.866Z"
+        "updatedAt": "2026-02-25T20:05:56.325Z"
       },
       {
-        "id": "20",
+        "id": 20,
         "title": "Create Bootstrap Install Script",
         "description": "Create an idempotent install.sh script that sets up a new developer's machine with the etc-system-engineering harness by copying agents, standards, and hooks from the repository to ~/.claude/ directories.",
         "details": "Create install.sh in the repository root that performs the following operations: (1) Create ~/.claude/ base directory and subdirectories (agents/, standards/, hooks/) if they don't exist using mkdir -p, (2) Copy all files from repo's agents/ directory to ~/.claude/agents/ preserving structure, (3) Copy all files from repo's standards/ directory to ~/.claude/standards/ preserving structure, (4) Copy all hook scripts from repo's hooks/ directory to ~/.claude/hooks/ and make them executable with chmod +x, (5) Intelligently merge hook wiring configuration into ~/.claude/settings.json without overwriting existing settings - read existing JSON, merge PreToolUse and PostToolUse arrays, and write back formatted JSON using jq or python, (6) Provide clear console output showing what was installed, updated, or skipped. The script must be idempotent (safe to run multiple times) by checking if files already exist and are identical before copying. Include error handling for missing source directories, permission issues, and JSON parsing failures. Use rsync or cp with appropriate flags to preserve timestamps and handle overwrites gracefully.",
         "testStrategy": "Verify install.sh exists and is executable, test on clean system to ensure all directories and files are created correctly, test idempotency by running twice and confirming no duplicate entries in settings.json, test with existing ~/.claude/ setup to ensure no data loss, verify all copied hooks have execute permissions, confirm settings.json merge preserves existing configuration while adding required hook wiring, and validate clear output messages for each operation performed.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "18"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-02-25T20:00:37.868Z"
+        "updatedAt": "2026-02-25T20:05:56.327Z"
+      },
+      {
+        "id": 21,
+        "title": "Create SDLC Workflow Tracker Tool",
+        "description": "Build a project management layer that tracks SDLC phase progression, maintains definition-of-done status, and provides phase transition history with agent deployment tracking.",
+        "details": "Create a comprehensive SDLC workflow tracker with the following components: (1) State file management: Create .sdlc/state.json at project level containing current phase (Bootstrap/Spec/Design/Decompose/Build/Ship/Evaluate), DoD checklist status per phase, phase transition log with timestamps, and agent deployment history. (2) Core functionality: Implement phase query API ('what phase are we in?'), DoD validation gates ('is DoD met for this phase?'), phase transition logic with automatic DoD checking, and agent tracking per phase. (3) Integration points: Create SEM agent integration hooks for phase queries and transitions, CLI commands for manual phase management, and JSON schema validation for state file integrity. (4) Implementation approach: Build as Python module with JSON file I/O, implement atomic writes for state updates, create backup/restore functionality, and add logging for all state changes. The tool should prevent invalid phase transitions and maintain audit trail of all SDLC progression. Reference existing process standards for SDLC phases and definition-of-done criteria to ensure consistency with established methodology.",
+        "testStrategy": "Verify state file creation and JSON schema validation, test phase query and transition APIs with valid/invalid inputs, validate DoD gate enforcement blocks transitions when criteria not met, test agent tracking records deployment history correctly, verify atomic state updates don't corrupt file during concurrent access, test CLI commands for manual phase management, validate integration with SEM agent through mock queries, and test backup/restore functionality preserves complete state history.",
+        "status": "in-progress",
+        "dependencies": [
+          "2"
+        ],
+        "priority": "medium",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create .sdlc Directory and State File Template",
+            "description": "Set up the project-level .sdlc directory and create initial state.json template with default structure for phases, DoD checklists, transition log, and agent history.",
+            "dependencies": [],
+            "details": "Use mkdir -p .sdlc; create state.json with schema: current_phase (Bootstrap), phases dict with DoD checklists from standards/definition-of-done.md, empty transition_log list, empty agent_deployments list. Ensure JSON is pretty-printed and validated.",
+            "status": "pending",
+            "testStrategy": "Verify .sdlc/state.json exists, parses as valid JSON, contains expected keys with correct initial values matching SDLC phases from process standards.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Define JSON Schema for State File Validation",
+            "description": "Create JSON schema file to validate .sdlc/state.json integrity including phase enums, DoD checklist structure, timestamp formats, and agent tracking fields.",
+            "dependencies": [],
+            "details": "Create .sdlc/state_schema.json defining required fields: current_phase enum['Bootstrap','Spec','Design','Decompose','Build','Ship','Evaluate'], phases object with DoD arrays of booleans/objects, transition_log array of {phase_from, phase_to, timestamp, reason}, agent_deployments array.",
+            "status": "pending",
+            "testStrategy": "Test schema validation with valid/invalid state.json samples; ensure all required fields pass and invalid data fails validation.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Research and Define Per-Phase DoD Checklists",
+            "description": "Extract and formalize Definition of Done criteria for each SDLC phase from existing process standards, creating structured checklists for state file.",
+            "dependencies": [
+              1
+            ],
+            "details": "Reference standards/definition-of-done.md and sdlc-phases.md; create phase-specific DoD lists (e.g., Bootstrap: standards copied, install.sh works; Spec: requirements validated) as arrays of checklist items with status tracking in state.json.",
+            "status": "pending",
+            "testStrategy": "Verify each phase has 5-10 specific, measurable DoD criteria; cross-reference with existing process standards for consistency.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement Atomic State File Read/Write Utilities",
+            "description": "Build Python functions for safe reading, writing, and atomic updates to state.json with backup creation and schema validation on each operation.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "In sdlc_tracker.py: def load_state() -> dict (with schema validate), def save_state(state: dict) (atomic write via temp file+rename, backup to state.json.bak), def update_state(updates: dict) (load-merge-save with logging). Use json, tempfile, shutil, jsonschema.",
+            "status": "pending",
+            "testStrategy": "Test concurrent writes don't corrupt file, backups created on update, invalid updates rejected by schema, file permissions preserved.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Develop Phase Query and DoD Validation APIs",
+            "description": "Implement functions to query current phase, check DoD status per phase, and validate if current phase DoD is met before transitions.",
+            "dependencies": [
+              4
+            ],
+            "details": "Add to sdlc_tracker.py: def get_current_phase() -> str, def get_dod_status(phase: str) -> dict (items checked/unchecked), def is_dod_met(phase: str) -> bool (all items true), with clear return formats for agent parsing.",
+            "status": "pending",
+            "testStrategy": "Unit test queries return correct values from sample states; test DoD met/unmet logic with partial checklists; edge cases like unknown phase.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 6,
+            "title": "Build Phase Transition Logic with Validation Gates",
+            "description": "Create transition function that enforces valid phase sequences, requires current DoD met, logs transitions with timestamps and reasons.",
+            "dependencies": [
+              3,
+              4,
+              5
+            ],
+            "details": "def transition_phase(to_phase: str, reason: str = '') -> bool: validate sequence (Bootstrap->Spec->Design->etc.), check is_dod_met(current), append to transition_log {from: current, to: to_phase, timestamp: isoformat(), reason}, update current_phase, save_state(). Reject invalid transitions.",
+            "status": "pending",
+            "testStrategy": "Test valid transitions succeed and log correctly; invalid sequences or unmet DoD fail silently/raise; verify log immutability.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 7,
+            "title": "Add Agent Deployment Tracking Functionality",
+            "description": "Implement functions to record agent deployments per phase with details like agent name, version, role, deployment timestamp.",
+            "dependencies": [
+              4
+            ],
+            "details": "def record_agent_deployment(agent_name: str, phase: str, details: dict): append to agent_deployments {phase, agent_name, timestamp, details: {version, role, config_hash}}, def get_agents_for_phase(phase: str) -> list. Integrate into transition hooks.",
+            "status": "pending",
+            "testStrategy": "Test recording multiple agents per phase; query returns correct history; no duplicates on re-record.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 8,
+            "title": "Create CLI Commands for State Management",
+            "description": "Build shell script wrapper sdlc-cli.sh with commands for query phase, check DoD, transition phase, list history, backup/restore.",
+            "dependencies": [
+              4,
+              5,
+              6
+            ],
+            "details": "Make executable sdlc-cli.sh using python sdlc_tracker.py: sdlc-cli current, sdlc-cli dod [phase], sdlc-cli transition <phase> [reason], sdlc-cli history, sdlc-cli agents [phase], sdlc-cli backup/restore. Simple parsing for SEM agent calls.",
+            "status": "pending",
+            "testStrategy": "Test all CLI commands output expected JSON/text; handle errors gracefully; verify no direct file writes bypassing atomic utils.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 9,
+            "title": "Implement Comprehensive Logging and Audit Trail",
+            "description": "Add logging for all state changes, transitions, errors with timestamps to .sdlc/sdlc.log for full auditability.",
+            "dependencies": [
+              4
+            ],
+            "details": "Use Python logging module in sdlc_tracker.py, log to .sdlc/sdlc.log: INFO for successful ops, WARNING for validation fails, ERROR for write fails. Include user/agent context if available. Rotate logs if >1MB.",
+            "status": "pending",
+            "testStrategy": "Verify logs capture all operations; search logs for specific transitions; test log rotation/backup.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 10,
+            "title": "Add Backup, Restore, and Reset Functionality",
+            "description": "Implement backup/restore commands and emergency reset to initial Bootstrap state with confirmation prompts.",
+            "dependencies": [
+              4,
+              8
+            ],
+            "details": "Extend CLI: sdlc-cli backup (timestamped zip), sdlc-cli restore <backup>, sdlc-cli reset --force. Python utils for zip compression, state reset to template with cleared logs.",
+            "status": "pending",
+            "testStrategy": "Test backup extracts correctly; restore returns to backed state; reset wipes logs but preserves schema.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 11,
+            "title": "Create Integration Hooks for SEM Agent",
+            "description": "Document and implement simple function wrappers for SEM agent Read/Write/Edit operations on state via CLI or direct Python import.",
+            "dependencies": [
+              8
+            ],
+            "details": "Create README.md in .sdlc/ with usage: SEM calls './sdlc-cli current' for phase, './sdlc-cli transition Design' etc. Ensure outputs are parseable JSON. Test SEM-friendly error messages.",
+            "status": "pending",
+            "testStrategy": "Simulate SEM calls via script; verify JSON output consistency; no manual JSON parsing needed by agent.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 12,
+            "title": "Write Tests and Validation Suite",
+            "description": "Create comprehensive test suite covering all functionality with pytest, including state ops, transitions, CLI, edge cases.",
+            "dependencies": [
+              6,
+              8,
+              10
+            ],
+            "details": "tests/test_sdlc_tracker.py: mock file I/O, test all functions, CLI via subprocess. Cover invalid inputs, concurrent access, DoD gates. test_sdlc_cli.sh for integration.",
+            "status": "pending",
+            "testStrategy": "Achieve 95% coverage; run tests in CI-like script; verify no regressions on state mutations.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 13,
+            "title": "Document Usage, Schema, and Integration Guide",
+            "description": "Create full documentation including setup, CLI reference, Python API, SEM integration examples, troubleshooting.",
+            "dependencies": [
+              11
+            ],
+            "details": "README.md in .sdlc/: installation (run init), CLI commands table, Python import examples, state schema reference, FAQ for common issues like permission errors.",
+            "status": "pending",
+            "testStrategy": "Validate all code samples in docs run without errors; ensure completeness against feature list.",
+            "parentId": "undefined"
+          }
+        ],
+        "updatedAt": "2026-02-25T20:13:45.097Z"
+      },
+      {
+        "id": 22,
+        "title": "Create Onboarding Sample Project for SDLC Dashboard",
+        "description": "Create a comprehensive onboarding exercise in the etc-system-engineering repo where new users build a web dashboard that monitors SDLC project progress using the full harness with SEM orchestrator.",
+        "details": "Create an onboarding/ directory in the repository root containing: (1) A detailed PRD specification (prd.md) for the SDLC monitoring dashboard that reads from .sdlc/state.json and .taskmaster/tasks.json to display current phase, DoD checklist progress, phase transition timeline, task completion stats, and agent deployment activity. (2) A comprehensive README.md explaining the exercise flow: clone repo → run install.sh → cd onboarding → follow README → use Claude Code with full harness to implement the dashboard end-to-end. (3) A project-level .claude/CLAUDE.md template pre-configured for the dashboard project with appropriate agent activation rules and context. (4) Initialize the SDLC workflow at Bootstrap phase with proper .sdlc/state.json and .taskmaster/tasks.json files. The tech stack should be kept simple: Python backend (FastAPI or Flask) that reads the JSON state files, and vanilla HTML/JS/CSS frontend with minimal dependencies. The actual implementation is intentionally left incomplete - that's the learning exercise. Include sample data structures for the JSON files and clear acceptance criteria in the PRD. The exercise teaches both how the harness works and results in a useful monitoring tool.",
+        "testStrategy": "Verify onboarding/ directory exists with all required files: prd.md, README.md, .claude/CLAUDE.md template, and initialized SDLC files. Test that README provides clear step-by-step instructions. Validate PRD contains specific requirements for all dashboard features (phase display, DoD progress, timeline, stats, agent activity). Confirm .claude/CLAUDE.md template has proper agent configuration. Verify .sdlc/state.json and .taskmaster/tasks.json contain valid sample data structures. Test the complete onboarding flow by following the README instructions to ensure a new user can successfully start the exercise.",
+        "status": "pending",
+        "dependencies": [
+          21
+        ],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-02-25T20:00:37.868Z",
-      "taskCount": 20,
-      "completedCount": 17,
+      "lastModified": "2026-02-25T20:13:45.098Z",
+      "taskCount": 21,
+      "completedCount": 20,
       "tags": [
         "master"
-      ]
+      ],
+      "created": "2026-02-25T20:17:50.004Z",
+      "description": "Tasks for master context",
+      "updated": "2026-02-25T20:18:06.274Z"
     }
   }
 }

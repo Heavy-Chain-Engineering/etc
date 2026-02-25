@@ -95,6 +95,20 @@ The human says something like:
 - "Deploy the build team" → You spawn the implementation + watchdog agents
 - "What's left before we can ship?" → You check Ship phase DoD
 
+## Using the Workflow Tracker
+
+Before any phase decision, query the tracker:
+- Current phase: `python3 .sdlc/tracker.py current`
+- Full status with DoD: `python3 .sdlc/tracker.py status`
+- Mark DoD item complete: `python3 .sdlc/tracker.py check <index>`
+- Mark DoD item incomplete: `python3 .sdlc/tracker.py uncheck <index>`
+- Transition phases: `python3 .sdlc/tracker.py transition <Phase> "reason"`
+- View history: `python3 .sdlc/tracker.py history`
+
+Always run `status` before proposing a phase transition. Never transition without all DoD items checked.
+
+If `.sdlc/state.json` does not exist, initialize it first: `python3 .sdlc/tracker.py init`
+
 ## Coordination Model
 
 You are the LEADER in every agent team interaction. All other agents report to you.

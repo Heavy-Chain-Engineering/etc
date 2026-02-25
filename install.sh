@@ -103,6 +103,13 @@ else
     warn "Manually add hook wiring from settings-hooks.json"
 fi
 
+# 6. Install SDLC tracker templates
+mkdir -p "$CLAUDE_DIR/sdlc"
+cp "$SCRIPT_DIR/.sdlc/tracker.py" "$CLAUDE_DIR/sdlc/"
+cp "$SCRIPT_DIR/.sdlc/dod-templates.json" "$CLAUDE_DIR/sdlc/"
+chmod +x "$CLAUDE_DIR/sdlc/tracker.py"
+info "Installed SDLC tracker templates (run 'python3 .sdlc/tracker.py init' per project)"
+
 # Summary
 echo ""
 echo -e "${BOLD}Installation complete${NC}"
@@ -111,6 +118,7 @@ echo "  Installed to: $CLAUDE_DIR"
 echo "    agents/    $(ls "$CLAUDE_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ') agent definitions"
 echo "    standards/ $(find "$CLAUDE_DIR/standards" -name '*.md' 2>/dev/null | wc -l | tr -d ' ') engineering standards"
 echo "    hooks/     $(ls "$CLAUDE_DIR/hooks/"*.sh 2>/dev/null | wc -l | tr -d ' ') enforcement hooks"
+echo "    sdlc/      tracker.py + dod-templates.json"
 echo ""
 echo "  Next steps:"
 echo "    1. Verify ~/.claude/settings.json has hook wiring"

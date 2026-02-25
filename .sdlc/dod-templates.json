@@ -1,0 +1,45 @@
+{
+  "Bootstrap": [
+    ".meta/ description tree generated for all top-level directories",
+    "Gap analysis produced (missing tests, undocumented APIs, arch concerns)",
+    "Project structure understood and documented"
+  ],
+  "Spec": [
+    "PRD written with /specify and reviewed by stakeholder",
+    "Acceptance criteria defined for all features",
+    "Domain model validated by domain-modeler agent",
+    "Edge cases and error scenarios documented"
+  ],
+  "Design": [
+    "Architecture Decision Records (ADRs) written for key decisions",
+    "System boundaries and component interfaces defined",
+    "UX interaction flows designed (if applicable)",
+    "Technical risks identified and mitigated"
+  ],
+  "Decompose": [
+    "All PRD items decomposed into tasks via TaskMaster",
+    "Task dependencies mapped and ordered",
+    "Each task has acceptance criteria and test strategy",
+    "Architect has reviewed technical detail on all tasks"
+  ],
+  "Build": [
+    "All tasks implemented with TDD (red/green)",
+    "All tests passing",
+    "Coverage meets project threshold",
+    "Code reviewed by code-reviewer agent",
+    "Security review passed",
+    "No blocking issues open"
+  ],
+  "Ship": [
+    "Documentation updated (API docs, README, .meta/)",
+    "Deployment configuration verified",
+    "CI pipeline passing all stages",
+    "Final verification by verifier agent"
+  ],
+  "Evaluate": [
+    "Metrics collected and analyzed",
+    "Retrospective completed with process-evaluator agent",
+    "Improvement recommendations documented",
+    "Lessons learned captured for next iteration"
+  ]
+}
