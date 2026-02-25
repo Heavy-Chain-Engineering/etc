@@ -13,8 +13,15 @@ INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 
-# Only gate production source code (files under src/)
-if [[ "$FILE_PATH" == */src/* || "$FILE_PATH" == src/* ]]; then
+# Make path relative to project root to avoid false matches
+# (e.g. /Users/jason/src/ containing /src/ in the user's home path)
+REL_PATH="$FILE_PATH"
+if [[ "$FILE_PATH" == /* ]]; then
+  REL_PATH="${FILE_PATH#$CWD/}"
+fi
+
+# Only gate production source code (files under project's src/)
+if [[ "$REL_PATH" == src/* ]]; then
   # Skip __init__.py, py.typed, and non-Python files
   BASENAME=$(basename "$FILE_PATH")
   if [[ "$BASENAME" == "__init__.py" || "$BASENAME" == "py.typed" || "$BASENAME" != *.py ]]; then
