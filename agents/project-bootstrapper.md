@@ -146,3 +146,17 @@ Do NOT ask about:
 - Obvious best practices within a well-established ecosystem
 - Standard tool choices where one is clearly dominant
 - Details you can infer from existing files in the project
+
+## Error Recovery
+
+- IF a tool install command fails (e.g., `npm install`, `cargo add`): check network, check package name spelling, try alternative package manager -- report to user if unresolvable
+- IF pre-commit hooks fail on the initial run: fix the configuration before proceeding -- a bootstrapped project must have a green baseline
+- IF the existing project has conflicting configuration (e.g., both .eslintrc and eslint.config.js): ask the user which to keep rather than silently overwriting
+- IF the CI platform is unknown or unsupported: generate GitHub Actions as default and note the assumption
+
+## Coordination
+
+- **Reports to:** SEM (if active) or the human operator
+- **Escalates to:** architect if the bootstrapping reveals architectural decisions that need human input (e.g., monorepo vs polyrepo, framework selection)
+- **Hands off to:** verifier to confirm the bootstrapped project passes all its own checks (lint, test, build, security scan)
+- **Output format for handoff:** list of all files created/modified, commands to run for setup verification, and any open questions for the user

@@ -208,23 +208,16 @@ DATABASE_URL="postgresql://..." python3 audit-postgres-rls.py
 python3 tenant-isolation-analyzer.py /path/to/codebase
 ```
 
-## Active Relationships
+## Coordination
 
-### Required Skills (invoke before proceeding)
+- **Reports to:** SEM (if active) or the human operator
+- **Escalates to:** security-reviewer for vulnerabilities beyond tenant isolation (e.g., auth bypass, injection); architect-reviewer for fundamental architecture changes needed
+- **Hands off to:** backend-developer or frontend-developer with specific remediation items from the audit report
+- **Output format for handoff:** the Final Summary Template above, with each finding actionable (file, line, problem, fix)
 
-**Before auditing multi-tenant patterns:**
-```
-Use Skill tool: skill="multi-tenant"
-```
+## Required Skills
 
-**Before auditing PostgreSQL RLS policies:**
-```
-Use Skill tool: skill="database-postgresql"
-```
-
-### Recommended Skills (invoke when detected)
-
-**When backend API patterns need review:**
-```
-Use Skill tool: skill="backend-development"
-```
+Before proceeding, invoke these skills for full context:
+- `skill="multi-tenant"` -- multi-tenant patterns
+- `skill="database-postgresql"` -- PostgreSQL RLS policies (if applicable)
+- `skill="backend-development"` -- when backend API patterns need review

@@ -1209,7 +1209,7 @@
         "id": 22,
         "title": "Create Onboarding Sample Project for SDLC Dashboard",
         "description": "Create a comprehensive onboarding exercise in the etc-system-engineering repo where new users build a web dashboard that monitors SDLC project progress using the full harness with SEM orchestrator.",
-        "details": "Create an onboarding/ directory in the repository root containing: (1) A detailed PRD specification (prd.md) for the SDLC monitoring dashboard that reads from .sdlc/state.json and .taskmaster/tasks.json to display current phase, DoD checklist progress, phase transition timeline, task completion stats, and agent deployment activity. (2) A comprehensive README.md explaining the exercise flow: clone repo → run install.sh → cd onboarding → follow README → use Claude Code with full harness to implement the dashboard end-to-end. (3) A project-level .claude/CLAUDE.md template pre-configured for the dashboard project with appropriate agent activation rules and context. (4) Initialize the SDLC workflow at Bootstrap phase with proper .sdlc/state.json and .taskmaster/tasks.json files. The tech stack should be kept simple: Python backend (FastAPI or Flask) that reads the JSON state files, and vanilla HTML/JS/CSS frontend with minimal dependencies. The actual implementation is intentionally left incomplete - that's the learning exercise. Include sample data structures for the JSON files and clear acceptance criteria in the PRD. The exercise teaches both how the harness works and results in a useful monitoring tool.",
+        "details": "Create an onboarding/ directory in the repository root containing: (1) A detailed PRD specification (prd.md) for the SDLC monitoring dashboard that reads from .sdlc/state.json and .taskmaster/tasks.json to display current phase, DoD checklist progress, phase transition timeline, task completion stats, and agent deployment activity. (2) A comprehensive README.md explaining the exercise flow: clone repo \u2192 run install.sh \u2192 cd onboarding \u2192 follow README \u2192 use Claude Code with full harness to implement the dashboard end-to-end. (3) A project-level .claude/CLAUDE.md template pre-configured for the dashboard project with appropriate agent activation rules and context. (4) Initialize the SDLC workflow at Bootstrap phase with proper .sdlc/state.json and .taskmaster/tasks.json files. The tech stack should be kept simple: Python backend (FastAPI or Flask) that reads the JSON state files, and vanilla HTML/JS/CSS frontend with minimal dependencies. The actual implementation is intentionally left incomplete - that's the learning exercise. Include sample data structures for the JSON files and clear acceptance criteria in the PRD. The exercise teaches both how the harness works and results in a useful monitoring tool.",
         "testStrategy": "Verify onboarding/ directory exists with all required files: prd.md, README.md, .claude/CLAUDE.md template, and initialized SDLC files. Test that README provides clear step-by-step instructions. Validate PRD contains specific requirements for all dashboard features (phase display, DoD progress, timeline, stats, agent activity). Confirm .claude/CLAUDE.md template has proper agent configuration. Verify .sdlc/state.json and .taskmaster/tasks.json contain valid sample data structures. Test the complete onboarding flow by following the README instructions to ensure a new user can successfully start the exercise.",
         "status": "done",
         "dependencies": [
@@ -1225,7 +1225,7 @@
         "description": "Conduct comprehensive research on agent definition best practices and systematically harden all 22 existing agents with specific examples, concrete patterns, and opinionated heuristics.",
         "details": "Execute a systematic research and hardening process in four phases: (1) Research Phase: Use Perplexity to investigate Claude Code agent/skill definition best practices (prompt structure, specificity, examples, tool usage patterns, guardrails, error handling), mature community skills repositories and agent frameworks (Claude Code skills format, agent teams patterns, MCP-aware agent design), software engineering role definitions with specific heuristics that senior architects, staff engineers, and principal developers actually use in code reviews, security audits, and architecture reviews, and TDD/quality enforcement patterns that make AI agents actually follow TDD rather than just claiming compliance. (2) Analysis Phase: Synthesize findings into a comprehensive hardening framework with specific criteria for effective agent definitions, concrete tool usage patterns, structured decision trees for common scenarios, references to authoritative standards, and opinionated heuristics that go beyond generic advice. (3) Hardening Phase: Systematically review and enhance all 22 existing agent definitions (including code-reviewer, verifier, security-reviewer, and 19 others) by adding specific examples of good/bad output, implementing concrete tool usage patterns, creating structured decision trees for common scenarios, adding references to relevant standards they should consult, and embedding opinionated heuristics based on research findings. (4) Validation Phase: Test hardened agents against real scenarios to ensure they produce actionable, specific guidance rather than generic advice. Document the hardening methodology for future agent development and create a quality checklist for agent definition reviews.",
         "testStrategy": "Verify research documentation covers all four specified areas with concrete findings and actionable insights. Confirm all 22 agent definitions have been systematically hardened with before/after comparisons showing specific improvements. Test sample interactions with hardened agents to validate they provide specific, opinionated guidance rather than generic advice. Verify agents reference appropriate standards and follow structured decision-making processes. Validate that TDD-focused agents actually enforce test-first development with concrete blocking mechanisms. Create and execute test scenarios for each hardened agent to ensure they meet the 'agents that actually work' standard rather than just 'sound good' criteria.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "10",
           "20"
@@ -1599,7 +1599,7 @@
         "title": "Implement .meta/ Reconciliation System with Git Hooks",
         "description": "Create a git hook and agent workflow system that automatically keeps .meta/description.md files synchronized with code changes through a fast post-commit marking system and asynchronous regeneration process.",
         "details": "Implementation consists of three components: (1) Post-commit git hook (hooks/post-commit) that runs git diff --name-only HEAD~1 HEAD to identify changed files, walks up each file's directory tree using dirname to find .meta/description.md files, and marks stale ones by writing to .meta/stale.json with timestamp and list of changed files - this must complete in <100ms. (2) Reconcile command/agent mode that reads .meta/stale.json files, regenerates affected .meta/description.md files by re-reading current directory contents and running AI generation, then removes stale markers - this can be integrated into brownfield-bootstrapper as a --reconcile mode. (3) Optional pre-push hook (hooks/pre-push) that scans for .meta/stale.json files and warns/blocks if any exist. The post-commit hook uses shell scripting for speed: find parent directories with while read -r file; do dir=$(dirname \"$file\"); while [[ \"$dir\" != \"/\" ]]; do if [[ -f \"$dir/.meta/description.md\" ]]; then echo \"$file\" >> \"$dir/.meta/stale.json\"; fi; dir=$(dirname \"$dir\"); done; done. The reconcile agent reads stale.json, processes each directory's current state, regenerates descriptions, and rm stale.json when complete. This implements the ISS reconciliation loop pattern - keeping derived state (.meta/) in sync with source state (code) through reactive updates.",
-        "testStrategy": "Test post-commit hook speed with time command on repos with 100+ files (must be <100ms), verify stale.json creation after commits that modify files in directories with .meta/description.md, test directory tree walking by creating nested structures and confirming all parent .meta/ files are marked stale, test reconcile mode by creating stale markers and verifying regenerated descriptions reflect current directory state, test pre-push hook by creating stale.json files and confirming warning/blocking behavior, verify integration with brownfield-bootstrapper --reconcile flag, and test end-to-end workflow: make code change → commit → verify stale markers → run reconcile → verify updated descriptions and cleared markers.",
+        "testStrategy": "Test post-commit hook speed with time command on repos with 100+ files (must be <100ms), verify stale.json creation after commits that modify files in directories with .meta/description.md, test directory tree walking by creating nested structures and confirming all parent .meta/ files are marked stale, test reconcile mode by creating stale markers and verifying regenerated descriptions reflect current directory state, test pre-push hook by creating stale.json files and confirming warning/blocking behavior, verify integration with brownfield-bootstrapper --reconcile flag, and test end-to-end workflow: make code change \u2192 commit \u2192 verify stale markers \u2192 run reconcile \u2192 verify updated descriptions and cleared markers.",
         "status": "pending",
         "dependencies": [
           12,
@@ -1607,6 +1607,66 @@
         ],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 26,
+        "title": "Harden Tier 1 Agents (Critical Path)",
+        "description": "Apply hardening framework from docs/research/agent-hardening-research.md to the 5 critical-path agents: code-reviewer, security-reviewer, backend-developer, verifier, sem. These run on every code change or orchestration step and need concrete heuristics, decision trees, output formats, coordination models, and error recovery.",
+        "details": "Each agent must meet all 10 success criteria from the research doc. Use the template from Section 6, gap analysis from Section 5, heuristic catalog from Appendix A, and model selection from Appendix B. Target 80-200 lines per agent.",
+        "testStrategy": "Verify each hardened agent has: 2+ example blocks in description, Before Starting section with file paths, numbered process steps, output format template, boundaries with You Do / You Do NOT, error recovery, coordination section, and line count 80-200.",
+        "priority": "high",
+        "dependencies": [
+          23
+        ],
+        "status": "done",
+        "subtasks": [],
+        "complexity": 4,
+        "recommendedSubtasks": 5
+      },
+      {
+        "id": 27,
+        "title": "Harden Tier 2 Agents (High Impact)",
+        "description": "Harden architect, product-manager, frontend-developer, devops-engineer, domain-modeler using the research framework. These are high-impact agents with significant gaps.",
+        "details": "Same hardening criteria as Tier 1. Architect needs ADR template and smell detection. PM needs PRD template and Socratic questions. Frontend dev needs parity with backend dev. DevOps needs Docker/CI checklists. Domain modeler needs grep patterns.",
+        "testStrategy": "Same 10-point success criteria as Tier 1.",
+        "priority": "high",
+        "dependencies": [
+          26
+        ],
+        "status": "done",
+        "subtasks": [],
+        "complexity": 4,
+        "recommendedSubtasks": 5
+      },
+      {
+        "id": 28,
+        "title": "Harden Tier 3 Agents (Medium Impact)",
+        "description": "Harden product-owner, technical-writer, process-evaluator, brownfield-bootstrapper, architect-reviewer. These are medium-impact \u2014 some already decent, others need templates and validation processes.",
+        "details": "PO needs acceptance criteria template. Tech writer needs doc templates. Process evaluator needs trend methodology. Brownfield bootstrapper needs error recovery. Architect-reviewer needs coordination and grep commands.",
+        "testStrategy": "Same 10-point success criteria as Tier 1.",
+        "priority": "medium",
+        "dependencies": [
+          27
+        ],
+        "status": "done",
+        "subtasks": [],
+        "complexity": 3,
+        "recommendedSubtasks": 5
+      },
+      {
+        "id": 29,
+        "title": "Harden Tier 4 Agents (Lower Priority / Already Good)",
+        "description": "Harden ux-designer, ui-designer, code-simplifier, frontend-dashboard-refactorer, multi-tenant-auditor, project-bootstrapper, gemini-analyzer. Most are already good or low-frequency. Focus on adding coordination sections and examples.",
+        "details": "UX/UI designers need substantial expansion. Code-simplifier just needs coordination. frontend-dashboard-refactorer and multi-tenant-auditor are model agents \u2014 add coordination only. Evaluate if gemini-analyzer is still needed.",
+        "testStrategy": "Same 10-point success criteria. UX/UI must reach 80+ lines.",
+        "priority": "medium",
+        "dependencies": [
+          28
+        ],
+        "status": "done",
+        "subtasks": [],
+        "complexity": 3,
+        "recommendedSubtasks": 7
       }
     ],
     "metadata": {

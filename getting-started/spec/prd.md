@@ -46,8 +46,8 @@ The SEM agent can query this via CLI, but humans need a glanceable overview.
 ## Technical Constraints
 
 - **Backend:** Python (FastAPI or Flask). Stdlib + one framework, no heavy dependencies.
-- **Frontend:** Vanilla HTML + CSS + JavaScript. No React, no build step, no node_modules.
-- **Data source:** Read `.sdlc/state.json` and `.taskmaster/tasks/tasks.json` from disk. No database.
+- **Frontend:** Vanilla HTML + modern CSS + JavaScript. No React, no build step, no node_modules.
+- **Data source:** Read `.sdlc/state.json` and `.taskmaster/tasks/tasks.json` from disk. No database. DO NOT CORRUPT THESE FILES.
 - **Deployment:** `python3 app.py` and open browser. That's it.
 - **Testing:** pytest for backend, manual verification for frontend (this is a learning exercise, not production).
 

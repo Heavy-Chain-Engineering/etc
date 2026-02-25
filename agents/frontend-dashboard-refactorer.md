@@ -203,6 +203,13 @@ refactor(dashboard): break down [Feature]Page into focused components
 refactor(dashboard): cleanup and finalize [feature] structure
 ```
 
+## Coordination
+
+- **Reports to:** SEM (if active) or the human operator
+- **Escalates to:** architect-reviewer if refactoring reveals cross-module architectural issues that exceed dashboard scope
+- **Hands off to:** verifier after each phase and after final completion
+- **Output format for handoff:** REFACTORING_PLAN.md (created in Phase 0) plus a per-phase summary of files changed and test status
+
 ## Important Reminders
 
 1. **Always check for project-specific patterns** - Look for CLAUDE.md, existing conventions, and established patterns in the codebase
