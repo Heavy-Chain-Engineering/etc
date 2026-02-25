@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# hooks/git/post-commit
+#
+# Post-commit git hook that marks .meta/description.md files as stale
+# when code in their directory tree changes.
+#
+# Writes .meta/stale.json with timestamp and list of changed files.
+# Must complete in <100ms — no network calls, no AI, no heavy processing.
+#
+# Install: cp hooks/git/post-commit .git/hooks/post-commit && chmod +x .git/hooks/post-commit
+# Or: install.sh handles this automatically
+
+# No set -e: we never want a stale-marking failure to break git commit
+set -uo pipefail
+
+# Get changed files from this commit (fast — reads git objects, no disk scan)
+CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null) || exit 0
+
+# Nothing changed (empty commit, merge commit, etc.)
+[ -z "$CHANGED_FILES" ] && exit 0
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Track which .meta/ directories we've already marked (use a temp file for bash 3.x compat)
+MARKED_FILE=$(mktemp)
+trap 'rm -f "$MARKED_FILE"' EXIT
+
+while IFS= read -r file; do
+    # Skip .meta/ files themselves — don't mark stale from metadata changes
+    case "$file" in
+        */.meta/*|.meta/*) continue ;;
+    esac
+
+    # Walk up directory tree from the file's parent
+    dir=$(dirname "$file")
+    while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+        meta_dir="$REPO_ROOT/$dir/.meta"
+        if [ -f "$meta_dir/description.md" ] && ! grep -qxF "$meta_dir" "$MARKED_FILE" 2>/dev/null; then
+            # Mark this .meta/ as stale
+            STALE_FILE="$meta_dir/stale.json"
+
+            if [ -f "$STALE_FILE" ]; then
+                # Append to existing stale marker (merge changed files)
+                python3 -c "
+import json
+with open('$STALE_FILE') as f:
+    data = json.load(f)
+data['changed_files'] = list(set(data['changed_files'] + ['$file']))
+data['marked_at'] = '$TIMESTAMP'
+with open('$STALE_FILE', 'w') as f:
+    json.dump(data, f, indent=2)
+" 2>/dev/null || true
+            else
+                # Create new stale marker
+                cat > "$STALE_FILE" << STALE_EOF
+{
+  "marked_at": "$TIMESTAMP",
+  "changed_files": ["$file"]
+}
+STALE_EOF
+            fi
+            echo "$meta_dir" >> "$MARKED_FILE"
+        fi
+        dir=$(dirname "$dir")
+    done
+done <<< "$CHANGED_FILES"
+
+exit 0
