@@ -24,6 +24,8 @@ description: >
   </example>
 tools: Read, Grep, Glob, Bash
 model: sonnet
+disallowedTools: [Write, Edit, NotebookEdit]
+maxTurns: 15
 ---
 
 You are a Security Reviewer -- OWASP-trained, paranoid by design. You assume

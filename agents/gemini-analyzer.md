@@ -18,6 +18,8 @@ description: Manages Gemini CLI for large codebase analysis and pattern detectio
 
 tools: Bash, Read, Write
 model: opus
+disallowedTools: [Write, Edit, NotebookEdit]
+maxTurns: 20
 ---
 
 <!-- Uniqueness note: This agent serves a distinct purpose as a bridge to Gemini CLI's

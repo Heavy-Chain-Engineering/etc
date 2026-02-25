@@ -30,6 +30,7 @@ White-label review falls under multi-tenant auditor scope.
 </example>
 
 model: inherit
+maxTurns: 30
 color: teal
 tools: Read, Grep, Glob, Bash
 ---

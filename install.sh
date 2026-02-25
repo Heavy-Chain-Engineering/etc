@@ -2,7 +2,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_DIR="$HOME/.claude"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -19,6 +18,23 @@ echo -e "${BOLD}etc — Engineering Team, Codified${NC}"
 echo "Installing coding harness..."
 echo ""
 
+echo -e "${BOLD}Select your AI coding assistant:${NC}"
+echo "  1) Claude Code"
+echo "  2) Antigravity / Gemini"
+read -p "Enter choice [1 or 2]: " CLIENT_CHOICE
+echo ""
+
+if [ "$CLIENT_CHOICE" = "1" ]; then
+    TARGET_DIR="$HOME/.claude"
+    CLIENT_NAME="Claude Code"
+elif [ "$CLIENT_CHOICE" = "2" ]; then
+    TARGET_DIR="$HOME/.gemini/antigravity"
+    CLIENT_NAME="Antigravity / Gemini"
+else
+    error "Invalid choice. Please run the script again and select 1 or 2."
+    exit 1
+fi
+
 # Preflight checks
 if [ ! -d "$SCRIPT_DIR/agents" ] || [ ! -d "$SCRIPT_DIR/standards" ] || [ ! -d "$SCRIPT_DIR/hooks" ]; then
     error "Missing agents/, standards/, or hooks/ in $SCRIPT_DIR"
@@ -27,13 +43,13 @@ if [ ! -d "$SCRIPT_DIR/agents" ] || [ ! -d "$SCRIPT_DIR/standards" ] || [ ! -d "
 fi
 
 # 1. Create directory structure
-mkdir -p "$CLAUDE_DIR"/{agents,standards/{process,code,testing,architecture,security,quality},hooks}
+mkdir -p "$TARGET_DIR"/{agents,standards/{process,code,testing,architecture,security,quality},hooks}
 info "Directory structure ready"
 
 # 2. Install agents
 AGENT_COUNT=0
 for f in "$SCRIPT_DIR"/agents/*.md; do
-    cp "$f" "$CLAUDE_DIR/agents/"
+    cp "$f" "$TARGET_DIR/agents/"
     AGENT_COUNT=$((AGENT_COUNT + 1))
 done
 info "Installed $AGENT_COUNT agents"
@@ -44,7 +60,7 @@ for dir in process code testing architecture security quality; do
     if [ -d "$SCRIPT_DIR/standards/$dir" ]; then
         for f in "$SCRIPT_DIR/standards/$dir"/*.md; do
             [ -f "$f" ] || continue
-            cp "$f" "$CLAUDE_DIR/standards/$dir/"
+            cp "$f" "$TARGET_DIR/standards/$dir/"
             STANDARD_COUNT=$((STANDARD_COUNT + 1))
         done
     fi
@@ -54,14 +70,14 @@ info "Installed $STANDARD_COUNT standards"
 # 4. Install hooks
 HOOK_COUNT=0
 for f in "$SCRIPT_DIR"/hooks/*.sh; do
-    cp "$f" "$CLAUDE_DIR/hooks/"
-    chmod +x "$CLAUDE_DIR/hooks/$(basename "$f")"
+    cp "$f" "$TARGET_DIR/hooks/"
+    chmod +x "$TARGET_DIR/hooks/$(basename "$f")"
     HOOK_COUNT=$((HOOK_COUNT + 1))
 done
 info "Installed $HOOK_COUNT hooks (executable)"
 
 # 5. Merge hook wiring into settings.json
-SETTINGS="$CLAUDE_DIR/settings.json"
+SETTINGS="$TARGET_DIR/settings.json"
 HOOKS_TEMPLATE="$SCRIPT_DIR/settings-hooks.json"
 
 merge_settings() {
@@ -104,38 +120,38 @@ else
 fi
 
 # 6. Install SDLC tracker templates
-mkdir -p "$CLAUDE_DIR/sdlc"
-cp "$SCRIPT_DIR/.sdlc/tracker.py" "$CLAUDE_DIR/sdlc/"
-cp "$SCRIPT_DIR/.sdlc/dod-templates.json" "$CLAUDE_DIR/sdlc/"
-chmod +x "$CLAUDE_DIR/sdlc/tracker.py"
+mkdir -p "$TARGET_DIR/sdlc"
+cp "$SCRIPT_DIR/.sdlc/tracker.py" "$TARGET_DIR/sdlc/"
+cp "$SCRIPT_DIR/.sdlc/dod-templates.json" "$TARGET_DIR/sdlc/"
+chmod +x "$TARGET_DIR/sdlc/tracker.py"
 info "Installed SDLC tracker templates (run 'python3 .sdlc/tracker.py init' per project)"
 
 # 7. Install .meta/ reconciliation tools
-mkdir -p "$CLAUDE_DIR/scripts"
-cp "$SCRIPT_DIR/scripts/meta-reconcile.py" "$CLAUDE_DIR/scripts/"
-chmod +x "$CLAUDE_DIR/scripts/meta-reconcile.py"
+mkdir -p "$TARGET_DIR/scripts"
+cp "$SCRIPT_DIR/scripts/meta-reconcile.py" "$TARGET_DIR/scripts/"
+chmod +x "$TARGET_DIR/scripts/meta-reconcile.py"
 # Git hooks are per-project — copy templates to a reference location
-mkdir -p "$CLAUDE_DIR/hooks/git"
-cp "$SCRIPT_DIR/hooks/git/post-commit" "$CLAUDE_DIR/hooks/git/"
-cp "$SCRIPT_DIR/hooks/git/pre-push" "$CLAUDE_DIR/hooks/git/"
-chmod +x "$CLAUDE_DIR/hooks/git/"*
-info "Installed .meta/ reconciliation tools (git hooks in ~/.claude/hooks/git/)"
+mkdir -p "$TARGET_DIR/hooks/git"
+cp "$SCRIPT_DIR/hooks/git/post-commit" "$TARGET_DIR/hooks/git/"
+cp "$SCRIPT_DIR/hooks/git/pre-push" "$TARGET_DIR/hooks/git/"
+chmod +x "$TARGET_DIR/hooks/git/"*
+info "Installed .meta/ reconciliation tools (git hooks in $TARGET_DIR/hooks/git/)"
 
 # Summary
 echo ""
 echo -e "${BOLD}Installation complete${NC}"
 echo ""
-echo "  Installed to: $CLAUDE_DIR"
-echo "    agents/    $(ls "$CLAUDE_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ') agent definitions"
-echo "    standards/ $(find "$CLAUDE_DIR/standards" -name '*.md' 2>/dev/null | wc -l | tr -d ' ') engineering standards"
-echo "    hooks/     $(ls "$CLAUDE_DIR/hooks/"*.sh 2>/dev/null | wc -l | tr -d ' ') Claude Code hooks"
+echo "  Installed to: $TARGET_DIR"
+echo "    agents/    $(ls "$TARGET_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ') agent definitions"
+echo "    standards/ $(find "$TARGET_DIR/standards" -name '*.md' 2>/dev/null | wc -l | tr -d ' ') engineering standards"
+echo "    hooks/     $(ls "$TARGET_DIR/hooks/"*.sh 2>/dev/null | wc -l | tr -d ' ') hooks"
 echo "    hooks/git/ post-commit + pre-push (.meta/ reconciliation)"
 echo "    scripts/   meta-reconcile.py"
 echo "    sdlc/      tracker.py + dod-templates.json"
 echo ""
 echo "  Next steps:"
-echo "    1. Verify ~/.claude/settings.json has hook wiring"
-echo "    2. Add a .claude/CLAUDE.md to your project repos"
-echo "    3. Per-project: cp ~/.claude/hooks/git/* .git/hooks/ to enable .meta/ tracking"
-echo "    4. Launch Claude Code — the harness is active"
+echo "    1. Verify $TARGET_DIR/settings.json has hook wiring"
+echo "    2. Add relevant repo context (e.g. .claude/CLAUDE.md or .agents/)"
+echo "    3. Per-project: cp $TARGET_DIR/hooks/git/* .git/hooks/ to enable .meta/ tracking"
+echo "    4. Launch $CLIENT_NAME — the harness is active"
 echo ""

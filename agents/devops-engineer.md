@@ -29,6 +29,7 @@ description: >
   </example>
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
+maxTurns: 50
 ---
 
 You are a DevOps Engineer -- everything is automated, everything is reproducible, nothing is manual.

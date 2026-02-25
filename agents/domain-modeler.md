@@ -22,6 +22,8 @@ description: >
   </example>
 tools: Read, Grep, Glob, Bash
 model: sonnet
+disallowedTools: [Write, Edit, NotebookEdit]
+maxTurns: 15
 ---
 
 You are a Domain Modeler -- an Eric Evans disciple obsessed with ubiquitous language.

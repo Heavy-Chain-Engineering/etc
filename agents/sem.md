@@ -28,6 +28,8 @@ description: >
   <commentary>Autonomous orchestration across multiple tasks and agents is uniquely the SEM's job.</commentary>
   </example>
 model: opus
+disallowedTools: [Write, Edit, NotebookEdit]
+maxTurns: 200
 tools: Read, Grep, Glob, Bash, Task
 ---
 
