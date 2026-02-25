@@ -1,6 +1,8 @@
 # etc — Engineering Team, Codified
 
-An industrial-grade coding harness that establishes a synthetic engineering organization for AI-driven software development using Claude Code.
+An experiment in structured AI-driven software development. Can a set of agents, standards, and enforcement hooks replicate the discipline of a well-run engineering team — applied to Claude Code?
+
+This repo is the test. Everything here is working theory.
 
 ## Quick Start
 
@@ -19,11 +21,11 @@ Then in `~/.claude/settings.json`, ensure agent teams are enabled:
 }
 ```
 
-Launch Claude Code in any project. The full harness is active.
+Launch Claude Code in any project. The harness is active.
 
 ## How to Use
 
-The harness is driven by the **SEM** (Software Engineering Manager) agent — the conductor that knows your SDLC phases, deploys the right agent teams, and enforces quality gates between phases.
+The harness is driven by the **SEM** (Software Engineering Manager) agent — an orchestrator that tracks SDLC phases, deploys agent teams, and gates transitions on definition-of-done checklists.
 
 ### Starting a Project
 
@@ -41,7 +43,7 @@ The SEM kicks off the Spec phase, deploying the product-manager with spec-kit's 
 
 ### The SDLC Workflow
 
-The SEM walks you through seven phases. Each phase has a **definition of done** that must be met before moving forward.
+The SEM walks through seven phases. Each has a definition of done that must be met before moving forward.
 
 | Phase | What Happens | Agents Deployed | Key Tool |
 |-------|-------------|-----------------|----------|
@@ -55,14 +57,14 @@ The SEM walks you through seven phases. Each phase has a **definition of done** 
 
 ### During Build: The Watchdog Pattern
 
-Build phase is special. The SEM deploys:
-- **One implementation agent** in the foreground (backend-developer, frontend-developer, or devops-engineer) working on the current task
+Build phase deploys:
+- **One implementation agent** in the foreground working on the current task
 - **Three quality agents** in the background as watchdogs:
   - **code-reviewer** — reviews each completed unit of work
   - **verifier** — runs tests and checks coverage
   - **security-reviewer** — scans for vulnerabilities
 
-Plus the TDD hooks fire automatically on every file edit — checking that tests exist before allowing code changes.
+TDD hooks fire automatically on every file edit — checking that tests exist before allowing code changes.
 
 ### Asking the SEM Questions
 
@@ -73,38 +75,29 @@ Plus the TDD hooks fire automatically on every file edit — checking that tests
 "Deploy the build team for task 5."
 ```
 
-The SEM checks the definition of done, gates transitions, and deploys teams. You focus on the product decisions.
+The SEM checks definition of done, gates transitions, and deploys teams. You focus on the product decisions.
 
-## What Is This?
+### Try It: Onboarding Exercise
 
-A complete set of AI agents, engineering standards, enforcement hooks, and workflow conventions that replicate the discipline of a well-run human software team — applied to Claude Code's agent teams.
+The `getting-started/` directory contains a spec for a project progress dashboard. Follow the README there to watch the harness build it end-to-end — that's the best way to understand how everything fits together.
 
-**22 specialized agents** covering the full SDLC — including the SEM orchestrator that manages the entire lifecycle.
+## What's In the Box
 
-**17 engineering standards as files** — TDD workflow, clean code, testing standards, security checklists, architecture rules. Each independently maintainable and versionable.
+| Category | Count | Description |
+|----------|-------|-------------|
+| Agents | 22 | SDLC role definitions (SEM orchestrator, PM, architect, developers, reviewers, etc.) |
+| Standards | 17 | Engineering standards across 6 categories (process, code, testing, architecture, security, quality) |
+| Hooks | 3 | TDD enforcement scripts (test-exists check, dirty marker, verification gate) |
+| Tracker | 1 | SDLC phase state tracker with DoD gating |
 
-**Mechanical enforcement** via hooks — TDD compliance checked on every edit. The system self-corrects.
-
-## What Gets Installed
-
-The installer copies three categories of assets to `~/.claude/`:
-
-| Directory | Contents | Count |
-|-----------|----------|-------|
-| `agents/` | Specialized SDLC agent definitions | 22 |
-| `standards/` | Engineering standards across 6 categories | 17 |
-| `hooks/` | TDD enforcement scripts | 3 |
-
-It also wires hook triggers into `~/.claude/settings.json` so enforcement is automatic.
+The installer copies these to `~/.claude/` and wires hook triggers into `settings.json`.
 
 ## Architecture
 
-Two-layer platform:
+Two layers:
 
-- **User-level (`~/.claude/`)** — Agents, standards, hooks. Installed from this repo. Reusable across all projects.
-- **Project-level (`.claude/`, root files)** — Project-specific CLAUDE.md, test runner config, CI pipeline. Per-repo, checked into version control.
-
-### Agent Hierarchy
+- **User-level (`~/.claude/`)** — Agents, standards, hooks. Installed from this repo. Shared across all projects.
+- **Project-level (`.claude/`, root files)** — Project-specific CLAUDE.md, test runner config, CI pipeline. Per-repo.
 
 ```
 Human (stakeholder, SME, final authority)
@@ -112,12 +105,6 @@ Human (stakeholder, SME, final authority)
         ├── Phase agents (foreground — do the work)
         └── Watchdog agents (background — enforce quality)
 ```
-
-### SDLC Phases
-
-Bootstrap → Spec → Design → Decompose → Build → Ship → Evaluate
-
-Each phase has a definition of done. The SEM gates transitions.
 
 ## Repo Structure
 
@@ -131,19 +118,21 @@ standards/           17 engineering standards
   security/            Data handling, OWASP checklist
   quality/             Metrics
 hooks/               3 TDD enforcement scripts
-settings-hooks.json  Hook wiring template for settings.json
+.sdlc/               Workflow tracker (phase state + DoD gating)
+getting-started/     Onboarding exercise (spec only — implementation is the exercise)
+settings-hooks.json  Hook wiring template
 install.sh           Bootstrap installer
 docs/                Design documents and plans
 ```
 
-## Connection to ISS
+## Background
 
-This harness is the first practical instantiation of [Industrialized System Synthesis](docs/plans/2026-02-25-coding-harness-design.md#connection-to-industrialized-system-synthesis) — a declarative approach where specs act as genotype and agent swarms express them into running systems (phenotype).
+This explores ideas from [Industrialized System Synthesis](docs/plans/2026-02-25-coding-harness-design.md#connection-to-industrialized-system-synthesis) — the notion that specs act as genotype and agent teams express them into running systems. Whether that holds up in practice is what we're finding out.
 
 ## Status
 
-Phase 1 complete. User-level platform installed and verified.
+Phase 1 complete. User-level platform built and verified. Not yet tested on a real project.
 
-- [Full Design Document](docs/plans/2026-02-25-coding-harness-design.md)
+- [Design Document](docs/plans/2026-02-25-coding-harness-design.md)
 - [Implementation Plan](docs/plans/2026-02-25-phase1-user-level-platform.md)
 - [Design Notes](docs/plans/harness-design-notes.md)
