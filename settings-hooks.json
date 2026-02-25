@@ -9,6 +9,12 @@
             "command": "~/.claude/hooks/check-test-exists.sh",
             "timeout": 5000,
             "statusMessage": "Checking TDD compliance..."
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/check-invariants.sh",
+            "timeout": 10000,
+            "statusMessage": "Checking project invariants..."
           }
         ]
       }
