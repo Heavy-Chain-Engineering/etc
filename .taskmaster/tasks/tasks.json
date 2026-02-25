@@ -1036,7 +1036,7 @@
         "description": "Build a project management layer that tracks SDLC phase progression, maintains definition-of-done status, and provides phase transition history with agent deployment tracking.",
         "details": "Create a comprehensive SDLC workflow tracker with the following components: (1) State file management: Create .sdlc/state.json at project level containing current phase (Bootstrap/Spec/Design/Decompose/Build/Ship/Evaluate), DoD checklist status per phase, phase transition log with timestamps, and agent deployment history. (2) Core functionality: Implement phase query API ('what phase are we in?'), DoD validation gates ('is DoD met for this phase?'), phase transition logic with automatic DoD checking, and agent tracking per phase. (3) Integration points: Create SEM agent integration hooks for phase queries and transitions, CLI commands for manual phase management, and JSON schema validation for state file integrity. (4) Implementation approach: Build as Python module with JSON file I/O, implement atomic writes for state updates, create backup/restore functionality, and add logging for all state changes. The tool should prevent invalid phase transitions and maintain audit trail of all SDLC progression. Reference existing process standards for SDLC phases and definition-of-done criteria to ensure consistency with established methodology.",
         "testStrategy": "Verify state file creation and JSON schema validation, test phase query and transition APIs with valid/invalid inputs, validate DoD gate enforcement blocks transitions when criteria not met, test agent tracking records deployment history correctly, verify atomic state updates don't corrupt file during concurrent access, test CLI commands for manual phase management, validate integration with SEM agent through mock queries, and test backup/restore functionality preserves complete state history.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "2"
         ],
@@ -1203,7 +1203,7 @@
             "parentId": "undefined"
           }
         ],
-        "updatedAt": "2026-02-25T20:13:45.097Z"
+        "updatedAt": "2026-02-25T20:23:56.013Z"
       },
       {
         "id": 22,
@@ -1211,9 +1211,399 @@
         "description": "Create a comprehensive onboarding exercise in the etc-system-engineering repo where new users build a web dashboard that monitors SDLC project progress using the full harness with SEM orchestrator.",
         "details": "Create an onboarding/ directory in the repository root containing: (1) A detailed PRD specification (prd.md) for the SDLC monitoring dashboard that reads from .sdlc/state.json and .taskmaster/tasks.json to display current phase, DoD checklist progress, phase transition timeline, task completion stats, and agent deployment activity. (2) A comprehensive README.md explaining the exercise flow: clone repo → run install.sh → cd onboarding → follow README → use Claude Code with full harness to implement the dashboard end-to-end. (3) A project-level .claude/CLAUDE.md template pre-configured for the dashboard project with appropriate agent activation rules and context. (4) Initialize the SDLC workflow at Bootstrap phase with proper .sdlc/state.json and .taskmaster/tasks.json files. The tech stack should be kept simple: Python backend (FastAPI or Flask) that reads the JSON state files, and vanilla HTML/JS/CSS frontend with minimal dependencies. The actual implementation is intentionally left incomplete - that's the learning exercise. Include sample data structures for the JSON files and clear acceptance criteria in the PRD. The exercise teaches both how the harness works and results in a useful monitoring tool.",
         "testStrategy": "Verify onboarding/ directory exists with all required files: prd.md, README.md, .claude/CLAUDE.md template, and initialized SDLC files. Test that README provides clear step-by-step instructions. Validate PRD contains specific requirements for all dashboard features (phase display, DoD progress, timeline, stats, agent activity). Confirm .claude/CLAUDE.md template has proper agent configuration. Verify .sdlc/state.json and .taskmaster/tasks.json contain valid sample data structures. Test the complete onboarding flow by following the README instructions to ensure a new user can successfully start the exercise.",
+        "status": "done",
+        "dependencies": [
+          "21"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-02-25T20:23:56.017Z"
+      },
+      {
+        "id": 23,
+        "title": "Research and Harden All Agent Definitions Using Industry Best Practices",
+        "description": "Conduct comprehensive research on agent definition best practices and systematically harden all 22 existing agents with specific examples, concrete patterns, and opinionated heuristics.",
+        "details": "Execute a systematic research and hardening process in four phases: (1) Research Phase: Use Perplexity to investigate Claude Code agent/skill definition best practices (prompt structure, specificity, examples, tool usage patterns, guardrails, error handling), mature community skills repositories and agent frameworks (Claude Code skills format, agent teams patterns, MCP-aware agent design), software engineering role definitions with specific heuristics that senior architects, staff engineers, and principal developers actually use in code reviews, security audits, and architecture reviews, and TDD/quality enforcement patterns that make AI agents actually follow TDD rather than just claiming compliance. (2) Analysis Phase: Synthesize findings into a comprehensive hardening framework with specific criteria for effective agent definitions, concrete tool usage patterns, structured decision trees for common scenarios, references to authoritative standards, and opinionated heuristics that go beyond generic advice. (3) Hardening Phase: Systematically review and enhance all 22 existing agent definitions (including code-reviewer, verifier, security-reviewer, and 19 others) by adding specific examples of good/bad output, implementing concrete tool usage patterns, creating structured decision trees for common scenarios, adding references to relevant standards they should consult, and embedding opinionated heuristics based on research findings. (4) Validation Phase: Test hardened agents against real scenarios to ensure they produce actionable, specific guidance rather than generic advice. Document the hardening methodology for future agent development and create a quality checklist for agent definition reviews.",
+        "testStrategy": "Verify research documentation covers all four specified areas with concrete findings and actionable insights. Confirm all 22 agent definitions have been systematically hardened with before/after comparisons showing specific improvements. Test sample interactions with hardened agents to validate they provide specific, opinionated guidance rather than generic advice. Verify agents reference appropriate standards and follow structured decision-making processes. Validate that TDD-focused agents actually enforce test-first development with concrete blocking mechanisms. Create and execute test scenarios for each hardened agent to ensure they meet the 'agents that actually work' standard rather than just 'sound good' criteria.",
+        "status": "in-progress",
+        "dependencies": [
+          "10",
+          "20"
+        ],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define research scope and success criteria for agent hardening",
+            "description": "Clarify what constitutes a successfully hardened agent definition and what outcomes the research phase must deliver.",
+            "dependencies": [],
+            "details": "Document explicit success criteria for each of the four phases (research, analysis, hardening, validation), including required artifacts, coverage of all 22 agents, and measurable quality improvements. Define what counts as a 'hardened' agent definition (e.g., presence of examples, guardrails, decision trees, references to standards).",
+            "status": "pending",
+            "testStrategy": "Review criteria document with stakeholders to confirm alignment with project goals and completeness.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Research official Claude Code agent/skill best practices",
+            "description": "Investigate Anthropic's official documentation on Claude Code agent and skill definitions.",
+            "dependencies": [
+              1
+            ],
+            "details": "Review the Claude Code best practices documentation, agent skills documentation, and agent teams documentation to extract patterns for prompt structure, specificity, examples, tool usage, guardrails, and error handling. Identify recommended sections, frontmatter structure, and naming conventions for agent .md files.",
+            "status": "pending",
+            "testStrategy": "Compile a summary document with direct references to official docs and extracted best practices.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Research community agent/skill repositories and frameworks",
+            "description": "Analyze popular community repositories and frameworks for Claude Code agents and skills.",
+            "dependencies": [
+              2
+            ],
+            "details": "Examine repositories like 'awesome-claude-code', popular skills repos, and the 'superpowers' plugin structure to identify effective patterns for agent definitions. Document common structures, sections, and patterns that make agents most effective, including examples of good/bad output and concrete tool usage patterns.",
+            "status": "pending",
+            "testStrategy": "Create a comparative analysis of at least three community repositories highlighting recurring patterns and unique innovations.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Research mature engineering organizations' review heuristics",
+            "description": "Investigate specific heuristics used by senior engineers at organizations like Google, Stripe, and Meta in code reviews, security audits, and architecture reviews.",
+            "dependencies": [
+              2
+            ],
+            "details": "Research and document specific heuristics that senior engineers apply in practice, focusing on concrete examples rather than generic checklists. Identify patterns for code review, security audit, and architecture review that can be translated into agent behaviors.",
+            "status": "pending",
+            "testStrategy": "Compile a reference document with categorized heuristics and examples from at least three organizations.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Research TDD/quality enforcement patterns for AI agents",
+            "description": "Investigate patterns that make AI agents reliably follow TDD rather than writing implementation first and backfilling tests.",
+            "dependencies": [
+              2
+            ],
+            "details": "Research and document patterns for enforcing TDD in AI agents, including structured workflows, validation loops, and quality gates. Identify examples of agents that successfully implement TDD and analyze their definition structures.",
+            "status": "pending",
+            "testStrategy": "Create a pattern catalog with at least five distinct TDD enforcement patterns and examples.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 6,
+            "title": "Synthesize research findings into a hardening framework",
+            "description": "Combine research findings into a comprehensive hardening framework for agent definitions.",
+            "dependencies": [
+              2,
+              3,
+              4,
+              5
+            ],
+            "details": "Create a structured framework with specific criteria for effective agent definitions, concrete tool usage patterns, structured decision trees for common scenarios, references to authoritative standards, and opinionated heuristics. Organize the framework by agent categories (strategy, architecture, implementation, quality, support, orchestrator).",
+            "status": "pending",
+            "testStrategy": "Review framework with stakeholders to ensure it covers all research areas and provides actionable guidance.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 7,
+            "title": "Categorize existing 22 agents by type and purpose",
+            "description": "Classify the 22 existing agents into logical groups based on their function and purpose.",
+            "dependencies": [
+              6
+            ],
+            "details": "Create a categorization matrix for the 22 agents, grouping them into strategy agents, architecture agents, implementation agents, quality agents, support agents, and orchestrators. Document each agent's current responsibilities and capabilities.",
+            "status": "pending",
+            "testStrategy": "Verify categorization accuracy by cross-checking with agent definitions and stakeholder input.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 8,
+            "title": "Develop agent hardening templates for each category",
+            "description": "Create standardized templates for hardening agents within each category.",
+            "dependencies": [
+              6,
+              7
+            ],
+            "details": "Design templates that include required sections (e.g., examples of good/bad output, tool usage patterns, decision trees, references to standards, opinionated heuristics) tailored to each agent category. Ensure templates are reusable and enforce consistency across agents.",
+            "status": "pending",
+            "testStrategy": "Test templates by applying them to a sample agent from each category and validating completeness.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 9,
+            "title": "Harden strategy agents using research findings",
+            "description": "Apply the hardening framework to all strategy agents.",
+            "dependencies": [
+              6,
+              7,
+              8
+            ],
+            "details": "Review each strategy agent definition and enhance it with specific examples of good/bad output, concrete tool usage patterns, structured decision trees, references to relevant standards, and opinionated heuristics. Document before/after comparisons for each agent.",
+            "status": "pending",
+            "testStrategy": "Conduct before/after comparisons and validate improvements through sample interactions with hardened agents.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 10,
+            "title": "Harden architecture agents using research findings",
+            "description": "Apply the hardening framework to all architecture agents.",
+            "dependencies": [
+              6,
+              7,
+              8,
+              9
+            ],
+            "details": "Review each architecture agent definition and enhance it with specific examples of good/bad output, concrete tool usage patterns, structured decision trees, references to relevant standards, and opinionated heuristics. Document before/after comparisons for each agent.",
+            "status": "pending",
+            "testStrategy": "Conduct before/after comparisons and validate improvements through sample interactions with hardened agents.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 11,
+            "title": "Harden implementation agents using research findings",
+            "description": "Apply the hardening framework to all implementation agents.",
+            "dependencies": [
+              6,
+              7,
+              8,
+              10
+            ],
+            "details": "Review each implementation agent definition and enhance it with specific examples of good/bad output, concrete tool usage patterns, structured decision trees, references to relevant standards, and opinionated heuristics. Document before/after comparisons for each agent.",
+            "status": "pending",
+            "testStrategy": "Conduct before/after comparisons and validate improvements through sample interactions with hardened agents.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 12,
+            "title": "Harden quality agents using research findings",
+            "description": "Apply the hardening framework to all quality agents.",
+            "dependencies": [
+              6,
+              7,
+              8,
+              11
+            ],
+            "details": "Review each quality agent definition and enhance it with specific examples of good/bad output, concrete tool usage patterns, structured decision trees, references to relevant standards, and opinionated heuristics. Document before/after comparisons for each agent.",
+            "status": "pending",
+            "testStrategy": "Conduct before/after comparisons and validate improvements through sample interactions with hardened agents.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 13,
+            "title": "Harden support agents using research findings",
+            "description": "Apply the hardening framework to all support agents.",
+            "dependencies": [
+              6,
+              7,
+              8,
+              12
+            ],
+            "details": "Review each support agent definition and enhance it with specific examples of good/bad output, concrete tool usage patterns, structured decision trees, references to relevant standards, and opinionated heuristics. Document before/after comparisons for each agent.",
+            "status": "pending",
+            "testStrategy": "Conduct before/after comparisons and validate improvements through sample interactions with hardened agents.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 14,
+            "title": "Harden orchestrator agents using research findings",
+            "description": "Apply the hardening framework to all orchestrator agents.",
+            "dependencies": [
+              6,
+              7,
+              8,
+              13
+            ],
+            "details": "Review each orchestrator agent definition and enhance it with specific examples of good/bad output, concrete tool usage patterns, structured decision trees, references to relevant standards, and opinionated heuristics. Document before/after comparisons for each agent.",
+            "status": "pending",
+            "testStrategy": "Conduct before/after comparisons and validate improvements through sample interactions with hardened agents.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 15,
+            "title": "Create comprehensive hardening methodology documentation",
+            "description": "Document the complete hardening methodology for future agent development.",
+            "dependencies": [
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14
+            ],
+            "details": "Write detailed documentation explaining the research process, analysis framework, hardening templates, and application methodology. Include examples from the 22 hardened agents to illustrate the methodology in practice.",
+            "status": "pending",
+            "testStrategy": "Review documentation with stakeholders to ensure clarity and completeness.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 16,
+            "title": "Develop agent definition quality checklist",
+            "description": "Create a quality checklist for reviewing agent definitions.",
+            "dependencies": [
+              6,
+              7,
+              8,
+              15
+            ],
+            "details": "Design a checklist that covers all aspects of the hardening framework, including prompt structure, specificity, examples, tool usage patterns, guardrails, error handling, and adherence to standards. Ensure the checklist is actionable and easy to use in reviews.",
+            "status": "pending",
+            "testStrategy": "Test the checklist by applying it to a sample of hardened agents and verifying it catches all required improvements.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 17,
+            "title": "Test hardened agents against real scenarios",
+            "description": "Validate that hardened agents produce actionable, specific guidance rather than generic advice.",
+            "dependencies": [
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15
+            ],
+            "details": "Design and execute test scenarios that exercise each hardened agent's capabilities. Document results, including examples of improved guidance and any remaining issues. Use the quality checklist to verify compliance.",
+            "status": "pending",
+            "testStrategy": "Conduct scenario-based testing with at least three diverse use cases per agent category and document outcomes.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 18,
+            "title": "Refine hardening framework based on validation results",
+            "description": "Update the hardening framework to address issues discovered during validation.",
+            "dependencies": [
+              17
+            ],
+            "details": "Analyze validation results and identify patterns in remaining issues. Update the hardening framework, templates, and quality checklist to address these patterns and improve future hardening efforts.",
+            "status": "pending",
+            "testStrategy": "Review updated framework with stakeholders to ensure it addresses validation findings.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 19,
+            "title": "Create before/after comparison report for all 22 agents",
+            "description": "Document the improvements made to each of the 22 agents.",
+            "dependencies": [
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              17
+            ],
+            "details": "Compile a comprehensive report showing before/after comparisons for each agent, highlighting specific improvements in examples, tool usage patterns, decision trees, references to standards, and opinionated heuristics. Include metrics on quality improvements where possible.",
+            "status": "pending",
+            "testStrategy": "Review report with stakeholders to verify completeness and accuracy of comparisons.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 20,
+            "title": "Conduct final review of all hardened agent definitions",
+            "description": "Perform a comprehensive review of all 22 hardened agent definitions to ensure consistency and quality.",
+            "dependencies": [
+              16,
+              18,
+              19
+            ],
+            "details": "Use the quality checklist to review each hardened agent definition. Verify that all required improvements have been implemented and that agents consistently follow the hardening framework. Document any remaining issues and create follow-up tasks.",
+            "status": "pending",
+            "testStrategy": "Conduct peer review with at least two reviewers per agent category and document review outcomes.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 21,
+            "title": "Update project documentation with hardening results",
+            "description": "Integrate hardening results into project documentation.",
+            "dependencies": [
+              15,
+              16,
+              19,
+              20
+            ],
+            "details": "Update relevant project documentation to reflect the hardening process, framework, templates, quality checklist, and validation results. Ensure documentation is accessible and easy to understand for future contributors.",
+            "status": "pending",
+            "testStrategy": "Review updated documentation with stakeholders to ensure it accurately reflects the hardening work.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 22,
+            "title": "Create training materials for using hardened agents",
+            "description": "Develop training materials to help team members effectively use the hardened agents.",
+            "dependencies": [
+              17,
+              20,
+              21
+            ],
+            "details": "Create training materials including tutorials, examples, and best practices for interacting with the hardened agents. Focus on demonstrating how to get actionable, specific guidance rather than generic advice.",
+            "status": "pending",
+            "testStrategy": "Test training materials with a sample group of users and gather feedback on clarity and effectiveness.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 23,
+            "title": "Conduct knowledge transfer session on agent hardening",
+            "description": "Share knowledge about the hardening process and results with the team.",
+            "dependencies": [
+              15,
+              16,
+              19,
+              20,
+              21,
+              22
+            ],
+            "details": "Organize and conduct a knowledge transfer session to explain the research, analysis, hardening, and validation phases. Demonstrate the hardened agents in action and answer questions from team members.",
+            "status": "pending",
+            "testStrategy": "Gather feedback from participants to assess understanding and identify areas for clarification.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 24,
+            "title": "Establish ongoing agent definition review process",
+            "description": "Create a process for regularly reviewing and updating agent definitions.",
+            "dependencies": [
+              16,
+              20,
+              23
+            ],
+            "details": "Design a process for periodic review of agent definitions, including frequency, participants, and criteria. Integrate the quality checklist into the review process and establish procedures for updating the hardening framework as needed.",
+            "status": "pending",
+            "testStrategy": "Test the review process with a pilot review cycle and document outcomes for improvement.",
+            "parentId": "undefined"
+          }
+        ],
+        "updatedAt": "2026-02-25T20:32:46.974Z"
+      },
+      {
+        "id": 24,
+        "title": "Refactor Engineering Standards to Support Pluggable Technology Stacks",
+        "description": "Restructure the engineering standards directory to separate universal standards from technology-specific standards, enabling support for multiple programming languages and technology stacks.",
+        "details": "Implement a comprehensive refactoring of the standards directory structure: (1) Keep universal standards in standards/code/ including clean-code.md, error-handling.md, and a refactored language-agnostic typing-standards.md that focuses on strict typing concepts rather than mypy-specific flags. (2) Create new standards/stacks/ directory with technology-specific subdirectories, starting with standards/stacks/python/ containing three files: conventions.md (naming conventions, import patterns, Pydantic/dataclass usage patterns), tooling.md (pytest configuration, mypy strict mode settings, ruff rules, uv package management, coverage thresholds), and frameworks.md (FastAPI patterns, dependency injection strategies, Pydantic model best practices). (3) Migrate content from the existing python-conventions.md into the new stacks/python/conventions.md structure. (4) Update all agent definitions that currently reference Python-specific standards to point to the new stacks/python/ location instead. (5) Modify install.sh to copy the new stacks/ directory structure to ~/.claude/standards/stacks/. (6) Create comprehensive documentation explaining the pluggable stack pattern, including how to add new technology stacks (TypeScript, Go, etc.) by simply creating new subdirectories under stacks/. (7) Establish the convention that project-level CLAUDE.md files declare which technology stack is active for that project. This refactoring enables the platform to support multiple programming languages while maintaining universal engineering principles.",
+        "testStrategy": "Verify the new directory structure exists with standards/code/ containing universal standards and standards/stacks/python/ containing the three technology-specific files. Confirm python-conventions.md content has been properly migrated to stacks/python/conventions.md. Test that typing-standards.md has been updated to be language-agnostic. Verify all agent definition files have been updated to reference stacks/python/ instead of direct Python standard references. Confirm install.sh successfully copies the stacks/ directory structure. Test that the documentation clearly explains how to add new technology stacks and that project-level CLAUDE.md can specify active stacks.",
         "status": "pending",
         "dependencies": [
-          21
+          "23",
+          "3",
+          "20"
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 25,
+        "title": "Implement .meta/ Reconciliation System with Git Hooks",
+        "description": "Create a git hook and agent workflow system that automatically keeps .meta/description.md files synchronized with code changes through a fast post-commit marking system and asynchronous regeneration process.",
+        "details": "Implementation consists of three components: (1) Post-commit git hook (hooks/post-commit) that runs git diff --name-only HEAD~1 HEAD to identify changed files, walks up each file's directory tree using dirname to find .meta/description.md files, and marks stale ones by writing to .meta/stale.json with timestamp and list of changed files - this must complete in <100ms. (2) Reconcile command/agent mode that reads .meta/stale.json files, regenerates affected .meta/description.md files by re-reading current directory contents and running AI generation, then removes stale markers - this can be integrated into brownfield-bootstrapper as a --reconcile mode. (3) Optional pre-push hook (hooks/pre-push) that scans for .meta/stale.json files and warns/blocks if any exist. The post-commit hook uses shell scripting for speed: find parent directories with while read -r file; do dir=$(dirname \"$file\"); while [[ \"$dir\" != \"/\" ]]; do if [[ -f \"$dir/.meta/description.md\" ]]; then echo \"$file\" >> \"$dir/.meta/stale.json\"; fi; dir=$(dirname \"$dir\"); done; done. The reconcile agent reads stale.json, processes each directory's current state, regenerates descriptions, and rm stale.json when complete. This implements the ISS reconciliation loop pattern - keeping derived state (.meta/) in sync with source state (code) through reactive updates.",
+        "testStrategy": "Test post-commit hook speed with time command on repos with 100+ files (must be <100ms), verify stale.json creation after commits that modify files in directories with .meta/description.md, test directory tree walking by creating nested structures and confirming all parent .meta/ files are marked stale, test reconcile mode by creating stale markers and verifying regenerated descriptions reflect current directory state, test pre-push hook by creating stale.json files and confirming warning/blocking behavior, verify integration with brownfield-bootstrapper --reconcile flag, and test end-to-end workflow: make code change → commit → verify stale markers → run reconcile → verify updated descriptions and cleared markers.",
+        "status": "pending",
+        "dependencies": [
+          12,
+          20
         ],
         "priority": "medium",
         "subtasks": []
@@ -1221,15 +1611,15 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-02-25T20:13:45.098Z",
-      "taskCount": 21,
-      "completedCount": 20,
+      "lastModified": "2026-02-25T20:32:46.975Z",
+      "taskCount": 24,
+      "completedCount": 22,
       "tags": [
         "master"
       ],
-      "created": "2026-02-25T20:17:50.004Z",
+      "created": "2026-02-25T20:46:59.523Z",
       "description": "Tasks for master context",
-      "updated": "2026-02-25T20:18:06.274Z"
+      "updated": "2026-02-25T20:47:14.448Z"
     }
   }
 }
