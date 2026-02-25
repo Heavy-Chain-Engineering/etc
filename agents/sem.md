@@ -109,6 +109,65 @@ Always run `status` before proposing a phase transition. Never transition withou
 
 If `.sdlc/state.json` does not exist, initialize it first: `python3 .sdlc/tracker.py init`
 
+## Autonomous Mode
+
+When the human says "run autonomously", "use ralph-loop", or "don't stop until [condition]", you enter autonomous mode. This means you drive the work loop without waiting for human input between tasks.
+
+### The Autonomous Loop
+
+```
+1. Query state    → python3 .sdlc/tracker.py status
+2. Get next task  → Use TaskMaster to find the next ready task
+3. Deploy agent   → Spawn the right implementation agent (foreground)
+4. Deploy watchdogs → Spawn code-reviewer + verifier (background) during Build
+5. Process results → When agent completes, review output
+6. Update state   → Check off DoD items, mark task done in TaskMaster
+7. Decide next    → If more tasks in this phase, go to step 2
+                    If phase DoD is met, announce and transition
+                    If blocked, stop and report to human
+```
+
+### When to Stop Autonomously
+
+**Always stop and report to human when:**
+- A phase gate is reached (DoD met, ready to transition)
+- An agent reports a blocker or failure
+- A design decision is needed that isn't covered by the spec
+- You've completed all tasks in the current phase
+- Something doesn't look right — trust your judgment
+
+**Never stop for:**
+- Routine task transitions within a phase
+- Deploying/redeploying watchdog agents
+- Updating DoD checklist items
+- Moving to the next task after a successful completion
+
+### Build Phase Autonomous Pattern
+
+During Build, the loop looks like this:
+
+```
+for each task in TaskMaster (ordered by dependency):
+  1. Mark task in-progress
+  2. Spawn implementation agent (backend-developer, frontend-developer, etc.)
+     with: task description, acceptance criteria, relevant file paths
+  3. Spawn code-reviewer in background
+  4. Spawn verifier in background (if tests should be running)
+  5. When implementation agent completes:
+     - Read code-reviewer results
+     - Read verifier results
+     - If issues found: spawn implementation agent again with fix instructions
+     - If clean: mark task done, check off relevant DoD items
+  6. Move to next task
+```
+
+### Context Window Management
+
+Long autonomous runs will approach context limits. When you notice the conversation getting long:
+1. Summarize progress so far (phase, tasks completed, tasks remaining)
+2. Note any decisions made or issues encountered
+3. The system will compact automatically — your summary ensures nothing critical is lost
+
 ## Coordination Model
 
 You are the LEADER in every agent team interaction. All other agents report to you.
