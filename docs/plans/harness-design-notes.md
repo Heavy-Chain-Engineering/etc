@@ -5,7 +5,7 @@ Reference: `docs/plans/2026-02-25-coding-harness-design.md`
 ## Core Concept
 A synthetic engineering organization — 14 AI agents + engineering standards + mechanical enforcement.
 Not "vibe coding" — structured, repeatable, deployable systems.
-First deployment target: Bald Eagle (regulatory compliance platform).
+Designed to be project-agnostic and reusable across any codebase.
 
 ## User's Philosophy
 - "Slow is smooth, smooth is fast" — guardrails should keep agents on rails without stopping progress
@@ -68,7 +68,7 @@ First deployment target: Bald Eagle (regulatory compliance platform).
 ## Implementation Phases
 1. Build user-level platform (~/.claude/)
 2. Create project template repo
-3. Deploy to Bald Eagle
+3. Deploy to first target project
 4. Evaluate and improve
 
 ## Open Design Questions

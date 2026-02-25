@@ -1,0 +1,1044 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "Create Standards Directory Structure",
+        "description": "Create the foundational directory structure for engineering standards organized by concern area",
+        "details": "Create directories under ~/.claude/standards/ for process, code, testing, architecture, security, and quality. This establishes the genotype layer of the platform where all engineering rules and conventions are stored. Use mkdir -p to create all directories at once, then verify the structure matches the expected hierarchy.",
+        "testStrategy": "Verify all 6 directories exist using find command and compare output to expected structure",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Standards Base Directory",
+            "description": "Create the base directory ~/.claude/standards/ using mkdir -p to ensure parent directories exist if needed.",
+            "dependencies": [],
+            "details": "Execute 'mkdir -p ~/.claude/standards/' to create the foundational base directory for all engineering standards. This uses -p flag to create parents silently without errors if they exist[1][2][3].",
+            "status": "pending",
+            "testStrategy": "Use 'ls -ld ~/.claude/standards/' to verify directory exists and has correct permissions (drwxr-xr-x or similar)",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Create Concern Area Subdirectories",
+            "description": "Create the six subdirectories under ~/.claude/standards/ for process, code, testing, architecture, security, and quality.",
+            "dependencies": [
+              1
+            ],
+            "details": "Run 'mkdir -p ~/.claude/standards/{process,code,testing,architecture,security,quality}' to create all six directories atomically in one command using brace expansion for efficiency[1][2].",
+            "status": "pending",
+            "testStrategy": "Execute 'find ~/.claude/standards -type d -maxdepth 1 | sort' and confirm exactly 7 directories (base + 6 subs) match expected names",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Verify Directory Structure",
+            "description": "Validate the complete directory hierarchy matches the expected standards organization.",
+            "dependencies": [
+              2
+            ],
+            "details": "Use 'find ~/.claude/standards -type d | sort' to list all directories and manually confirm presence of base and all six subdirectories: process, code, testing, architecture, security, quality[2].",
+            "status": "pending",
+            "testStrategy": "Compare find output against expected list: should show exactly ~/.claude/standards/ and its six direct children with no extras or missing",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 2,
+        "recommendedSubtasks": 0,
+        "expansionPrompt": "No expansion needed - simple mkdir command execution.",
+        "updatedAt": "2026-02-25T17:53:37.737Z"
+      },
+      {
+        "id": "2",
+        "title": "Create Process Standards",
+        "description": "Define mandatory development processes including TDD workflow, SDLC phases, code review process, and definition of done",
+        "details": "Create 4 critical process standards files: tdd-workflow.md (mandatory red/green/refactor cycle), sdlc-phases.md (agent activation rules), code-review-process.md (review checklist and output format), and definition-of-done.md (completion criteria). These files establish the core development methodology that all agents must follow.",
+        "testStrategy": "Verify all 4 process standard files exist and contain the required sections for TDD enforcement, agent coordination, and quality gates",
+        "priority": "high",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Outline TDD Workflow Standard",
+            "description": "Create detailed content outline for tdd-workflow.md focusing on mandatory red/green/refactor cycle and TDD enforcement mechanisms.",
+            "dependencies": [],
+            "details": "Include sections: Introduction to TDD, Red Phase (write failing test), Green Phase (make test pass), Refactor Phase (improve code), Enforcement Rules for agents, Examples, and Quality Gates. Ensure industry-standard TDD practices.",
+            "status": "pending",
+            "testStrategy": "Verify outline contains all 6 specified sections with TDD cycle details and agent enforcement rules.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Outline SDLC Phases Standard",
+            "description": "Develop content outline for sdlc-phases.md defining phases with agent activation rules and coordination protocols.",
+            "dependencies": [],
+            "details": "Structure with 7 SDLC phases (Planning, Analysis, Design, Coding, Testing, Deployment, Maintenance)[1][2][3], agent activation triggers per phase, coordination rules, deliverables, and quality gates adapted for agent-based development.",
+            "status": "pending",
+            "testStrategy": "Confirm outline covers 7 phases with agent rules, using standard SDLC structure from sources.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Outline Code Review Process",
+            "description": "Prepare detailed outline for code-review-process.md including review checklist and standardized output format.",
+            "dependencies": [],
+            "details": "Sections: Review Triggers, Checklist (functionality, security, standards compliance), Output Format (approved/rejected with comments), Agent Roles, Escalation Process, and Metrics for quality gates.",
+            "status": "pending",
+            "testStrategy": "Check for complete checklist, output format template, and agent coordination sections.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Outline Definition of Done Standard",
+            "description": "Create content outline for definition-of-done.md specifying completion criteria across processes.",
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
+            "details": "Define DoD criteria integrating TDD, SDLC gates, code review approval, testing thresholds; sections: General Criteria, Phase-Specific Checklists, Agent Sign-off, and Verification Steps for overall quality.",
+            "status": "pending",
+            "testStrategy": "Ensure DoD references other processes and includes measurable completion criteria.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 4,
+        "recommendedSubtasks": 4,
+        "expansionPrompt": "Create detailed content outlines for each of the 4 process standard files (tdd-workflow.md, sdlc-phases.md, code-review-process.md, definition-of-done.md) ensuring they contain industry-standard sections for TDD enforcement, agent coordination, and quality gates as specified in the details.",
+        "updatedAt": "2026-02-25T19:12:00.249Z"
+      },
+      {
+        "id": "3",
+        "title": "Create Code Standards",
+        "description": "Define Python coding conventions, clean code standards, typing requirements, and error handling patterns",
+        "details": "Create 4 code standard files: python-conventions.md (Python 3.14+ syntax, naming, imports, Pydantic/FastAPI patterns), clean-code.md (size limits, complexity rules, naming principles), typing-standards.md (mypy strict mode, annotation rules), and error-handling.md (exception hierarchy, logging, API responses). These enforce code quality and consistency.",
+        "testStrategy": "Verify all 4 code standard files exist and contain specific rules for Python conventions, clean code principles, type safety, and error handling",
+        "priority": "high",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Outline python-conventions.md",
+            "description": "Create detailed content outline for Python 3.14+ conventions including syntax, naming, imports, and Pydantic/FastAPI patterns.",
+            "dependencies": [],
+            "details": "Include sections on PEP8/PEP20 rules (indentation, line length, imports grouping), Python 3.14 features (t-strings, new control flow), naming conventions (snake_case, UpperCamelCase), FastAPI/Pydantic specific patterns like dependency injection and model validation.",
+            "status": "pending",
+            "testStrategy": "Verify outline covers Python 3.14+ syntax, PEP8 compliance, import organization, and framework-specific patterns with references to official guides.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Outline clean-code.md",
+            "description": "Develop content outline for clean code standards focusing on size limits, complexity rules, and naming principles.",
+            "dependencies": [],
+            "details": "Structure sections on function/method size limits (max 20 lines), cyclomatic complexity thresholds, descriptive naming principles, whitespace usage, single responsibility principle, and avoiding code smells like long parameter lists.",
+            "status": "pending",
+            "testStrategy": "Check outline includes measurable rules for code size/complexity, naming examples, and readability best practices aligned with clean code principles.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Outline typing-standards.md",
+            "description": "Create outline for typing standards enforcing mypy strict mode and comprehensive annotation rules.",
+            "dependencies": [],
+            "details": "Cover mypy strict mode configuration, full type annotation requirements for functions/variables/classes, union/intersection types, generics usage, avoiding Any type, Python 3.14 deferred annotation evaluation, and Pydantic model typing patterns.",
+            "status": "pending",
+            "testStrategy": "Ensure outline specifies mypy strict mode settings, annotation completeness rules, and compatibility with FastAPI/Pydantic type hints.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Outline error-handling.md",
+            "description": "Design outline for error handling patterns including exception hierarchy, logging, and API responses.",
+            "dependencies": [],
+            "details": "Define custom exception hierarchy (AppError base class), structured logging with context, FastAPI exception handlers, HTTP status mapping, error response schemas with Pydantic, and patterns for validation/input/semantic errors.",
+            "status": "pending",
+            "testStrategy": "Validate outline includes exception class structure, logging standards, API error response formats, and integration with FastAPI/Pydantic.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 5,
+        "recommendedSubtasks": 4,
+        "expansionPrompt": "Create detailed content outlines for each of the 4 code standard files (python-conventions.md, clean-code.md, typing-standards.md, error-handling.md) incorporating Python 3.14+ best practices, mypy strict mode requirements, and FastAPI/Pydantic patterns as specified.",
+        "updatedAt": "2026-02-25T19:12:02.123Z"
+      },
+      {
+        "id": "4",
+        "title": "Create Testing Standards",
+        "description": "Define testing requirements including coverage thresholds, test tiers, LLM evaluation, and naming conventions",
+        "details": "Create 3 testing standard files: testing-standards.md (98% coverage requirement, test tiers, AAA pattern, mocking rules), llm-evaluation.md (golden answer tests, failure mode separation), and test-naming.md (should_behavior_when_condition pattern). These establish the testing methodology that ensures quality.",
+        "testStrategy": "Verify all 3 testing standard files exist and contain coverage requirements, LLM evaluation patterns, and naming conventions",
+        "priority": "high",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Outline testing-standards.md Content",
+            "description": "Create detailed content outline for testing-standards.md covering 98% coverage requirement, test tiers, AAA pattern, and mocking rules.",
+            "dependencies": [],
+            "details": "Include sections on coverage thresholds (98% minimum), test tiers (unit, integration, E2E), AAA pattern (Arrange-Act-Assert), and mocking rules for external dependencies. Reference best practices from search results on test automation and tiers.",
+            "status": "pending",
+            "testStrategy": "Verify outline includes all specified sections with 98% coverage mention and AAA pattern details.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Outline llm-evaluation.md Content",
+            "description": "Create detailed content outline for llm-evaluation.md defining golden answer tests and failure mode separation.",
+            "dependencies": [],
+            "details": "Structure with sections on golden answer tests (expected outputs for LLM prompts), failure mode separation (categorize edge cases, hallucinations), evaluation metrics, and integration with CI/CD pipelines. Draw from LLM-specific testing needs.",
+            "status": "pending",
+            "testStrategy": "Check outline covers golden answers, failure modes, and LLM-specific evaluation criteria.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Outline test-naming.md Content",
+            "description": "Create detailed content outline for test-naming.md specifying should_behavior_when_condition pattern.",
+            "dependencies": [],
+            "details": "Define naming convention as 'should_behavior_when_condition' with examples, rationale for readability, enforcement rules, and tools for validation. Include variations for different test types and best practices from clear test case writing.",
+            "status": "pending",
+            "testStrategy": "Confirm outline details the exact naming pattern with examples and enforcement guidelines.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 4,
+        "recommendedSubtasks": 3,
+        "expansionPrompt": "Create detailed content outlines for each of the 3 testing standard files (testing-standards.md, llm-evaluation.md, test-naming.md) specifying 98% coverage requirements, AAA testing pattern, LLM golden answer tests, and should_behavior_when_condition naming convention.",
+        "updatedAt": "2026-02-25T19:12:03.994Z"
+      },
+      {
+        "id": "5",
+        "title": "Create Architecture Standards",
+        "description": "Define layer boundaries, abstraction rules, and ADR process for architectural decisions",
+        "details": "Create 3 architecture standard files: layer-boundaries.md (dependency direction, framework isolation), abstraction-rules.md (twice before abstracting, YAGNI principles), and adr-process.md (when to write ADRs, template format). These prevent architectural drift and over-engineering.",
+        "testStrategy": "Verify all 3 architecture standard files exist and contain layer dependency rules, abstraction guidelines, and ADR process",
+        "priority": "medium",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Outline layer-boundaries.md Content",
+            "description": "Create a detailed content outline for layer-boundaries.md defining dependency directions, framework isolation, and boundary rules to prevent coupling.",
+            "dependencies": [],
+            "details": "Include sections on horizontal/vertical slicing, strict layer communication (e.g., only to adjacent layers), dependency inversion with ports/adapters, source-level boundaries, and enforcement rules using code analysis[1][2][3].",
+            "status": "pending",
+            "testStrategy": "Review outline for coverage of dependency rules, isolation principles, and anti-pattern prevention like over-engineering.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Outline abstraction-rules.md Content",
+            "description": "Develop a detailed content outline for abstraction-rules.md covering 'twice before abstracting', YAGNI principles, and guidelines to avoid over-engineering.",
+            "dependencies": [],
+            "details": "Structure with sections on YAGNI definition/application, abstraction criteria (e.g., duplication threshold, change frequency), single responsibility, loose coupling boundaries, and warnings against excessive layers[1][4].",
+            "status": "pending",
+            "testStrategy": "Ensure outline emphasizes practical rules for minimal abstraction and references best practices for maintainability.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Outline adr-process.md Content",
+            "description": "Prepare a detailed content outline for adr-process.md specifying when to write ADRs, template format, and process to document architectural decisions.",
+            "dependencies": [],
+            "details": "Define triggers (e.g., non-trivial decisions, trade-offs), standard ADR template (title, status, context, decision, consequences), workflow integration, and maintenance rules for preventing drift[5].",
+            "status": "pending",
+            "testStrategy": "Validate outline includes complete template, clear triggers, and process steps aligned with architectural governance.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 4,
+        "recommendedSubtasks": 3,
+        "expansionPrompt": "Create detailed content outlines for each of the 3 architecture standard files (layer-boundaries.md, abstraction-rules.md, adr-process.md) defining dependency direction rules, YAGNI principles, and ADR template/process requirements.",
+        "updatedAt": "2026-02-25T19:12:05.829Z"
+      },
+      {
+        "id": "6",
+        "title": "Create Security and Quality Standards",
+        "description": "Define OWASP security checklist, data handling requirements, and quality metrics",
+        "details": "Create 3 files: owasp-checklist.md (injection prevention, auth/authz, secrets management), data-handling.md (data classification, sanitization, logging rules), and metrics.md (tracked metrics for process evaluation). These establish security and quality baselines.",
+        "testStrategy": "Verify security and quality standard files exist and contain OWASP checklist, data handling rules, and quality metrics definitions",
+        "priority": "medium",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Outline OWASP Checklist Content",
+            "description": "Develop a detailed content outline for owasp-checklist.md covering OWASP Top 10 API security risks with prevention strategies focused on injection prevention, authentication/authorization, and secrets management.",
+            "dependencies": [],
+            "details": "Structure outline with sections for each key OWASP risk (e.g., Broken Object Level Authorization, Injection, Security Misconfiguration) including descriptions, prevention measures like parameterized queries, RBAC, rate limiting, and checklists for implementation verification. Incorporate best practices from OWASP API Top 10 such as UUIDs, input validation, and logging.",
+            "status": "pending",
+            "testStrategy": "Review outline against OWASP sources for completeness of Top 10 coverage and specified focus areas.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Outline Data Handling Requirements",
+            "description": "Create a detailed content outline for data-handling.md defining data classification levels, sanitization procedures, and logging rules to ensure secure data lifecycle management.",
+            "dependencies": [],
+            "details": "Include sections on data classification (e.g., public, internal, confidential, restricted), sanitization techniques (e.g., escaping, validation), retention policies, and logging rules (e.g., what to log, formats, SIEM integration). Reference OWASP practices for input/output handling and third-party data validation.",
+            "status": "pending",
+            "testStrategy": "Validate outline covers classification schema, sanitization methods, and logging compliance with security best practices.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Outline Quality Metrics Definitions",
+            "description": "Design a detailed content outline for metrics.md specifying tracked metrics for process evaluation including security, quality, and performance indicators.",
+            "dependencies": [],
+            "details": "Define metrics such as code coverage thresholds, vulnerability scan results, MTTR for incidents, compliance rates, and process adherence scores. Include measurement methods, targets (e.g., 98% coverage), reporting cadences, and tools for tracking to establish baselines for evaluation.",
+            "status": "pending",
+            "testStrategy": "Ensure metrics are quantifiable, aligned with standards, and include evaluation criteria for process health.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 5,
+        "recommendedSubtasks": 3,
+        "expansionPrompt": "Create detailed content outlines for each of the 3 security/quality files (owasp-checklist.md, data-handling.md, metrics.md) incorporating OWASP Top 10 prevention strategies, data classification rules, and specific quality metrics for process evaluation.",
+        "updatedAt": "2026-02-25T19:12:07.641Z"
+      },
+      {
+        "id": "7",
+        "title": "Create Strategy and Design Agent Definitions",
+        "description": "Define product management and design agents for the spec and design phases",
+        "details": "Create 4 agent files: product-manager.md (pragmatic PRD writer, scope guardian), product-owner.md (stakeholder advocate, acceptance criteria writer), ux-designer.md (user flow designer, accessibility-first), ui-designer.md (component designer, design system maintainer). These agents handle requirements and design phases.",
+        "testStrategy": "Verify all 4 strategy/design agent files exist with proper YAML frontmatter and contain role-specific responsibilities and restrictions",
+        "priority": "medium",
+        "dependencies": [
+          "2"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create product-manager.md Agent File",
+            "description": "Develop the product-manager.md file with YAML frontmatter and detailed role specifications for the pragmatic PRD writer and scope guardian.",
+            "dependencies": [],
+            "details": "Include YAML frontmatter with id, title, description, responsibilities (PRD writing, scope control), restrictions (no implementation details), activation rules (spec phase trigger). Follow standard agent format from search results.",
+            "status": "pending",
+            "testStrategy": "Verify file exists with valid YAML frontmatter parsing and contains PRD/scope sections.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Create product-owner.md Agent File",
+            "description": "Develop the product-owner.md file defining the stakeholder advocate and acceptance criteria writer agent.",
+            "dependencies": [],
+            "details": "YAML frontmatter with unique id, title, description; role specs for stakeholder alignment, acceptance criteria definition; restrictions against design/implementation; activation in requirements validation phase.",
+            "status": "pending",
+            "testStrategy": "Confirm YAML validity, presence of stakeholder advocacy and criteria writing instructions.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Create ux-designer.md Agent File",
+            "description": "Build ux-designer.md with specifications for user flow design and accessibility-first principles.",
+            "dependencies": [],
+            "details": "Frontmatter YAML including id, title, description; detailed UX responsibilities (flows, wireframes, accessibility WCAG); restrictions (no visual design); activation rules for design phase post-spec.",
+            "status": "pending",
+            "testStrategy": "Validate YAML structure and check for user flow/accessibility content coverage.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Create ui-designer.md Agent File",
+            "description": "Define ui-designer.md agent for component design and design system maintenance.",
+            "dependencies": [],
+            "details": "YAML frontmatter setup; role details on UI components, design tokens, system consistency; restrictions (adhere to UX flows); activation after UX design approval. Ensure consistency with other agents.",
+            "status": "pending",
+            "testStrategy": "Ensure file has proper YAML, component/design system sections, and cross-references to UX agent.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 5,
+        "recommendedSubtasks": 4,
+        "expansionPrompt": "Create detailed YAML frontmatter and role specifications for each of the 4 strategy/design agents (product-manager.md, product-owner.md, ux-designer.md, ui-designer.md) defining specific responsibilities, restrictions, and activation rules.",
+        "updatedAt": "2026-02-25T19:24:21.307Z"
+      },
+      {
+        "id": "8",
+        "title": "Create Architecture Agent Definitions",
+        "description": "Define architect and domain modeler agents for system design and domain validation",
+        "details": "Create 2 agent files: architect.md (system boundaries, ADR writer, anti-over-engineering), domain-modeler.md (ubiquitous language guardian, bounded context validator). These agents ensure architectural consistency and domain model integrity.",
+        "testStrategy": "Verify architect and domain-modeler agent files exist with proper YAML frontmatter and contain architecture-specific responsibilities",
+        "priority": "medium",
+        "dependencies": [
+          "2",
+          "5"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Architect Agent Definition",
+            "description": "Develop the architect.md file with YAML frontmatter and detailed responsibilities for system boundaries, ADR writing, and anti-over-engineering rules.",
+            "dependencies": [],
+            "details": "Include YAML frontmatter specifying agent role, triggers, and tools. Define responsibilities like defining system boundaries, authoring ADRs per adr-process.md, enforcing YAGNI and abstraction rules from architecture standards to prevent over-engineering.",
+            "status": "pending",
+            "testStrategy": "Verify architect.md exists in standards/architecture/ with valid YAML frontmatter and sections on boundaries, ADRs, anti-over-engineering matching task specs.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Create Domain Modeler Agent Definition",
+            "description": "Develop the domain-modeler.md file with YAML frontmatter and responsibilities for ubiquitous language guardianship and bounded context validation.",
+            "dependencies": [
+              1
+            ],
+            "details": "Structure with YAML frontmatter for agent metadata. Detail responsibilities including enforcing ubiquitous language, validating bounded contexts per DDD principles, ensuring domain model integrity aligned with architecture standards.",
+            "status": "pending",
+            "testStrategy": "Verify domain-modeler.md exists with proper YAML, contains ubiquitous language and bounded context sections, cross-references architecture standards.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 4,
+        "recommendedSubtasks": 2,
+        "expansionPrompt": "Create detailed YAML frontmatter and architecture-specific responsibilities for architect.md and domain-modeler.md agents, focusing on system boundaries, ADR writing, anti-over-engineering rules, and domain modeling principles.",
+        "updatedAt": "2026-02-25T19:24:23.144Z"
+      },
+      {
+        "id": "9",
+        "title": "Create Implementation Agent Definitions",
+        "description": "Define backend, frontend, and DevOps agents for the build phase",
+        "details": "Create 3 agent files: backend-developer.md (TDD zealot, Python/FastAPI expert, red/green cycle enforcer), frontend-developer.md (component thinker, accessibility-aware), devops-engineer.md (infrastructure-as-code, CI/CD automation). These are the primary implementation agents.",
+        "testStrategy": "Verify all 3 implementation agent files exist with proper YAML frontmatter and contain detailed TDD workflow and tech stack knowledge",
+        "priority": "high",
+        "dependencies": [
+          "2",
+          "3",
+          "4"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define Backend Developer Agent",
+            "description": "Create detailed YAML frontmatter and responsibilities for backend-developer.md emphasizing TDD zealot, Python/FastAPI expertise, and red/green cycle enforcement.",
+            "dependencies": [],
+            "details": "Include YAML with agent role, expertise (Python 3.14+, FastAPI, Pydantic), TDD workflow integration referencing process standards, specific responsibilities like API endpoint development with strict typing and error handling per code standards.",
+            "status": "pending",
+            "testStrategy": "Verify backend-developer.md exists in standards directory with complete YAML frontmatter and TDD/tech stack sections.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Define Frontend Developer Agent",
+            "description": "Create detailed YAML frontmatter and responsibilities for frontend-developer.md focusing on component thinker, accessibility-aware practices, and TDD enforcement.",
+            "dependencies": [],
+            "details": "YAML frontmatter specifying role as component expert, responsibilities including modular React/Vue components, a11y standards (WCAG), TDD for UI tests with coverage thresholds from testing standards, integration with backend APIs.",
+            "status": "pending",
+            "testStrategy": "Verify frontend-developer.md exists with YAML frontmatter, component/TDD/accessibility details matching project requirements.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Define DevOps Engineer Agent",
+            "description": "Create detailed YAML frontmatter and responsibilities for devops-engineer.md highlighting IaC, CI/CD automation, and TDD in infrastructure.",
+            "dependencies": [],
+            "details": "YAML defining IaC tools (Terraform/Docker/K8s), CI/CD pipelines (GitHub Actions), automation of testing/deploy per standards, TDD for infra code with validation, ensuring alignment with architecture and process standards.",
+            "status": "pending",
+            "testStrategy": "Verify devops-engineer.md exists with YAML frontmatter containing IaC/CI-CD/TDD specifics and tech stack responsibilities.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 6,
+        "recommendedSubtasks": 3,
+        "expansionPrompt": "Create detailed YAML frontmatter and tech-stack specific responsibilities for each of the 3 implementation agents (backend-developer.md, frontend-developer.md, devops-engineer.md) emphasizing TDD enforcement and specific technology expertise.",
+        "updatedAt": "2026-02-25T19:24:24.916Z"
+      },
+      {
+        "id": "10",
+        "title": "Create Quality Agent Definitions",
+        "description": "Replace existing code-reviewer and create verifier and security-reviewer agents",
+        "details": "Back up existing code-reviewer.md, then replace with harness version that reads all standards before reviewing. Create verifier.md (mechanical gatekeeper, hard quality gate) and security-reviewer.md (OWASP-trained, paranoid security reviewer). These enforce quality standards.",
+        "testStrategy": "Verify code-reviewer backup exists, new version reads standards, and verifier/security-reviewer agents exist with proper enforcement logic",
+        "priority": "high",
+        "dependencies": [
+          "2",
+          "3",
+          "4",
+          "6"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Backup Existing Code-Reviewer Agent",
+            "description": "Create a backup of the current code-reviewer.md file before any modifications to preserve the original version.",
+            "dependencies": [],
+            "details": "Use cp command to copy code-reviewer.md to code-reviewer.backup.md in the standards/quality directory. Verify backup exists and contents match original using diff command.",
+            "status": "pending",
+            "testStrategy": "Confirm backup file exists with identical content to original via file comparison",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Create Enhanced Standards-Aware Code-Reviewer",
+            "description": "Replace code-reviewer.md with new harness version that reads all standards before performing code reviews.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement YAML frontmatter defining agent role, standards to load (process, code, testing, architecture), and review logic. Include script/harness to dynamically read ~/.claude/standards/*/*.md files before analysis.",
+            "status": "pending",
+            "testStrategy": "Validate new file exists, parses YAML correctly, and demonstrates standards loading in sample review",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Create Verifier and Security-Reviewer Agents",
+            "description": "Define verifier.md as mechanical quality gatekeeper and security-reviewer.md as OWASP-trained paranoid security agent with enforcement logic.",
+            "dependencies": [
+              1
+            ],
+            "details": "verifier.md: YAML frontmatter for hard quality gates (coverage, typing, complexity checks). security-reviewer.md: Integrate OWASP cheat sheet methodology[1], review steps (architecture, auth, data flow), paranoid trust boundary analysis, and rejection logic for violations.",
+            "status": "pending",
+            "testStrategy": "Verify both files exist with YAML frontmatter, OWASP integration in security-reviewer, and sample enforcement rules that would reject non-compliant code",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 6,
+        "recommendedSubtasks": 3,
+        "expansionPrompt": "Create backup process for existing code-reviewer.md, then define enhanced versions for code-reviewer.md (standards-aware), verifier.md (quality gates), and security-reviewer.md (OWASP enforcement) with YAML frontmatter and enforcement logic.",
+        "updatedAt": "2026-02-25T19:24:26.695Z"
+      },
+      {
+        "id": "11",
+        "title": "Create Evaluation, Support, and Bootstrap Agent Definitions",
+        "description": "Define process evaluator, technical writer, and brownfield bootstrapper agents",
+        "details": "Create 3 agent files: process-evaluator.md (data-driven metrics collector, trend analyzer), technical-writer.md (docs-as-code, .meta/ maintainer), brownfield-bootstrapper.md (archaeologist, derives .meta/ tree from existing code). These provide continuous improvement and documentation.",
+        "testStrategy": "Verify all 3 support agent files exist with proper YAML frontmatter and contain specific responsibilities for evaluation, documentation, and bootstrapping",
+        "priority": "medium",
+        "dependencies": [
+          "2",
+          "6"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define process-evaluator.md agent with YAML frontmatter and metrics responsibilities",
+            "description": "Create the process-evaluator.md file with proper YAML frontmatter and clearly defined responsibilities focused on data-driven metrics collection and trend analysis.",
+            "dependencies": [],
+            "details": "Create ~/.claude/standards/agents/process-evaluator.md with YAML frontmatter (name, role, description, version, tags). Define responsibilities including collecting process metrics, analyzing trends, generating evaluation reports, and integrating with existing standards. Ensure the agent description emphasizes continuous improvement through data.",
+            "status": "pending",
+            "testStrategy": "Verify file exists, YAML frontmatter is valid, and responsibilities clearly describe metrics collection and trend analysis.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Define technical-writer.md agent with YAML frontmatter and docs-as-code responsibilities",
+            "description": "Create the technical-writer.md file with proper YAML frontmatter and clearly defined responsibilities focused on documentation-as-code and .meta/ directory maintenance.",
+            "dependencies": [],
+            "details": "Create ~/.claude/standards/agents/technical-writer.md with YAML frontmatter (name, role, description, version, tags). Define responsibilities including maintaining docs-as-code, managing .meta/ directory structure, generating documentation from code, and ensuring documentation consistency with architecture and process standards. Include responsibilities for updating READMEs and developer wikis.",
+            "status": "pending",
+            "testStrategy": "Verify file exists, YAML frontmatter is valid, and responsibilities clearly describe docs-as-code practices and .meta/ directory maintenance.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Define brownfield-bootstrapper.md agent with YAML frontmatter and code archaeology responsibilities",
+            "description": "Create the brownfield-bootstrapper.md file with proper YAML frontmatter and clearly defined responsibilities focused on brownfield code archaeology and deriving .meta/ tree from existing code.",
+            "dependencies": [],
+            "details": "Create ~/.claude/standards/agents/brownfield-bootstrapper.md with YAML frontmatter (name, role, description, version, tags). Define responsibilities including performing code archaeology on existing codebases, deriving .meta/ directory structure from existing code, documenting legacy systems, and identifying brownfield development opportunities. Include responsibilities for understanding complex legacy code and generating architectural documentation.",
+            "status": "pending",
+            "testStrategy": "Verify file exists, YAML frontmatter is valid, and responsibilities clearly describe brownfield code archaeology and .meta/ tree derivation from existing code.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 5,
+        "recommendedSubtasks": 3,
+        "expansionPrompt": "Create detailed YAML frontmatter and specialized responsibilities for process-evaluator.md (metrics collection), technical-writer.md (docs-as-code), and brownfield-bootstrapper.md (code archaeology) agents.",
+        "updatedAt": "2026-02-25T19:24:28.477Z"
+      },
+      {
+        "id": "12",
+        "title": "Create Hook Scripts Directory and TDD Enforcement Hook",
+        "description": "Create hooks directory and implement PreToolUse hook that enforces test-first development",
+        "details": "Create ~/.claude/hooks/ directory and implement check-test-exists.sh as a PreToolUse hook. This script blocks edits to production source files unless a corresponding test file exists, enforcing the 'red' part of red/green TDD. Uses jq to parse JSON input and find command to locate test files.",
+        "testStrategy": "Verify hook directory exists, script is executable, and test with sample inputs shows correct blocking behavior for files without tests and allows files with tests",
+        "priority": "high",
+        "dependencies": [
+          "2"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Hooks Directory Structure",
+            "description": "Create the ~/.claude/hooks/ directory to establish the foundation for PreToolUse hook scripts.",
+            "dependencies": [],
+            "details": "Use mkdir -p ~/.claude/hooks/ to create the directory. Verify creation with ls -la ~/.claude/hooks/ and ensure permissions allow script execution (755). This sets up the location for TDD enforcement hooks.",
+            "status": "pending",
+            "testStrategy": "Run ls ~/.claude/hooks/ and confirm directory exists with correct permissions using stat command.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement check-test-exists.sh Script",
+            "description": "Write bash script that parses PreToolUse JSON input with jq to extract file path and checks for corresponding test file existence using find.",
+            "dependencies": [
+              1
+            ],
+            "details": "Script reads JSON from stdin, uses jq to extract .command_line or file path, derives test file path (e.g., tests/test_<filename>.py), runs find to locate it, exits 0 if exists else 1 with error message. Make executable with chmod +x.",
+            "status": "pending",
+            "testStrategy": "Test JSON inputs: valid prod file with test (pass), prod without test (fail), non-prod file (pass). Use echo 'json' | ./script && echo $?.[1][2]",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Test and Validate Hook Enforcement",
+            "description": "Test script with positive/negative scenarios matching test strategy, ensure correct blocking behavior for production files without tests.",
+            "dependencies": [
+              2
+            ],
+            "details": "Create sample JSON inputs simulating PreToolUse events for prod src edits and test edits. Run script, verify exit codes and messages. Test edge cases: nested dirs, multiple files, non-python files. Confirm integration readiness.",
+            "status": "pending",
+            "testStrategy": "Positive: prod file with test exists (exit 0); Negative: prod without test (exit 1, error msg); Verify with sample JSON and find mocks if needed.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 7,
+        "recommendedSubtasks": 3,
+        "expansionPrompt": "1) Create hooks directory structure. 2) Implement check-test-exists.sh bash script parsing JSON input with jq, validating test file existence with find. 3) Test script with positive/negative input scenarios matching test strategy.",
+        "updatedAt": "2026-02-25T19:29:56.006Z"
+      },
+      {
+        "id": "13",
+        "title": "Create Workspace Dirty Marker Hook",
+        "description": "Implement PostToolUse hook that marks workspace as dirty when production code changes",
+        "details": "Create mark-dirty.sh as a PostToolUse hook that touches a .tdd-dirty marker file when production source code is modified. This creates a breadcrumb for the Stop hook to know when verification is needed. Zero-cost operation that never blocks.",
+        "testStrategy": "Verify hook is executable and creates .tdd-dirty marker file when production code paths are modified, with exit code 0",
+        "priority": "medium",
+        "dependencies": [
+          "12"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement mark-dirty.sh PostToolUse Hook Script",
+            "description": "Create the mark-dirty.sh bash script that reads JSON input from stdin, detects production code changes using path patterns via jq, and touches .tdd-dirty marker file when matching paths are modified by Edit/Write tools.",
+            "dependencies": [],
+            "details": "Script must use set -euo pipefail, extract tool_input.file_path or path with jq -r '.tool_input.file_path // empty', define production patterns like src/ app/ lib/ excluding test/ mocks/, touch .tdd-dirty only on matches, exit 0 always for zero-cost non-blocking behavior.",
+            "status": "pending",
+            "testStrategy": "Verify script creates .tdd-dirty on production path input, skips on test paths, runs with exit 0 using echo JSON | bash mark-dirty.sh",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Configure and Test Hook in .claude/settings.json",
+            "description": "Add PostToolUse hook configuration to .claude/settings.json with Edit|Write|MultiEdit matcher pointing to mark-dirty.sh, make script executable, and test marker creation plus zero-cost performance.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use matcher: 'Edit|Write|MultiEdit', hooks: [{type: 'command', command: './mark-dirty.sh'}], chmod +x mark-dirty.sh, test by simulating tool use or manual JSON input, confirm no blocking and <1ms execution.",
+            "status": "pending",
+            "testStrategy": "Verify hook entry in settings.json, marker file appears after production edit simulation, no marker on non-production, execution time <10ms with time command, exit code 0.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 4,
+        "recommendedSubtasks": 2,
+        "expansionPrompt": "1) Implement mark-dirty.sh PostToolUse hook detecting production code changes. 2) Test marker file creation and zero-cost non-blocking behavior.",
+        "updatedAt": "2026-02-25T19:29:57.845Z"
+      },
+      {
+        "id": "14",
+        "title": "Create Verification Gate Hook",
+        "description": "Implement Stop hook that runs full verification suite when production code was modified",
+        "details": "Create verify-green.sh as a Stop hook that runs tests with 98% coverage, mypy type checking, and ruff linting when .tdd-dirty marker exists. This is the hard quality gate that blocks completion if any verification fails. Cleans up marker on success.",
+        "testStrategy": "Verify hook is executable, has correct bash syntax, and implements the full verification pipeline with appropriate exit codes",
+        "priority": "high",
+        "dependencies": [
+          "13"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create verify-green.sh skeleton with marker check",
+            "description": "Implement the basic bash script structure that checks for the .tdd-dirty marker file existence and handles basic exit logic.",
+            "dependencies": [],
+            "details": "Create executable script at hooks/stop/verify-green.sh. Check if [[ -f .tdd-dirty ]] exists, echo status messages, exit 0 if clean or proceed if dirty. Make executable with chmod +x. Include shebang #!/bin/bash and set -euo pipefail.",
+            "status": "pending",
+            "testStrategy": "Verify script exists, is executable, has correct shebang, checks marker correctly with touch/rm .tdd-dirty and echo outputs",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement pytest with 98% coverage enforcement",
+            "description": "Add pytest execution with coverage collection and threshold check using coverage report --fail-under=98.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use coverage run -m pytest && coverage report --fail-under=98 --skip-covered in script. Ensure REPO_ROOT detection via git rev-parse. Capture output and propagate exit codes. Handle subprocess failures properly.",
+            "status": "pending",
+            "testStrategy": "Mock pytest/coverage commands, test 98% pass/fail scenarios, verify exit codes and output piping",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Add mypy type checking and ruff linting",
+            "description": "Integrate mypy full repo check and ruff check/format --check after pytest succeeds.",
+            "dependencies": [
+              2
+            ],
+            "details": "Run mypy . --strict or via mypy.api if preferred. Then ruff check . && ruff format --check. Use sys.executable -m for tool invocation from venv. Chain with && operators, fail-fast on any error.",
+            "status": "pending",
+            "testStrategy": "Test each tool individually with mock failures, verify sequential execution only on success, check full repo targeting",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement cleanup logic and full validation",
+            "description": "Add rm -f .tdd-dirty on all verifications success, comprehensive error handling, and validate entire pipeline.",
+            "dependencies": [
+              3
+            ],
+            "details": "Wrap all checks in if [[ -f .tdd-dirty ]]; then ...; rm -f .tdd-dirty; fi. Trap failures to preserve marker. Test full pipeline end-to-end with dirty marker creation/removal. Validate bash syntax with shellcheck.",
+            "status": "pending",
+            "testStrategy": "End-to-end: create marker, run script (expect block), verify cleanup on success; run with failures (pytest/mypy/ruff mocks), confirm marker persists and correct exit 1",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 8,
+        "recommendedSubtasks": 4,
+        "expansionPrompt": "1) Implement verify-green.sh Stop hook checking .tdd-dirty marker. 2) Orchestrate test suite (98% coverage), mypy, ruff execution. 3) Implement cleanup logic and exit code handling. 4) Validate full verification pipeline.",
+        "updatedAt": "2026-02-25T19:29:59.684Z"
+      },
+      {
+        "id": "15",
+        "title": "Wire Hooks into Claude Settings",
+        "description": "Add hooks configuration to ~/.claude/settings.json to activate the enforcement system",
+        "details": "Add hooks section to existing ~/.claude/settings.json with PreToolUse and PostToolUse configurations for Edit|Write operations. Preserve all existing settings (env, permissions, statusLine, enabledPlugins, mcpServers). The Stop hook will be wired at project level, not user level.",
+        "testStrategy": "Verify settings.json remains valid JSON, hooks section is present with correct matchers and commands, and all existing configuration keys are preserved",
+        "priority": "high",
+        "dependencies": [
+          "12",
+          "13",
+          "14"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Parse and Backup Existing Settings",
+            "description": "Read the current ~/.claude/settings.json file, validate it as JSON, create a timestamped backup copy, and prepare for safe modification while preserving all existing keys like env, permissions, statusLine, enabledPlugins, mcpServers.",
+            "dependencies": [],
+            "details": "Use jq or Python json module to parse and validate JSON. Backup to ~/.claude/settings.json.backup.$(date +%Y%m%d_%H%M%S). Log original keys and values for verification. Ensure atomic backup to prevent data loss during surgery.",
+            "status": "pending",
+            "testStrategy": "Verify backup file exists, is valid JSON, and matches original content byte-for-byte using diff or jq equality check.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Add Hooks Configuration Preserving Existing Settings",
+            "description": "Merge the required hooks section into ~/.claude/settings.json with PreToolUse and PostToolUse for Edit|Write matchers, ensuring no existing settings are overwritten or lost.",
+            "dependencies": [
+              1
+            ],
+            "details": "Structure: {hooks: {PreToolUse: [{matcher: 'Edit|Write', hooks: [...] }], PostToolUse: [...]}}. Use jq to deep-merge or Python dict update. Hooks commands parse stdin JSON for enforcement. Restore from backup if validation fails.",
+            "status": "pending",
+            "testStrategy": "Run /hooks in Claude Code to confirm hooks display correctly; validate final JSON parses and contains all original keys plus new hooks section.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 5,
+        "recommendedSubtasks": 2,
+        "expansionPrompt": "1) Parse and backup existing ~/.claude/settings.json. 2) Add hooks configuration preserving all existing settings (env, permissions, plugins, mcpServers) with correct PreToolUse/PostToolUse matchers.",
+        "updatedAt": "2026-02-25T19:30:28.865Z"
+      },
+      {
+        "id": "16",
+        "title": "Add TDD Marker to Global Gitignore",
+        "description": "Ensure .tdd-dirty marker files are never committed to version control",
+        "details": "Add .tdd-dirty to ~/.gitignore (create if doesn't exist) and configure as global gitignore if not already set. This prevents the transient marker files from being accidentally committed to any repository.",
+        "testStrategy": "Verify .tdd-dirty entry exists in ~/.gitignore and global gitignore is configured if file was created",
+        "priority": "low",
+        "dependencies": [
+          "13"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Check Existing Global Gitignore Configuration",
+            "description": "Verify if a global gitignore file is already configured and locate its path",
+            "dependencies": [],
+            "details": "Run 'git config --get core.excludesfile' to check current setting. Note the path if set, or confirm no global ignore is configured. This determines next steps.",
+            "status": "pending",
+            "testStrategy": "Command returns a path or no output, confirming current state",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Create or Append .tdd-dirty to Global Gitignore File",
+            "description": "Ensure ~/.gitignore exists and contains .tdd-dirty entry using modern XDG path if preferred",
+            "dependencies": [
+              1
+            ],
+            "details": "Use 'mkdir -p $HOME/.config/git' then check if $HOME/.config/git/ignore exists. If not, create it. Append '.tdd-dirty' line if missing using echo or editor.",
+            "status": "pending",
+            "testStrategy": "Verify file contains '.tdd-dirty' using 'grep \".tdd-dirty\" $HOME/.config/git/ignore'",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Configure Git to Use Global Gitignore File",
+            "description": "Set core.excludesfile to point to the global ignore file if not already configured",
+            "dependencies": [
+              2
+            ],
+            "details": "Run 'git config --global core.excludesfile $HOME/.config/git/ignore'. Skip if already set from step 1. Use ~/.gitignore as fallback if preferred.",
+            "status": "pending",
+            "testStrategy": "'git config --get core.excludesfile' returns correct path",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Verify TDD Marker is Ignored Globally",
+            "description": "Test that .tdd-dirty files are ignored in a test repository",
+            "dependencies": [
+              3
+            ],
+            "details": "In any git repo, touch .tdd-dirty, run 'git status'. Confirm file is not listed for commit. Also check 'git check-ignore .tdd-dirty' returns path.",
+            "status": "pending",
+            "testStrategy": "'git status' does not show .tdd-dirty as untracked; check-ignore confirms ignore rule",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 2,
+        "recommendedSubtasks": 0,
+        "expansionPrompt": "No expansion needed - simple file append and git config operation.",
+        "updatedAt": "2026-02-25T19:30:50.927Z"
+      },
+      {
+        "id": "17",
+        "title": "Full Platform Verification",
+        "description": "Comprehensive verification that all platform components are correctly installed and functional",
+        "details": "Run complete verification suite: check directory structure (16 standards files, 18+ agents, 3 hooks), verify all hooks are executable, validate agent frontmatter, and test hook integration against Bald Eagle project to ensure real-world functionality.",
+        "testStrategy": "Execute verification commands that check file counts, permissions, JSON validity, and run integration tests against actual project structure",
+        "priority": "high",
+        "dependencies": [
+          "6",
+          "11",
+          "15",
+          "16"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Verify Directory Structure and File Counts",
+            "description": "Check that the standards directory contains exactly 16 standards files, 18+ agents, and 3 hooks as specified in the platform structure.",
+            "dependencies": [],
+            "details": "Use find and ls commands to count files in ~/.claude/standards/ and agent/hook directories. Compare against expected counts: 16 standards, 18+ agents, 3 hooks. Log any discrepancies.",
+            "status": "pending",
+            "testStrategy": "Execute find . -name '*.md' | wc -l and similar for agents/*.yaml and hooks/*.sh; assert counts match requirements",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Validate Hook Permissions and Executability",
+            "description": "Ensure all 3 hooks are executable by checking file permissions and testing basic execution without errors.",
+            "dependencies": [
+              1
+            ],
+            "details": "Run ls -la hooks/ to verify +x on all .sh files. Test each hook with bash -n hookname.sh for syntax and chmod +x if needed. Confirm no permission denied errors.",
+            "status": "pending",
+            "testStrategy": "Bash -n syntax check on each hook; attempt dry-run execution and verify exit code 0",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Validate Agent YAML Frontmatter",
+            "description": "Parse all 18+ agent YAML files to ensure valid frontmatter structure and syntax compliance.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use yq or yamllint on agents/*.yaml to validate YAML syntax and required frontmatter keys like name, description, version. Report invalid files.",
+            "status": "pending",
+            "testStrategy": "Batch yamllint agents/*.yaml; custom script to check mandatory frontmatter fields exist and are non-empty",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Test Hook Integration Functionality",
+            "description": "Execute hooks individually and verify they process inputs correctly without integration errors.",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Run each hook with sample inputs from standards and agents. Check logs/output for successful processing, no crashes, proper exit codes.",
+            "status": "pending",
+            "testStrategy": "Create test harness with mock inputs; assert hook outputs match expected formats and exit codes",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Run End-to-End Verification Against Bald Eagle",
+            "description": "Integrate full platform with Bald Eagle project and run complete verification suite to confirm real-world functionality.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Clone/checkout Bald Eagle project, trigger full verification pipeline including hooks against project structure. Verify all checks pass with 100% compliance.",
+            "status": "pending",
+            "testStrategy": "Execute end-to-end suite in Bald Eagle context; capture all outputs and assert zero failures across file checks, permissions, YAML validation, hook execution",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 8,
+        "recommendedSubtasks": 5,
+        "expansionPrompt": "1) Verify directory structure and file counts. 2) Validate hook permissions/executability. 3) Check agent YAML frontmatter validity. 4) Test hook integration. 5) Run end-to-end verification against Bald Eagle project.",
+        "updatedAt": "2026-02-25T19:38:15.493Z"
+      },
+      {
+        "id": "18",
+        "title": "Commit Implementation Plan",
+        "description": "Version control the implementation plan in the etc-system-engineering repository",
+        "details": "Commit the implementation plan document to the etc-system-engineering repo with descriptive commit message. The implementation artifacts live in ~/.claude/ (user-level), but the plan itself should be versioned for reference and future phases.",
+        "testStrategy": "Verify plan document is committed to git repository with appropriate commit message describing Phase 1 completion",
+        "priority": "low",
+        "dependencies": [
+          "17"
+        ],
+        "status": "in-progress",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Navigate to Repository Directory",
+            "description": "Change to the etc-system-engineering repository directory to prepare for committing the implementation plan.",
+            "dependencies": [],
+            "details": "Use 'cd /path/to/etc-system-engineering' command to enter the repository. Verify current directory with 'pwd' and 'git status' to confirm it's a git repo.",
+            "status": "pending",
+            "testStrategy": "Confirm 'git status' shows the correct branch and working directory is clean or shows expected changes.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Copy Implementation Plan to Repo",
+            "description": "Copy the implementation plan document from ~/.claude/ to the appropriate location in the etc-system-engineering repository.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use 'cp ~/.claude/implementation-plan.md ./docs/implementation-plan.md' or similar path. Create 'docs/' directory if needed with 'mkdir -p docs'. Ensure file permissions are correct.",
+            "status": "pending",
+            "testStrategy": "Verify file exists in repo with 'ls -la docs/implementation-plan.md' and contents match source with 'diff'.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Stage the Implementation Plan File",
+            "description": "Add the implementation plan document to the git staging area for commit.",
+            "dependencies": [
+              2
+            ],
+            "details": "Run 'git add docs/implementation-plan.md' (adjust path as needed). Use 'git status' to confirm the file is staged.",
+            "status": "pending",
+            "testStrategy": "Check 'git status' output shows file as staged for commit with green color coding.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Write Descriptive Commit Message",
+            "description": "Create a clear, conventional commit message describing the addition of the Phase 1 implementation plan.",
+            "dependencies": [
+              3
+            ],
+            "details": "Use Conventional Commits format: 'docs: add Phase 1 implementation plan for etc-system-engineering'. Body: 'Version control the implementation plan document for reference and future phases. Completes Task 18.' Keep subject <50 chars.",
+            "status": "pending",
+            "testStrategy": "Review message in editor or preview with 'git commit --dry-run -m \"message\"' to ensure clarity and standards compliance.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Commit the Changes",
+            "description": "Perform the git commit with the descriptive message to version the implementation plan.",
+            "dependencies": [
+              4
+            ],
+            "details": "Execute 'git commit -m $MESSAGE' using the prepared message. Alternatively, use 'git commit' to open editor for multi-line message.",
+            "status": "pending",
+            "testStrategy": "Verify commit with 'git log --oneline -1' shows correct message and author details.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 6,
+            "title": "Verify Commit Success",
+            "description": "Confirm the implementation plan is properly committed and accessible in the repository history.",
+            "dependencies": [
+              5
+            ],
+            "details": "Run 'git log -- docs/implementation-plan.md' to view commit history for the file. Check 'git show HEAD' for full commit details.",
+            "status": "pending",
+            "testStrategy": "Ensure commit message describes Phase 1 completion, file contents are intact, and no errors in git status.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 2,
+        "recommendedSubtasks": 0,
+        "expansionPrompt": "No expansion needed - standard git commit operation.",
+        "updatedAt": "2026-02-25T20:00:37.861Z"
+      },
+      {
+        "id": "19",
+        "title": "Integrate TaskMaster as Formal Harness Dependency",
+        "description": "Integrate TaskMaster as the official task decomposition layer between Spec and Build phases, updating documentation and project templates to formalize its role in the SDLC workflow.",
+        "details": "Update sdlc-phases.md to explicitly reference TaskMaster as the bridge between Spec and Build phases, positioned after PRD creation but before implementation begins. Add TaskMaster MCP server configuration to the project template's .claude/settings.json with proper server definition, connection parameters, and tool permissions. Create comprehensive documentation showing how PM and Architect agents leverage TaskMaster to transform high-level PRDs into granular, executable task breakdowns with proper dependencies, acceptance criteria, and implementation guidance. Include examples of TaskMaster integration points: PM agent using TaskMaster for initial task decomposition from PRDs, Architect agent using TaskMaster for technical task refinement and dependency mapping, and the handoff process from decomposed tasks to implementation agents. Ensure TaskMaster server configuration includes appropriate timeout settings, error handling, and integration with existing MCP infrastructure.",
+        "testStrategy": "Verify sdlc-phases.md contains explicit TaskMaster references in the workflow between Spec and Build phases. Confirm project template includes valid TaskMaster MCP server configuration in settings.json with correct server path, arguments, and permissions. Validate documentation includes concrete examples of PM and Architect agent workflows using TaskMaster for task decomposition. Test TaskMaster MCP server connectivity and verify it can be invoked through the configured settings. Ensure integration documentation clearly explains the handoff process from TaskMaster-generated tasks to implementation agents.",
+        "status": "in-progress",
+        "dependencies": [
+          "8",
+          "9"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-02-25T20:00:37.866Z"
+      },
+      {
+        "id": "20",
+        "title": "Create Bootstrap Install Script",
+        "description": "Create an idempotent install.sh script that sets up a new developer's machine with the etc-system-engineering harness by copying agents, standards, and hooks from the repository to ~/.claude/ directories.",
+        "details": "Create install.sh in the repository root that performs the following operations: (1) Create ~/.claude/ base directory and subdirectories (agents/, standards/, hooks/) if they don't exist using mkdir -p, (2) Copy all files from repo's agents/ directory to ~/.claude/agents/ preserving structure, (3) Copy all files from repo's standards/ directory to ~/.claude/standards/ preserving structure, (4) Copy all hook scripts from repo's hooks/ directory to ~/.claude/hooks/ and make them executable with chmod +x, (5) Intelligently merge hook wiring configuration into ~/.claude/settings.json without overwriting existing settings - read existing JSON, merge PreToolUse and PostToolUse arrays, and write back formatted JSON using jq or python, (6) Provide clear console output showing what was installed, updated, or skipped. The script must be idempotent (safe to run multiple times) by checking if files already exist and are identical before copying. Include error handling for missing source directories, permission issues, and JSON parsing failures. Use rsync or cp with appropriate flags to preserve timestamps and handle overwrites gracefully.",
+        "testStrategy": "Verify install.sh exists and is executable, test on clean system to ensure all directories and files are created correctly, test idempotency by running twice and confirming no duplicate entries in settings.json, test with existing ~/.claude/ setup to ensure no data loss, verify all copied hooks have execute permissions, confirm settings.json merge preserves existing configuration while adding required hook wiring, and validate clear output messages for each operation performed.",
+        "status": "in-progress",
+        "dependencies": [
+          "18"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-02-25T20:00:37.868Z"
+      }
+    ],
+    "metadata": {
+      "version": "1.0.0",
+      "lastModified": "2026-02-25T20:00:37.868Z",
+      "taskCount": 20,
+      "completedCount": 17,
+      "tags": [
+        "master"
+      ]
+    }
+  }
+}

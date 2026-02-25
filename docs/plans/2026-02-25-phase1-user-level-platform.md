@@ -10,7 +10,7 @@
 
 **Design Reference:** `docs/plans/2026-02-25-coding-harness-design.md` — the approved design document. Consult it for rationale and full context.
 
-**First Deployment Target:** Bald Eagle (`~/clients/novasterilis/src/bald-eagle/`) — a Python 3.14 / FastAPI / LlamaIndex regulatory compliance platform. Standards content is informed by Bald Eagle's existing conventions but designed to be project-agnostic.
+**Design Approach:** Standards content is designed to be project-agnostic and reusable across any Python/FastAPI codebase (or adaptable to other stacks).
 
 **Pre-existing State:**
 - `~/.claude/agents/` exists with 7 agents (architect-reviewer, code-reviewer, code-simplifier, frontend-dashboard-refactorer, gemini-analyzer, multi-tenant-auditor, project-bootstrapper)
@@ -1804,21 +1804,21 @@ chmod +x ~/.claude/hooks/check-test-exists.sh
 
 Test with a file that has a test (should pass):
 ```bash
-echo '{"tool_input":{"file_path":"src/bald_eagle/core/schemas.py"},"cwd":"/Users/jason/clients/novasterilis/src/bald-eagle"}' | ~/.claude/hooks/check-test-exists.sh
+echo '{"tool_input":{"file_path":"src/myapp/core/schemas.py"},"cwd":"/tmp/example-project"}' | ~/.claude/hooks/check-test-exists.sh
 echo "Exit code: $?"
 ```
 Expected: Exit code 0 (tests/unit/core/test_schemas.py exists)
 
 Test with a file that has NO test (should block):
 ```bash
-echo '{"tool_input":{"file_path":"src/bald_eagle/nonexistent_module.py"},"cwd":"/Users/jason/clients/novasterilis/src/bald-eagle"}' | ~/.claude/hooks/check-test-exists.sh
+echo '{"tool_input":{"file_path":"src/myapp/nonexistent_module.py"},"cwd":"/tmp/example-project"}' | ~/.claude/hooks/check-test-exists.sh
 echo "Exit code: $?"
 ```
 Expected: Exit code 2, stderr message about writing a test first
 
 Test with a non-src file (should allow):
 ```bash
-echo '{"tool_input":{"file_path":"tests/unit/test_something.py"},"cwd":"/Users/jason/clients/novasterilis/src/bald-eagle"}' | ~/.claude/hooks/check-test-exists.sh
+echo '{"tool_input":{"file_path":"tests/unit/test_something.py"},"cwd":"/tmp/example-project"}' | ~/.claude/hooks/check-test-exists.sh
 echo "Exit code: $?"
 ```
 Expected: Exit code 0 (not a production file)
@@ -1865,7 +1865,7 @@ chmod +x ~/.claude/hooks/mark-dirty.sh
 **Step 3: Verify hook creates marker**
 
 ```bash
-echo '{"tool_input":{"file_path":"src/bald_eagle/core/schemas.py"},"cwd":"/tmp/test-hook"}' | (mkdir -p /tmp/test-hook && ~/.claude/hooks/mark-dirty.sh)
+echo '{"tool_input":{"file_path":"src/myapp/core/schemas.py"},"cwd":"/tmp/test-hook"}' | (mkdir -p /tmp/test-hook && ~/.claude/hooks/mark-dirty.sh)
 ls -la /tmp/test-hook/.tdd-dirty
 echo "Exit code: $?"
 ```
@@ -2141,21 +2141,21 @@ done
 
 Expected: All agents show "OK" (including pre-existing ones)
 
-**Step 4: Run hook integration test against Bald Eagle**
+**Step 4: Run hook integration test against target project**
 
-Test the PreToolUse hook against the real Bald Eagle project to verify it correctly identifies existing test files:
+Test the PreToolUse hook against the real target project project to verify it correctly identifies existing test files:
 
 ```bash
 # Test a module that HAS tests
-echo '{"tool_input":{"file_path":"src/bald_eagle/core/schemas.py"},"cwd":"/Users/jason/clients/novasterilis/src/bald-eagle"}' | ~/.claude/hooks/check-test-exists.sh
+echo '{"tool_input":{"file_path":"src/myapp/core/schemas.py"},"cwd":"/tmp/example-project"}' | ~/.claude/hooks/check-test-exists.sh
 echo "schemas.py (has test): exit $?"
 
 # Test a module that HAS tests
-echo '{"tool_input":{"file_path":"src/bald_eagle/api/health.py"},"cwd":"/Users/jason/clients/novasterilis/src/bald-eagle"}' | ~/.claude/hooks/check-test-exists.sh
+echo '{"tool_input":{"file_path":"src/myapp/api/health.py"},"cwd":"/tmp/example-project"}' | ~/.claude/hooks/check-test-exists.sh
 echo "health.py (has test): exit $?"
 
 # Test __init__.py (should be skipped)
-echo '{"tool_input":{"file_path":"src/bald_eagle/__init__.py"},"cwd":"/Users/jason/clients/novasterilis/src/bald-eagle"}' | ~/.claude/hooks/check-test-exists.sh
+echo '{"tool_input":{"file_path":"src/myapp/__init__.py"},"cwd":"/tmp/example-project"}' | ~/.claude/hooks/check-test-exists.sh
 echo "__init__.py (skip): exit $?"
 ```
 
@@ -2178,7 +2178,7 @@ git commit -m "docs: add Phase 1 user-level platform implementation plan
 
 Implementation plan for the industrial coding harness user-level platform.
 Covers standards, agents, hooks, and settings for ~/.claude/.
-First deployment target: Bald Eagle."
+First deployment target: target project."
 ```
 
 **Step 2: Document completion**
@@ -2209,6 +2209,6 @@ After all tasks are implemented, update `docs/plans/harness-design-notes.md` to 
 
 **Phase 2: Project Template** — Create a GitHub template repo with project-level scaffolding (`.claude/settings.json` with Stop hook, `.claude/standards/`, CI pipeline, pyproject.toml, CLAUDE.md skeleton, `.meta/` convention).
 
-**Phase 3: Deploy to Bald Eagle** — Apply harness to `~/clients/novasterilis/src/bald-eagle/`. Create project-level standards. Generate `.meta/` tree with Brownfield Bootstrapper. Update coverage threshold to 98%. Add LLM eval CI tier.
+**Phase 3: Deploy to target project** — Apply harness to first target repo. Create project-level standards. Generate `.meta/` tree with Brownfield Bootstrapper. Update coverage threshold to 98%. Add LLM eval CI tier.
 
 **Phase 4: Evaluate and Improve** — Process Evaluator tracks outcomes. Refine standards and agents based on friction.

@@ -1,0 +1,157 @@
+{
+	"meta": {
+		"generatedAt": "2026-02-25T17:47:51.765Z",
+		"tasksAnalyzed": 18,
+		"totalTasks": 18,
+		"analysisCount": 18,
+		"thresholdScore": 5,
+		"projectName": "Industrial Coding Harness",
+		"usedResearch": true
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 1,
+			"taskTitle": "Create Standards Directory Structure",
+			"complexityScore": 2,
+			"recommendedSubtasks": 0,
+			"expansionPrompt": "No expansion needed - simple mkdir command execution.",
+			"reasoning": "Straightforward file system operation using mkdir -p with clear verification via find command. Minimal technical risk, no scripting or logic required. Follows basic Unix best practices."
+		},
+		{
+			"taskId": 2,
+			"taskTitle": "Create Process Standards",
+			"complexityScore": 4,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Create detailed content outlines for each of the 4 process standard files (tdd-workflow.md, sdlc-phases.md, code-review-process.md, definition-of-done.md) ensuring they contain industry-standard sections for TDD enforcement, agent coordination, and quality gates as specified in the details.",
+			"reasoning": "Requires creating 4 detailed Markdown documents with specific content sections. Content creation demands domain knowledge of development processes but follows established industry patterns (TDD red/green/refactor, SDLC phases). Low technical complexity, moderate content complexity."
+		},
+		{
+			"taskId": 3,
+			"taskTitle": "Create Code Standards",
+			"complexityScore": 5,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Create detailed content outlines for each of the 4 code standard files (python-conventions.md, clean-code.md, typing-standards.md, error-handling.md) incorporating Python 3.14+ best practices, mypy strict mode requirements, and FastAPI/Pydantic patterns as specified.",
+			"reasoning": "Requires specific technical knowledge of Python conventions, type checking (mypy), clean code principles, and error handling patterns. Higher complexity than process standards due to technical specificity and need for current framework knowledge (FastAPI/Pydantic)."
+		},
+		{
+			"taskId": 4,
+			"taskTitle": "Create Testing Standards",
+			"complexityScore": 4,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Create detailed content outlines for each of the 3 testing standard files (testing-standards.md, llm-evaluation.md, test-naming.md) specifying 98% coverage requirements, AAA testing pattern, LLM golden answer tests, and should_behavior_when_condition naming convention.",
+			"reasoning": "Requires knowledge of testing best practices (98% coverage, AAA pattern, test naming conventions) plus novel LLM evaluation patterns. Moderate complexity due to specialized testing requirements and high coverage threshold."
+		},
+		{
+			"taskId": 5,
+			"taskTitle": "Create Architecture Standards",
+			"complexityScore": 4,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Create detailed content outlines for each of the 3 architecture standard files (layer-boundaries.md, abstraction-rules.md, adr-process.md) defining dependency direction rules, YAGNI principles, and ADR template/process requirements.",
+			"reasoning": "Architecture standards require understanding of layer boundaries, dependency rules, and ADR processes. Moderate complexity due to need for architectural best practices knowledge and preventing common anti-patterns (over-engineering)."
+		},
+		{
+			"taskId": 6,
+			"taskTitle": "Create Security and Quality Standards",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Create detailed content outlines for each of the 3 security/quality files (owasp-checklist.md, data-handling.md, metrics.md) incorporating OWASP Top 10 prevention strategies, data classification rules, and specific quality metrics for process evaluation.",
+			"reasoning": "Security standards require OWASP knowledge and data handling best practices. Higher complexity due to security domain expertise required and need for comprehensive checklist coverage."
+		},
+		{
+			"taskId": 7,
+			"taskTitle": "Create Strategy and Design Agent Definitions",
+			"complexityScore": 5,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Create detailed YAML frontmatter and role specifications for each of the 4 strategy/design agents (product-manager.md, product-owner.md, ux-designer.md, ui-designer.md) defining specific responsibilities, restrictions, and activation rules.",
+			"reasoning": "Requires YAML frontmatter formatting plus detailed agent role definitions. Moderate complexity due to need for consistent agent specification format and domain-specific responsibilities."
+		},
+		{
+			"taskId": 8,
+			"taskTitle": "Create Architecture Agent Definitions",
+			"complexityScore": 4,
+			"recommendedSubtasks": 2,
+			"expansionPrompt": "Create detailed YAML frontmatter and architecture-specific responsibilities for architect.md and domain-modeler.md agents, focusing on system boundaries, ADR writing, anti-over-engineering rules, and domain modeling principles.",
+			"reasoning": "Fewer agents (2) with focused architecture responsibilities. Lower complexity than implementation agents but requires architectural domain knowledge."
+		},
+		{
+			"taskId": 9,
+			"taskTitle": "Create Implementation Agent Definitions",
+			"complexityScore": 6,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Create detailed YAML frontmatter and tech-stack specific responsibilities for each of the 3 implementation agents (backend-developer.md, frontend-developer.md, devops-engineer.md) emphasizing TDD enforcement and specific technology expertise.",
+			"reasoning": "Implementation agents require detailed technology stack knowledge (Python/FastAPI, frontend components, IaC/CI-CD). Higher complexity due to need for current tech stack expertise and TDD workflow integration."
+		},
+		{
+			"taskId": 10,
+			"taskTitle": "Create Quality Agent Definitions",
+			"complexityScore": 6,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Create backup process for existing code-reviewer.md, then define enhanced versions for code-reviewer.md (standards-aware), verifier.md (quality gates), and security-reviewer.md (OWASP enforcement) with YAML frontmatter and enforcement logic.",
+			"reasoning": "Involves backup operation, standards integration into reviewer, and creation of specialized verifier/security agents. Higher complexity due to modification of existing artifacts and enforcement logic requirements."
+		},
+		{
+			"taskId": 11,
+			"taskTitle": "Create Evaluation, Support, and Bootstrap Agent Definitions",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Create detailed YAML frontmatter and specialized responsibilities for process-evaluator.md (metrics collection), technical-writer.md (docs-as-code), and brownfield-bootstrapper.md (code archaeology) agents.",
+			"reasoning": "Specialized support agents with unique responsibilities (metrics, documentation, brownfield analysis). Moderate complexity with some novel concepts (brownfield bootstrapping)."
+		},
+		{
+			"taskId": 12,
+			"taskTitle": "Create Hook Scripts Directory and TDD Enforcement Hook",
+			"complexityScore": 7,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "1) Create hooks directory structure. 2) Implement check-test-exists.sh bash script parsing JSON input with jq, validating test file existence with find. 3) Test script with positive/negative input scenarios matching test strategy.",
+			"reasoning": "Requires bash scripting, JSON parsing (jq), file system operations (find), and test-first logic implementation. Significant scripting complexity with multiple technical components."
+		},
+		{
+			"taskId": 13,
+			"taskTitle": "Create Workspace Dirty Marker Hook",
+			"complexityScore": 4,
+			"recommendedSubtasks": 2,
+			"expansionPrompt": "1) Implement mark-dirty.sh PostToolUse hook detecting production code changes. 2) Test marker file creation and zero-cost non-blocking behavior.",
+			"reasoning": "Simpler hook implementation focused on file touching and path pattern matching. Lower complexity than test enforcement but requires correct hook lifecycle understanding."
+		},
+		{
+			"taskId": 14,
+			"taskTitle": "Create Verification Gate Hook",
+			"complexityScore": 8,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "1) Implement verify-green.sh Stop hook checking .tdd-dirty marker. 2) Orchestrate test suite (98% coverage), mypy, ruff execution. 3) Implement cleanup logic and exit code handling. 4) Validate full verification pipeline.",
+			"reasoning": "Complex orchestration of multiple tools (pytest, mypy, ruff) with coverage thresholds, error handling, and cleanup. High complexity due to tool integration and quality gate enforcement."
+		},
+		{
+			"taskId": 15,
+			"taskTitle": "Wire Hooks into Claude Settings",
+			"complexityScore": 5,
+			"recommendedSubtasks": 2,
+			"expansionPrompt": "1) Parse and backup existing ~/.claude/settings.json. 2) Add hooks configuration preserving all existing settings (env, permissions, plugins, mcpServers) with correct PreToolUse/PostToolUse matchers.",
+			"reasoning": "JSON manipulation with preservation requirements and specific Claude settings knowledge. Moderate complexity due to configuration file surgery and validation needs."
+		},
+		{
+			"taskId": 16,
+			"taskTitle": "Add TDD Marker to Global Gitignore",
+			"complexityScore": 2,
+			"recommendedSubtasks": 0,
+			"expansionPrompt": "No expansion needed - simple file append and git config operation.",
+			"reasoning": "Basic file editing and git configuration. Minimal technical complexity with clear verification path."
+		},
+		{
+			"taskId": 17,
+			"taskTitle": "Full Platform Verification",
+			"complexityScore": 8,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "1) Verify directory structure and file counts. 2) Validate hook permissions/executability. 3) Check agent YAML frontmatter validity. 4) Test hook integration. 5) Run end-to-end verification against Bald Eagle project.",
+			"reasoning": "Comprehensive integration testing across all components (16+ files, 18+ agents, 3 hooks). High complexity due to scope, dependencies, and real-world project integration testing."
+		},
+		{
+			"taskId": 18,
+			"taskTitle": "Commit Implementation Plan",
+			"complexityScore": 2,
+			"recommendedSubtasks": 0,
+			"expansionPrompt": "No expansion needed - standard git commit operation.",
+			"reasoning": "Simple version control operation with descriptive commit message. Minimal complexity."
+		}
+	]
+}

@@ -3,7 +3,7 @@
 **Date:** 2026-02-25
 **Author:** Jason Vertrees (with Claude analysis)
 **Status:** Design approved, pending implementation plan
-**Purpose:** Design an industrial-grade, reusable engineering harness that establishes guardrails, roles, and practices for Claude Code-driven development. First deployment: Bald Eagle.
+**Purpose:** Design an industrial-grade, reusable engineering harness that establishes guardrails, roles, and practices for Claude Code-driven development.
 
 ---
 
@@ -744,16 +744,16 @@ Everything else lives in the standards files, `.meta/` descriptions, and agent s
 - Create `~/.claude/standards/` with engineering standards files
 - Create `~/.claude/hooks/` with enforcement scripts
 - Update `~/.claude/settings.json` with hook wiring
-- Test with a toy project before deploying to Bald Eagle
+- Test with a toy project before deploying to first target
 
 ### Phase 2: Project Template
 - Create GitHub template repo with project-level scaffolding
 - `.claude/settings.json`, `.claude/standards/`, CI pipeline, pyproject.toml, CLAUDE.md skeleton, tests/conftest.py, Makefile, .meta/ convention
 - Optionally integrate with existing project-bootstrapper skill
 
-### Phase 3: Deploy to Bald Eagle
-- Apply project template to bald-eagle repo
-- Create `.claude/standards/` with Bald Eagle domain constraints
+### Phase 3: Deploy to First Target Project
+- Apply project template to target repo
+- Create `.claude/standards/` with project-specific domain constraints
 - Create `.meta/` descriptions for existing source tree
 - Update pyproject.toml (98% coverage, new markers)
 - Enhance CI pipeline (LLM eval tier)
