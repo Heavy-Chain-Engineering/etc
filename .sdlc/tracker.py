@@ -25,7 +25,10 @@ from datetime import datetime, timezone
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-STATE_FILE = os.path.join(SCRIPT_DIR, "state.json")
+
+# State is per-project (CWD/.sdlc/), templates are global (next to this script)
+PROJECT_SDLC_DIR = os.path.join(os.getcwd(), ".sdlc")
+STATE_FILE = os.path.join(PROJECT_SDLC_DIR, "state.json")
 DOD_TEMPLATE_FILE = os.path.join(SCRIPT_DIR, "dod-templates.json")
 
 PHASE_ORDER = [
@@ -102,6 +105,9 @@ def cmd_init():
     if os.path.exists(STATE_FILE):
         print("Error: state.json already exists. Delete it first to reinitialize.")
         sys.exit(1)
+
+    # Create .sdlc/ directory in the project if it doesn't exist
+    os.makedirs(PROJECT_SDLC_DIR, exist_ok=True)
 
     templates = load_dod_templates()
     timestamp = now_iso()

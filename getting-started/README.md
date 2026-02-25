@@ -47,7 +47,7 @@ cd getting-started
 ### Step 2: Initialize the SDLC workflow tracker
 
 ```bash
-python3 ../.sdlc/tracker.py init
+python3 ~/.claude/sdlc/tracker.py init
 ```
 
 This creates `.sdlc/state.json` in this directory, starting you at the Bootstrap phase.
