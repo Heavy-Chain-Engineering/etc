@@ -88,6 +88,38 @@ Designed to be project-agnostic and reusable across any codebase.
 - Works for greenfield too — creates .meta/ tree after first implementation pass
 - This is ISS Phase 0 ("Observe") made concrete
 
+## Formalism Gradient in .meta/ (decision: 2026-02-25)
+
+The ambiguity gradient has two axes, not one:
+
+```
+                    Strategic (top)
+                         │
+    Natural language ────┼──── Formal schema
+                         │
+                    Tactical (leaf)
+```
+
+- Top-level .meta/: natural language only (description.md). Strategic, intentionally ambiguous.
+- Leaf-level .meta/: natural language + machine-validatable schema. Precise, enforceable.
+
+### Formalism choice: Pydantic → JSON Schema
+- Pydantic models are source of truth (already in the stack for domain objects and API contracts)
+- Generated JSON Schema stored in .meta/ at leaf nodes (Pydantic does this natively)
+- Schemas visible to agents and hooks, not just Python runtime
+- Verifier agent validates against both: natural language intent AND formal constraints
+
+### Why not SHACL (yet)
+- SHACL offers inference rules, conditional constraints, semantic validation
+- But: heavy dependency, unfamiliar tooling, overkill until proven otherwise
+- Upgrade path: if we hit the wall where JSON Schema can't express needed constraints (inference rules, conditional cardinality), migrate leaf schemas to SHACL then
+- YAGNI until proven otherwise
+
+### Inspiration
+- Kurt Cagle's SHACL article: compact structural blueprints loaded into context, not full knowledge graphs
+- Dave (Panoptic Systems): layered enforcement where "an agent has to fail at every single layer to ship a violation"
+- Convergence: governance structure (ETC) + formal constraints (SHACL) + verification (Panoptic) are three facets of the same unsolved problem
+
 ## Declarative Reconciliation Vision (future, not built now)
 - .meta/ = derived state (what IS), PRDs = declared state (what SHOULD BE)
 - Delta between them = work units for agents
