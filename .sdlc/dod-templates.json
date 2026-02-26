@@ -20,6 +20,7 @@
     "All PRD items decomposed into tasks via TaskMaster",
     "Task dependencies mapped and ordered",
     "Each task has acceptance criteria and test strategy",
+    "Every task has a t-shirt size (XS/S/M/L/XL)",
     "Architect has reviewed technical detail on all tasks"
   ],
   "Build": [
@@ -45,6 +46,7 @@
   ],
   "Evaluate": [
     "Metrics collected and analyzed",
+    "Release notes written to docs/release-notes/ with velocity metric",
     "Retrospective completed with process-evaluator agent",
     "Improvement recommendations documented",
     "Lessons learned captured for next iteration"
