@@ -37,6 +37,7 @@ PHASE_ORDER = [
     "Design",
     "Decompose",
     "Build",
+    "Verify",
     "Ship",
     "Evaluate",
 ]

@@ -27,7 +27,7 @@ pytest tests/ -v --tb=short
 
 ## Coverage Threshold
 
-80% (relaxed from 98% — this is a learning exercise)
+95% minimum — automated code gen has no excuse for low coverage
 
 ## Directory Structure
 

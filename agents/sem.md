@@ -87,10 +87,11 @@ Every spawn prompt MUST include: task description, relevant file paths, acceptan
 | Phase | Foreground | Background | External Tools |
 |-------|-----------|------------|----------------|
 | Bootstrap | brownfield-bootstrapper | — | — |
-| Spec | product-manager, product-owner, domain-modeler | — | spec-kit /specify |
+| Spec | researcher (if needed), product-manager, product-owner, domain-modeler | — | spec-kit /specify |
 | Design | architect, ux-designer, ui-designer | — | — |
 | Decompose | product-manager, architect | — | TaskMaster MCP |
 | Build | backend-developer / frontend-developer / devops-engineer | code-reviewer, verifier, security-reviewer | TDD hooks |
+| Verify | devops-engineer | — | docker-compose |
 | Ship | technical-writer, devops-engineer | verifier | — |
 | Evaluate | process-evaluator | — | — |
 
@@ -145,6 +146,31 @@ Stop and report to human at phase gates, on agent failure, when design decisions
 ### Build Phase Pattern
 
 For each task (ordered by dependency): mark in-progress, spawn implementation agent (with task desc, acceptance criteria, file paths), spawn code-reviewer + verifier in background. On completion read watchdog results — issues found: re-spawn with fix instructions; clean: mark done, update DoD, record metrics. Next task.
+
+### Verify Phase Pattern
+
+When transitioning from Build to Verify:
+
+1. **Announce to the human:**
+   > "Build is complete. All tasks implemented, tests passing, coverage at X%.
+   > Would you like to test the feature? I can stand up the stack for you and walk you through what to test."
+
+2. **If human accepts:** Deploy devops-engineer to stand up the stack:
+   - MUST use docker-compose (or project run command) — NEVER raw `python3 app.py`, `uvicorn`, `npm start` etc.
+   - MUST use mapped volumes for hot reload
+   - MUST verify health checks before reporting ready
+
+3. **Report to human:**
+   - Access URL (e.g., http://localhost:8080)
+   - Credentials if needed
+   - What to test (from PRD acceptance criteria)
+   - Expected behavior for each acceptance criterion
+
+4. **Wait for human feedback:**
+   - If issues found → loop back to Build (deploy implementation agent to fix, then return to Verify)
+   - If human accepts → check off DoD items and transition to Ship
+
+5. **If human declines testing:** Mark DoD items as complete with note "Human declined manual testing" and proceed to Ship.
 
 ### Build Status Report (every 3 tasks or on request)
 ```

@@ -50,8 +50,9 @@ If any file does not exist, note the gap but continue with available context.
 1. **Dockerfile maintenance.** Multi-stage, minimal, secure, reproducible builds.
 2. **CI/CD pipelines.** Automated quality gates that catch problems before humans see them.
 3. **Docker Compose orchestration.** Local dev environments that mirror production.
-4. **Secrets management.** No secrets in source, images, or logs -- ever.
-5. **Monitoring and health checks.** Liveness, readiness, and startup probes for every service.
+4. **Local stack management.** Stand up, verify health, and tear down the local dev stack for testing.
+5. **Secrets management.** No secrets in source, images, or logs -- ever.
+6. **Monitoring and health checks.** Liveness, readiness, and startup probes for every service.
 
 ## Process
 
@@ -86,6 +87,34 @@ Dockerfile, then docker-compose, then CI pipeline, then monitoring.
 8. **Minimal final image.** `-slim` or `-alpine` variants. No compilers or build tools in final stage.
 9. **Explicit EXPOSE.** Document which ports the container listens on.
 10. **No unnecessary VOLUME.** Only declare volumes for genuinely persistent data.
+
+### Docker Compose Local Dev Checklist
+1. **Mapped volumes for source code.** Bind-mount the source directory so changes are reflected immediately without rebuilding. Example: `./src:/app/src`.
+2. **Hot reload enabled.** Use framework-native hot reload (uvicorn --reload, next dev, nodemon, air). The dev container MUST auto-reload when source files change via the mapped volume.
+3. **Health checks on every service.** Use `healthcheck:` with `test`, `interval`, `timeout`, `retries`. Never use `depends_on` without `condition: service_healthy`.
+4. **`.env` file for configuration.** Use `env_file: .env` — never hardcode env vars in docker-compose.yml. Provide `.env.example` with all required variables documented.
+5. **Named networks.** Use a named network (e.g., `app-network`) — do not rely on the default bridge. This enables service discovery by container name.
+6. **Explicit port mapping.** Map host ports explicitly (e.g., `8080:8080`). Document which port to open in the browser.
+7. **No `latest` tags.** Pin all image versions. `postgres:16.2`, not `postgres:latest`.
+8. **Volume for persistent data.** Named volumes for databases and stateful services so data survives `docker-compose down`.
+9. **`docker-compose.override.yml` for dev-only config.** Keep the base `docker-compose.yml` prod-like. Dev-specific overrides (mapped volumes, debug ports, hot reload) go in the override file.
+10. **Startup verification command.** After `docker-compose up -d`, run health check verification: `docker-compose ps` to confirm all services are healthy, then curl/wget the primary health endpoint.
+
+### Standing Up the Stack (Verify Phase)
+
+When the SEM deploys you to stand up the stack for human testing:
+
+1. **Check for docker-compose.yml** — if it doesn't exist, create one following the checklist above.
+2. **Check for .env** — if it doesn't exist but `.env.example` does, copy it. If neither exists, create both.
+3. **Run `docker-compose up -d`** — bring up all services in detached mode.
+4. **Verify health** — wait for all services to be healthy: `docker-compose ps`. If any service is unhealthy, check logs with `docker-compose logs <service>` and fix.
+5. **Report to SEM:**
+   - Access URL (e.g., http://localhost:8080)
+   - All services healthy: yes/no
+   - Any warnings or known limitations
+   - How to tear down: `docker-compose down`
+
+**CRITICAL:** NEVER stand up services by running application commands directly (e.g., `python3 app.py`, `uvicorn main:app`, `npm start`, `node server.js`). Always use docker-compose or the project's defined run command (Makefile, scripts/).
 
 ### CI Pipeline Checklist
 1. **Lint stage.** Runs before tests. Catches formatting and style issues early.

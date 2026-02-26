@@ -28,7 +28,14 @@
     "Coverage meets project threshold",
     "Code reviewed by code-reviewer agent",
     "Security review passed",
+    "Docker Compose (or project run command) configured for local dev",
     "No blocking issues open"
+  ],
+  "Verify": [
+    "Stack stood up via docker-compose (or project run command)",
+    "SEM provided human with access URL and test instructions",
+    "Human has completed acceptance testing",
+    "Feedback addressed or deferred with justification"
   ],
   "Ship": [
     "Documentation updated (API docs, README, .meta/)",
