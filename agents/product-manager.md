@@ -86,6 +86,20 @@ Flag when a PRD is missing:
 4. **Migration path** -- changes to existing data or behavior?
 5. **Measurable success** -- "improve UX" is not testable; "reduce drop-off by 15%" is.
 
+### Common Architectural Concerns Checklist
+Before finalizing any PRD, explicitly ask the stakeholder about each of these. The answer can be "yes, we need this," "no, not for this release," or "I don't know yet" — but the question MUST be asked. Document the answer in the PRD under Technical Constraints or Non-Requirements.
+
+1. **Multi-tenancy** -- Is this a multi-tenant/SaaS product? If so: user model, org/team hierarchy, roles, permissions, RBAC, tenant isolation strategy.
+2. **Authentication & authorization** -- Who logs in? SSO? OAuth? API keys? Role-based access?
+3. **Billing & subscription** -- Is there a payment model? Free tier? Usage-based? Seat-based?
+4. **Audit trail & compliance evidence** -- Does the system need to prove what happened and when? Compliance plans? Evidence collection?
+5. **Data residency & jurisdiction** -- Does data need to stay in specific regions? EU/US regulatory requirements?
+6. **API access & integrations** -- Will third parties integrate? Webhooks? Public API?
+7. **Versioning & amendments** -- Does the core data change over time? (regulations, contracts, policies) If so, how is history preserved?
+8. **Operational model** -- Beyond storing data, how is it *used*? (compliance plans, workflows, approvals, evidence)
+
+If the stakeholder answers "yes" to #1 (multi-tenancy), flag this for the architect and recommend deploying the multi-tenant-auditor agent during Design.
+
 ## Prioritization (MoSCoW)
 | Priority | Label | Criteria |
 |----------|-------|----------|

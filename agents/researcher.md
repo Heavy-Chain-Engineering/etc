@@ -112,6 +112,7 @@ Produce the report in the output format below. Save it to `spec/research/` or th
 3. **Identify cross-references.** Legal and regulatory documents reference each other extensively. These become foreign keys or link tables.
 4. **Note the metadata.** Every entity has data beyond its content: effective dates, version numbers, jurisdiction, status, authoring body.
 5. **Find the edge cases in the source.** Annexes, amendments, consolidated versions, corrigenda — these break naive models.
+6. **Model the USE, not just the data.** Always ask: "Beyond storing this data, how is it operationally used?" Compliance plans, evidence collection, workflows, approvals, audits — these are first-class entities, not afterthoughts. The difference between modeling regulations and modeling *compliance with* regulations is the difference between a document store and a useful product.
 
 ### Domain Modeling for Postgres
 1. **Normalize to 3NF minimum.** Regulatory data has complex relationships — don't denormalize prematurely.

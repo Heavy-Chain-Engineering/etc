@@ -88,7 +88,7 @@ Every spawn prompt MUST include: task description, relevant file paths, acceptan
 |-------|-----------|------------|----------------|
 | Bootstrap | brownfield-bootstrapper | — | — |
 | Spec | researcher (if needed), product-manager, product-owner, domain-modeler | — | spec-kit /specify |
-| Design | architect, ux-designer, ui-designer | — | — |
+| Design | architect, ux-designer, ui-designer, multi-tenant-auditor (if SaaS) | — | — |
 | Decompose | product-manager, architect | — | TaskMaster MCP |
 | Build | backend-developer / frontend-developer / devops-engineer | code-reviewer, verifier, security-reviewer | TDD hooks |
 | Verify | devops-engineer | — | docker-compose |
