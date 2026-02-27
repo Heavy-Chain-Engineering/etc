@@ -26,21 +26,31 @@
 **Tool:** spec-kit (`/specify` command)
 **Team:** Product Manager (lead), Product Owner, Domain Modeler, Researcher (when domain is unfamiliar)
 **Process:**
-1. **If the domain requires research** (unfamiliar regulations, external APIs, complex data models): Deploy Researcher first to analyze source material and produce a research report in `spec/research/`. The research report informs all subsequent spec work.
+1. **If the domain requires research** (unfamiliar regulations, external APIs, complex data models): Deploy Researcher to analyze source material and produce research reports in `spec/research/`. The research informs all subsequent spec work.
 2. PM initiates `/specify` to drive structured requirements gathering loop
 3. Iterative refinement with stakeholder until spec is complete and unambiguous
 4. Domain Modeler validates domain concepts and relationships (informed by research report if one exists)
 5. PO confirms acceptance criteria and prioritization
 **Output:** Hierarchical PRDs, acceptance criteria, domain model validation, research reports (if applicable)
 
+**Scaling the research step:** The SEM must assess the scope of research needed and choose the right deployment pattern (see SEM agent's Team Deployment Architecture):
+- **Small scope** (1 domain, few docs): 1 researcher agent
+- **Large scope** (multiple bounded contexts, large corpus): Fan-out N researchers in parallel, each scoped to a domain, then reduce with a synthesis agent
+- **When in doubt:** Ask the human. "This corpus has N domains. Want me to fan out N research agents, or handle it sequentially?"
+
 **How to invoke:**
 ```
 "We need to spec out [feature]. Start the Spec phase — use the product-manager agent with /specify to gather requirements, then have domain-modeler validate the domain model."
 ```
 
-**If research is needed:**
+**If research is needed (small scope):**
 ```
 "We need to spec out [feature] but we don't understand the domain well enough yet. Start with the researcher agent — have it analyze the documents in [path] and produce a research report. Then proceed with spec."
+```
+
+**If research is needed (large scope, fan-out):**
+```
+"This is a large domain with multiple bounded contexts. Fan out [N] research agents across [domains], then synthesize findings into bounded-context PRDs. See the research corpus in [path]."
 ```
 
 ### Design Phase
@@ -85,6 +95,11 @@
 - **Implementation agents** (foreground, one at a time per task): Backend Developer, Frontend Developer, DevOps Engineer
 - **Watchdog agents** (background, continuous): Code Reviewer, Verifier, Security Reviewer
 **Enforcement:** TDD hooks run automatically on every Edit/Write (PreToolUse → PostToolUse)
+
+**Scaling the build:** The SEM should assess task dependencies to determine parallelization:
+- **Sequential:** Tasks with dependencies must be built in order (default, safest)
+- **Parallel:** Independent tasks with no shared files can be built by separate agents simultaneously (use worktree isolation)
+- **Pipeline + Watchdogs:** Every implementation agent gets a background code-reviewer + verifier regardless of parallel/sequential
 **Output:** Working, tested, reviewed code
 
 **How to invoke:**

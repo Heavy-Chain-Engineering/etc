@@ -74,6 +74,90 @@ If `tracker.py` errors, fall back to reading `.sdlc/state.json` directly and ann
 3. If all met, announce: "DoD met for [Phase]. Ready to transition to [Next Phase]."
 4. Wait for human confirmation before transitioning
 
+## Team Deployment Architecture
+
+Before deploying agents for any phase, assess the SCALE of the work to determine the right deployment pattern. One agent is not always enough. The wrong pattern wastes time or blows context windows.
+
+### Deployment Patterns
+
+**1. Single Agent** — One question, one domain, bounded scope.
+- When: Simple feature, small codebase, one bounded context
+- Example: "Research how to add dark mode" → 1 researcher
+- Example: "Build the login endpoint" → 1 backend-developer
+
+**2. Parallel Fan-Out** — Large scope that can be partitioned into independent domains.
+- When: Multiple bounded contexts, large document corpus, many independent subsystems
+- Example: 10 regulatory domains → 10 researchers in parallel, each with a scoped brief
+- Example: 8 microservices to build → 8 developers in parallel (if no shared dependencies)
+- Each agent gets: its specific scope, shared context doc (domain briefing), output path
+- All agents run in parallel via `run_in_background: true`
+
+**3. Fan-Out / Reduce** — Parallel research or analysis followed by synthesis.
+- When: Large corpus needs analysis AND the findings must be unified into a coherent output
+- Structure:
+  ```
+  Phase 1: FAN OUT — N agents in parallel, each covering a bounded domain
+  Phase 2: REDUCE — 1 synthesis agent combines all N outputs into unified deliverable
+  Phase 3: PLAN   — 1 architect/PM takes synthesized output → implementation plan
+  ```
+- Example: 10 research agents → 1 synthesis agent → bounded-context PRDs → architect
+- The reduce agent receives ALL fan-out outputs plus any shared context docs
+
+**4. Sequential Pipeline** — Work that must flow in order (each step depends on the previous).
+- When: Design → then decompose → then build. Research → then spec.
+- Example: Researcher produces report → PM writes PRD from report → Architect reviews
+
+**5. Pipeline + Watchdogs** — Sequential primary work with parallel quality monitors.
+- When: Build phase. Implementation agents in foreground, reviewers in background.
+- This is the standard Build pattern.
+
+### Sizing Heuristics
+
+Ask these questions to choose the right pattern:
+
+| Question | If Yes | Pattern |
+|----------|--------|---------|
+| Can the work be done by one agent in < 30 turns? | → | Single Agent |
+| Are there 3+ independent domains or document groups? | → | Fan-Out |
+| Do parallel results need to be unified into one output? | → | Fan-Out / Reduce |
+| Does step N depend on step N-1's output? | → | Sequential Pipeline |
+| Is this Build phase with quality enforcement? | → | Pipeline + Watchdogs |
+
+**When in doubt, ask the human:** "This looks like it could benefit from [N] parallel agents across [domains]. Want me to fan out, or handle it sequentially?"
+
+### Fan-Out Briefing Template
+
+When deploying N parallel agents, every agent receives:
+
+1. **Shared context** — The domain briefing doc, project CLAUDE.md, any file that ALL agents need
+2. **Scoped assignment** — The specific bounded context, document set, or subsystem THIS agent owns
+3. **Output path** — Where to write results (e.g., `docs/research/R01-compliance.md`)
+4. **Output format** — Consistent structure so the reduce agent can combine them
+5. **What NOT to do** — Stay in your lane. Don't cover other agents' domains.
+
+Example prompt for a fan-out research agent:
+```
+"You are Research Agent R3 of 10. Your domain: Vendor Onboarding & Lifecycle.
+
+Shared context: Read docs/domain-briefing.md first (mandatory).
+Your scope: Analyze [specific files/sections] for vendor lifecycle patterns.
+Output: Write findings to docs/research/R03-vendor-lifecycle.md using the research report template.
+Stay in scope: Do NOT cover compliance, payments, or IAM — other agents handle those."
+```
+
+### Reduce Agent Template
+
+The reduce/synthesis agent receives:
+```
+"You are the synthesis agent. Read ALL research outputs in docs/research/R01-*.md through R10-*.md.
+Also read: docs/domain-briefing.md, spec/prd.md.
+
+Your job: Combine findings into [deliverable type — e.g., bounded-context PRDs, unified domain model].
+Write output to: [path].
+Resolve conflicts between research agents' findings.
+Identify gaps — domains where no agent produced useful findings."
+```
+
 ## Team Deployment — Spawn Prompts
 
 Every spawn prompt MUST include: task description, relevant file paths, acceptance criteria, and which standards to read.
