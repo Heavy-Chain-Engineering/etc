@@ -5,8 +5,10 @@
     "Project structure understood and documented"
   ],
   "Spec": [
+    "Project intake completed — type classified, source material triaged (docs/plans/)",
     "Domain briefing reviewed or created (docs/domain-briefing.md)",
     "Domain fidelity verified — human confirmed core concept understanding",
+    "Research plan produced and approved by human (if research needed)",
     "PRD written with /specify and reviewed by stakeholder",
     "Common architectural concerns checklist completed (multi-tenancy, auth, billing, etc.)",
     "Acceptance criteria defined for all features",

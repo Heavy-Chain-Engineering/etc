@@ -112,19 +112,49 @@ Before deploying agents for any phase, assess the SCALE of the work to determine
 - When: Build phase. Implementation agents in foreground, reviewers in background.
 - This is the standard Build pattern.
 
+**6. Recursive Decomposition** — Scope too large for a single fan-out level.
+- When: Total corpus or problem space exceeds what N parallel agents can handle in one pass, OR the problem has multiple dimensions requiring separate analysis passes
+- Structure:
+  ```
+  Assess: Is total scope > what N agents can cover in one pass?
+    YES → Decompose into layers:
+      Layer 1: Fan-out across primary dimension (e.g., bounded contexts)
+      Layer 2: Fan-out across secondary dimension (e.g., CX workflows)
+      Layer 3+: Further decomposition if needed
+      Final: Reduce/synthesize across all layers
+    NO → Use simple Fan-Out or Fan-Out/Reduce
+  ```
+- Example: 10 source repos + SF export + 66 CX workflows:
+  ```
+  Layer 1: 10 domain research agents (one per bounded context) — parallel
+  Layer 2: 4 CX workflow agents (engine arch + stage mappings) — parallel
+  Layer 3: 1 synthesis agent (combines all 14 outputs into PRDs) — sequential
+  Layer 4: 1 architect (implementation plan from PRDs) — sequential
+  ```
+- Key rules:
+  - Layers execute SEQUENTIALLY (Layer 2 starts after Layer 1 completes)
+  - Within each layer, agents execute in PARALLEL
+  - Each layer's agents receive outputs from previous layers as READ-ONLY context
+  - If the synthesis agent's input exceeds context limits, use a two-stage reduce (sub-synthesis per layer → final synthesis)
+  - Every layer boundary is a checkpoint — review outputs before proceeding
+- Recursive assessment: At each level, ask "Is this partition small enough for one agent?" If no, decompose further. Stop when every leaf node fits in a single agent's context window.
+
 ### Sizing Heuristics
 
-Ask these questions to choose the right pattern:
+Ask these questions IN ORDER to choose the right pattern:
 
-| Question | If Yes | Pattern |
-|----------|--------|---------|
-| Can the work be done by one agent in < 30 turns? | → | Single Agent |
-| Are there 3+ independent domains or document groups? | → | Fan-Out |
-| Do parallel results need to be unified into one output? | → | Fan-Out / Reduce |
-| Does step N depend on step N-1's output? | → | Sequential Pipeline |
-| Is this Build phase with quality enforcement? | → | Pipeline + Watchdogs |
+| # | Question | If Yes | Pattern |
+|---|----------|--------|---------|
+| 1 | Can the work be done by one agent in < 30 turns? | → | Single Agent |
+| 2 | Are there 3+ independent domains or document groups? | → | Fan-Out |
+| 3 | Do parallel results need to be unified into one output? | → | Fan-Out / Reduce |
+| 4 | Is the scope too large for a SINGLE fan-out? (50+ source files, multiple analysis dimensions, 3+ passes needed) | → | **Recursive Decomposition** |
+| 5 | Does step N depend on step N-1's output? | → | Sequential Pipeline |
+| 6 | Is this Build phase with quality enforcement? | → | Pipeline + Watchdogs |
 
 **When in doubt, ask the human:** "This looks like it could benefit from [N] parallel agents across [domains]. Want me to fan out, or handle it sequentially?"
+
+**When the scope is massive:** "This corpus has [N] source files across [M] dimensions. I recommend a [L]-layer recursive decomposition: [describe layers]. Want me to produce a research plan for your review before deploying agents?"
 
 ### Fan-Out Briefing Template
 
@@ -169,6 +199,59 @@ Identify gaps — domains where no agent produced useful findings."
 
 **When injecting domain briefing into agent prompts, say explicitly:**
 > "MANDATORY: Read docs/domain-briefing.md first. It contains domain axioms that override your default understanding of any technology or concept. If your findings contradict an axiom, the axiom wins."
+
+## Project Intake (Before Any Research)
+
+Before deploying researchers or any Spec phase agents, conduct a structured intake with the human. This takes 5-10 minutes and prevents days of wasted research.
+
+### Step 1: Classify the Project Type
+
+Ask the human: "What kind of project is this?"
+
+| Type | Existing System Is... | Source Material Priority | Agent Mindset |
+|------|----------------------|------------------------|----|
+| **Greenfield** | N/A | Requirements docs, domain research | Design from first principles |
+| **Brownfield** | Foundation to extend | Existing codebase + new requirements | Respect existing patterns, extend carefully |
+| **Re-engineering** | Anti-pattern to shed | Business process docs, operational workflows | What does the business NEED, not what does the old system DO |
+| **Lift-and-Shift** | The spec to replicate | Existing system code/schema/config | Reproduce faithfully on new platform |
+| **Consolidation** | Multiple systems, each partially right | All systems + conflict resolution | Superset of features, resolve overlaps |
+
+The project type determines how EVERY agent interprets source material. A Salesforce export in a re-engineering project is an ANTI-PATTERN catalog. The same export in a lift-and-shift is THE SPEC.
+
+### Step 2: Inventory and Triage Source Material
+
+Ask the human to list all available source material. For each item, classify:
+
+| Source | Type | Classification | Priority | How Agents Should Read |
+|--------|------|---------------|----------|------------------------|
+| [name] | PDF/code/export/spreadsheet | Business operations / Requirements / Implementation artifact / Domain truth | PRIMARY / HIGH / MEDIUM / CONTEXT ONLY | [1-sentence instruction] |
+
+**Classification rules by project type:**
+- **Re-engineering:** Business process docs = PRIMARY. Old system code/exports = CONTEXT ONLY ("read for WHAT, not HOW")
+- **Lift-and-Shift:** Existing system code/schema = PRIMARY. They ARE the spec.
+- **Greenfield:** Requirements docs = PRIMARY. Domain research = HIGH.
+- **Brownfield:** Existing codebase = PRIMARY. New requirements = HIGH.
+- **Consolidation:** All systems = HIGH. Conflict resolution criteria from human = PRIMARY.
+
+### Step 3: Produce the Research Plan
+
+Before deploying any researchers, create a research plan that includes:
+
+1. **Project Classification** — Type and what it means for this project
+2. **Source Material Triage** — The inventory table from Step 2 with priority and reading instructions
+3. **Mandatory Context Injection** — Files every agent must read (domain briefing, key business process docs)
+4. **Anti-Pattern Catalog** — For re-engineering projects: specific patterns from the old system that must NOT be replicated. Ask the human: "What are the old system's biggest limitations that we're escaping?"
+5. **Agent Topology** — The deployment architecture (which pattern, how many layers, which agents)
+6. **Output Format** — Consistent structure so the reduce agent can combine outputs
+
+**For re-engineering projects, inject these design mindset questions into every agent's briefing:**
+- What BUSINESS NEED does this old-system artifact serve?
+- What old-system LIMITATION forced this pattern?
+- How would we model this if the old system never existed?
+
+Save the research plan to `docs/plans/` and include it in every researcher's briefing as mandatory reading.
+
+**The research plan is project-scoped** (not workspace-scoped like the domain briefing). A workspace may have multiple projects, each with its own classification and source material triage.
 
 ## Team Deployment — Spawn Prompts
 

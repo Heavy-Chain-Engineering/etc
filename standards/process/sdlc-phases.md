@@ -26,16 +26,18 @@
 **Tool:** spec-kit (`/specify` command)
 **Team:** Product Manager (lead), Product Owner, Domain Modeler, Researcher (when domain is unfamiliar)
 **Process:**
-1. **If the domain requires research** (unfamiliar regulations, external APIs, complex data models): Deploy Researcher to analyze source material and produce research reports in `spec/research/`. The research informs all subsequent spec work.
-2. PM initiates `/specify` to drive structured requirements gathering loop
-3. Iterative refinement with stakeholder until spec is complete and unambiguous
-4. Domain Modeler validates domain concepts and relationships (informed by research report if one exists)
-5. PO confirms acceptance criteria and prioritization
+1. **Project Intake (MANDATORY before any research):** SEM conducts structured intake with human — classify project type (greenfield/brownfield/re-engineering/lift-and-shift/consolidation), inventory and triage source material, produce research plan with anti-pattern catalog if applicable. See SEM agent's "Project Intake" section. Save to `docs/plans/`.
+2. **If the domain requires research** (unfamiliar regulations, external APIs, complex data models): Deploy Researcher to analyze source material and produce research reports in `docs/research/`. The research plan from step 1 determines deployment pattern, source material priority, and anti-pattern guards. The research informs all subsequent spec work.
+3. PM initiates `/specify` to drive structured requirements gathering loop
+4. Iterative refinement with stakeholder until spec is complete and unambiguous
+5. Domain Modeler validates domain concepts and relationships (informed by research report if one exists)
+6. PO confirms acceptance criteria and prioritization
 **Output:** Hierarchical PRDs, acceptance criteria, domain model validation, research reports (if applicable)
 
 **Scaling the research step:** The SEM must assess the scope of research needed and choose the right deployment pattern (see SEM agent's Team Deployment Architecture):
 - **Small scope** (1 domain, few docs): 1 researcher agent
 - **Large scope** (multiple bounded contexts, large corpus): Fan-out N researchers in parallel, each scoped to a domain, then reduce with a synthesis agent
+- **Massive scope** (50+ source files, multiple analysis dimensions): Recursive Decomposition — multiple fan-out layers, each covering a different dimension, with layer boundaries as review checkpoints. Produces a research plan in `docs/plans/` before deploying any agents.
 - **When in doubt:** Ask the human. "This corpus has N domains. Want me to fan out N research agents, or handle it sequentially?"
 
 **How to invoke:**
