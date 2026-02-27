@@ -31,6 +31,58 @@ The v1 harness (Claude Code + agent prompts) validated that structured agent tea
 
 ---
 
+## 2.1 Architectural Constraints (Non-Negotiable)
+
+These four constraints shape every design decision in the platform.
+
+### C1: Single SEM Orchestrator — Delegates Everything
+
+There is exactly ONE orchestrator process (the SEM). It never researches, never writes code, never reviews. It reads state, makes decisions, and delegates ALL work to specialized agents via Claude API calls. The SEM is the conductor, never a musician.
+
+**Implication:** Every capability in the platform flows through the SEM's decision loop. There is no "agent starts itself" or "agent triggers another agent directly." The SEM observes events, decides the response, and executes the delegation.
+
+### C2: SEM Context Is Sacred — Stateless Between Decisions
+
+The SEM must NOT accumulate context like a long-running conversation. The v1 SEM failed because its conversation grew until compaction destroyed nuance.
+
+**The stateless SEM pattern:** Each SEM decision is a SHORT, FOCUSED Claude API call that receives only:
+1. The SEM system prompt (decision logic, deployment patterns) — constant
+2. The triggering event (e.g., "agent R03 completed", "guardrail violation on R05 output") — small
+3. Relevant state from Postgres (current phase, DoD status, execution graph progress) — queried per-decision
+4. Relevant context from Postgres (the agent's output summary, guardrail results, recent decisions) — scoped
+
+The SEM never reads the full project history in one call. It reads what's relevant to THIS decision. Postgres is the SEM's long-term memory. Each API call is the SEM's short-term working memory.
+
+**Implication:** The SEM can make thousands of decisions over a multi-day project without ever hitting context limits. Each decision gets a fresh context window loaded with exactly what's needed.
+
+### C3: Restart From Wherever We Left Off
+
+Every state change is a Postgres write. If the process crashes, the machine reboots, or the human closes their laptop and comes back three days later:
+- `etc status` reads Postgres and shows exactly where things stand
+- `etc run` queries for the next pending action and resumes — no re-bootstrapping, no "where was I?"
+- Running agents that died are detected (heartbeat timeout) and marked as failed, eligible for retry
+
+**Implication:** There is no in-memory-only state. If it's not in Postgres, it didn't happen. The event log IS the history.
+
+### C4: Arbitrary Recursive Decomposition
+
+The platform must support decomposition to any depth — not just "3 layers." A research phase might need:
+```
+Level 0: Assess corpus → too big
+  Level 1: Partition into 10 bounded contexts → each fits one agent
+  Level 1: Partition into 4 CX dimensions → each fits one agent
+    Level 2: CX Engine design depends on Level 1 CX outputs AND Level 1 domain outputs
+  Level 1: Synthesis → too much input for one agent
+    Level 2: Sub-synthesis per domain cluster → 3 sub-synthesis agents
+    Level 2: Final synthesis combines 3 sub-syntheses → 1 agent
+```
+
+The execution graph is a TREE, not a flat list of layers. Nodes can contain sub-graphs. Sub-graphs can contain sub-graphs. The only constraint is that a node's dependencies must complete before it starts.
+
+**Implication:** The `execution_layers` model needs to support nesting. Layers are a convenient grouping, but the real primitive is the dependency graph between nodes. A "layer" is just "all nodes at the same depth with no inter-dependencies."
+
+---
+
 ## 3. What We Are Building
 
 ### Core Platform
@@ -59,36 +111,58 @@ A Python-based orchestration engine that:
 └──────────────────────┬──────────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────────┐
-│                   Orchestrator Engine                         │
+│                  SEM Orchestrator (C1)                        │
+│          One process. Delegates everything.                   │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │              Stateless Decision Loop (C2)              │   │
+│  │                                                        │   │
+│  │  1. LISTEN for event (Postgres NOTIFY)                │   │
+│  │  2. Load relevant state from Postgres (scoped query)  │   │
+│  │  3. Call Claude API with SEM prompt + scoped context   │   │
+│  │  4. Execute decision (deploy agent, check gate, etc.) │   │
+│  │  5. Write result to Postgres                          │   │
+│  │  6. → back to 1 (fresh context for next decision)     │   │
+│  └──────────────────────────────────────────────────────┘   │
 │                                                              │
 │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────┐  │
 │  │ Phase Engine  │  │ Topology      │  │ Guardrail        │  │
 │  │ - state       │  │ Builder       │  │ Middleware        │  │
 │  │   machine     │  │ - recursive   │  │ - anti-pattern   │  │
 │  │ - DoD gates   │  │   decomp      │  │   scanning       │  │
-│  │ - project     │  │ - layer       │  │ - domain fidelity│  │
-│  │   intake      │  │   management  │  │ - coverage gates │  │
-│  │              │   │ - fan-out/    │  │ - output schema  │  │
-│  │              │   │   reduce      │  │   validation     │  │
-│  └──────┬──────┘  └──────┬────────┘  └────────┬─────────┘  │
-│         │                │                     │             │
-│  ┌──────▼────────────────▼─────────────────────▼──────────┐ │
-│  │                   Event Loop                            │ │
-│  │  Postgres LISTEN/NOTIFY                                 │ │
-│  │  Events: agent_completed, layer_completed,              │ │
-│  │          phase_gate_reached, guardrail_violation,       │ │
-│  │          human_response_received                        │ │
-│  └──────────────────────┬──────────────────────────────────┘ │
-└─────────────────────────┼────────────────────────────────────┘
+│  │ - project     │  │ - arbitrary   │  │ - domain fidelity│  │
+│  │   intake      │  │   depth (C4)  │  │ - coverage gates │  │
+│  └──────────────┘  └───────────────┘  └──────────────────┘  │
+└─────────────────────────┬────────────────────────────────────┘
                           │
           ┌───────────────┼───────────────┐
           │               │               │
    ┌──────▼──────┐ ┌─────▼──────┐ ┌──────▼──────┐
    │  Postgres   │ │ Claude API │ │ Filesystem   │
    │  (state +   │ │  (agent    │ │ (artifacts)  │
-   │   events)   │ │   brains)  │ │              │
+   │   events +  │ │   brains)  │ │              │
+   │   memory)   │ │            │ │              │
+   │    (C3)     │ │            │ │              │
    └─────────────┘ └────────────┘ └──────────────┘
 ```
+
+### The Stateless SEM (C2) — Key Architectural Decision
+
+The SEM is NOT a long-running conversation. It is a LOOP of short, focused decisions.
+
+Each iteration of the loop:
+1. **Waits** for an event (Postgres LISTEN or poll)
+2. **Loads** only the state relevant to that event (one SQL query, not the whole project)
+3. **Decides** what to do (Claude API call with SEM prompt + scoped context)
+4. **Executes** the decision (deploy agent, update phase, notify human)
+5. **Writes** the outcome to Postgres
+6. **Forgets** — the next iteration starts fresh
+
+This means:
+- The SEM can run for weeks without context degradation
+- Each decision gets the full context window for that ONE decision
+- Postgres is the SEM's long-term memory — it never needs to "remember" a conversation
+- Crash recovery is trivial — restart the loop, it picks up from step 1
 
 ### Key Design Decisions
 
@@ -153,42 +227,46 @@ phase_transitions (
   transitioned_at TIMESTAMPTZ
 )
 
--- Execution graphs (recursive decomposition)
+-- Execution graphs (recursive decomposition — C4)
+-- A graph is a tree of nodes. Nodes can be LEAF (run an agent) or COMPOSITE (contain sub-nodes).
+-- This supports arbitrary depth: a composite node's children are themselves a graph.
 execution_graphs (
   id UUID PRIMARY KEY,
   project_id UUID REFERENCES projects,
   phase_id UUID REFERENCES phases,
   name TEXT NOT NULL,                 -- e.g., "research-fanout-round-3"
-  topology JSONB,                     -- full topology description
+  description TEXT,                   -- human-readable topology description
   status TEXT NOT NULL DEFAULT 'pending',  -- pending|running|completed|failed
   created_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ
 )
 
-execution_layers (
-  id UUID PRIMARY KEY,
-  graph_id UUID REFERENCES execution_graphs,
-  layer_number INTEGER NOT NULL,
-  name TEXT,                          -- e.g., "Domain Research", "CX Workflow Analysis"
-  status TEXT NOT NULL DEFAULT 'pending',
-  started_at TIMESTAMPTZ,
-  completed_at TIMESTAMPTZ
-)
-
 execution_nodes (
   id UUID PRIMARY KEY,
-  layer_id UUID REFERENCES execution_layers,
-  agent_type TEXT NOT NULL,           -- researcher|architect|backend-developer|etc
-  assignment JSONB NOT NULL,          -- scoped task description, source files, output path
-  status TEXT NOT NULL DEFAULT 'pending',  -- pending|running|completed|failed|retrying
-  output_path TEXT,                   -- where the agent wrote its results
+  graph_id UUID REFERENCES execution_graphs,
+  parent_node_id UUID REFERENCES execution_nodes,  -- NULL = root level; non-NULL = child of composite
+  node_type TEXT NOT NULL,            -- leaf|composite|reduce
+  name TEXT NOT NULL,                 -- e.g., "R03-compliance-config", "layer-1-domain-research"
+  -- For leaf nodes (actual agent work):
+  agent_type TEXT,                    -- researcher|architect|backend-developer|etc
+  assignment JSONB,                   -- scoped task description, source files, output path
+  -- For composite nodes (sub-graphs):
+  -- Children are other execution_nodes with parent_node_id = this node's id
+  -- For reduce nodes (synthesis after fan-out):
+  reduce_inputs JSONB,               -- references to nodes whose outputs feed this node
+  -- Common fields:
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending|ready|running|completed|failed|retrying
+  output_path TEXT,                   -- where results were written
   max_retries INTEGER DEFAULT 1,
   retry_count INTEGER DEFAULT 0,
+  depth INTEGER NOT NULL DEFAULT 0,   -- 0 = root level, increments with nesting
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ
 )
 
--- Node dependencies (within and across layers)
+-- Node dependencies (the REAL scheduling primitive — C4)
+-- A node cannot start until ALL its dependencies are completed.
+-- Dependencies can be within the same parent (fan-out siblings) or cross-branch.
 execution_node_dependencies (
   node_id UUID REFERENCES execution_nodes,
   depends_on_node_id UUID REFERENCES execution_nodes,
@@ -265,15 +343,18 @@ project
   ├── source_materials[]
   ├── phases[]
   │     └── execution_graphs[]
-  │           └── execution_layers[] (ordered)
-  │                 └── execution_nodes[]
-  │                       ├── dependencies[]
-  │                       └── agent_runs[]
-  │                             └── agent_outputs[]
-  │                                   └── guardrail_checks[]
+  │           └── execution_nodes[] (tree structure — C4)
+  │                 ├── leaf node → agent_runs[]
+  │                 │                  └── agent_outputs[]
+  │                 │                        └── guardrail_checks[]
+  │                 ├── composite node → child execution_nodes[] (recurse)
+  │                 ├── reduce node → agent_runs[] (reads outputs of dependencies)
+  │                 └── dependencies[] (cross-branch, any depth)
   ├── knowledge_entries[]
   └── events[]
 ```
+
+**Node scheduling rule (C4):** A node is READY when all its dependencies are COMPLETED. The SEM queries for ready nodes and deploys them. This single rule handles flat fan-out, multi-layer pipelines, and arbitrary recursive decomposition — they're all just different dependency graph shapes.
 
 ---
 
@@ -281,7 +362,7 @@ project
 
 ### 6.1 Phase Engine
 
-The SDLC state machine. Manages phase lifecycle exactly as the v1 SEM does, but with durable state.
+The SDLC state machine. Manages phase lifecycle with durable state (C3). Called by the SEM decision loop (C2) — the Phase Engine is a library, not a process.
 
 **Responsibilities:**
 - Track current phase per project
@@ -291,21 +372,37 @@ The SDLC state machine. Manages phase lifecycle exactly as the v1 SEM does, but 
 
 **DoD evaluation types:**
 - **Automatic:** "All tests passing" → run `pytest`, check exit code
-- **Agent-verified:** "Code reviewed" → check that a code-reviewer agent_run exists with status=completed for all outputs
+- **Agent-verified:** "Code reviewed" → query Postgres for code-reviewer agent_run with status=completed for all outputs
 - **Human-confirmed:** "Stakeholder reviewed PRD" → requires explicit human approval via CLI
+- **Guardrail-verified:** "Security review passed" → all agent_outputs have passing security guardrail_checks
 
-### 6.2 Topology Builder
+### 6.2 Topology Builder (C4)
 
-The recursive decomposition engine. Takes a project classification, source material inventory, and scope assessment, then produces an execution graph.
+The recursive decomposition engine. Takes a project classification, source material inventory, and scope assessment, then produces an execution graph of arbitrary depth.
 
 **Responsibilities:**
 - Assess scope (source file count, domain count, analysis dimensions)
-- Select deployment pattern (single agent → recursive decomposition)
-- Build execution graph with layers, nodes, and dependencies
+- Recursively partition until each leaf node fits in one agent's context
+- Build execution graph as a dependency tree (not flat layers)
 - Generate agent assignments (scoped briefs with source material, output paths, anti-pattern guards)
+- Insert reduce nodes where fan-out outputs need synthesis
 - Present topology to human for approval before execution
 
-**The key innovation:** This component does what the human did manually for VenLink Round 3 — it reads the source material inventory, classifies it by dimension, determines how many agents and layers are needed, and produces a research plan. For MVP, this can be a Claude API call itself (an "orchestrator agent" that produces the topology). Long-term, it could be rule-based.
+**The recursive algorithm:**
+```
+function buildGraph(scope, depth=0):
+  if scope fits in one agent → return LeafNode(agent_type, assignment)
+  partitions = decompose(scope) by dimension
+  children = []
+  for each partition:
+    children.append(buildGraph(partition, depth+1))
+  if children need synthesis:
+    reduce = ReduceNode(reads outputs of children)
+    return CompositeNode(children + [reduce])
+  return CompositeNode(children)
+```
+
+**The key innovation:** This does what the human did manually for VenLink Round 3. For MVP, this is a Claude API call (the SEM asks Claude to design the topology given the source material inventory). Long-term, it becomes increasingly rule-based as patterns emerge.
 
 ### 6.3 Agent Runtime
 
