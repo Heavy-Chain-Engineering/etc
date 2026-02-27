@@ -5,7 +5,10 @@
     "Project structure understood and documented"
   ],
   "Spec": [
+    "Domain briefing reviewed or created (docs/domain-briefing.md)",
+    "Domain fidelity verified — human confirmed core concept understanding",
     "PRD written with /specify and reviewed by stakeholder",
+    "Common architectural concerns checklist completed (multi-tenancy, auth, billing, etc.)",
     "Acceptance criteria defined for all features",
     "Domain model validated by domain-modeler agent",
     "Edge cases and error scenarios documented"
