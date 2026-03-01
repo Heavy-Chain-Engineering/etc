@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable
-from uuid import UUID
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
 
-import psycopg
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from uuid import UUID
+
+    import psycopg
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +32,7 @@ class GuardrailResult:
     rule_name: str
     passed: bool
     severity: str  # critical, high, medium, low
-    violation_details: dict | None = None
+    violation_details: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +50,7 @@ class GuardrailRule:
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> GuardrailResult:
         raise NotImplementedError
 
@@ -87,7 +90,7 @@ class AntiPatternScanRule(GuardrailRule):
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> GuardrailResult:
         """Scan for anti-patterns. Only applies to research_report and prd output types."""
         if output_type not in _APPLICABLE_TYPES:
@@ -149,7 +152,7 @@ class OutputSchemaValidationRule(GuardrailRule):
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> GuardrailResult:
         required = _REQUIRED_SECTIONS.get(output_type)
 
@@ -214,13 +217,13 @@ class DomainFidelityRule(GuardrailRule):
 
     def __init__(self, model: str = "anthropic:claude-haiku-4-5-20251001") -> None:
         self.model = model
-        self._check_fn: Callable | None = None  # Allow injection for testing
+        self._check_fn: Callable[..., Any] | None = None  # Allow injection for testing
 
     def check(
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> GuardrailResult:
         if context is None or "domain_axioms" not in context:
             return GuardrailResult(
@@ -257,14 +260,15 @@ class DomainFidelityRule(GuardrailRule):
             severity=self.severity,
         )
 
-    def _llm_check(self, content: str, axioms: list[str]) -> list[dict]:
+    def _llm_check(self, content: str, axioms: list[str]) -> list[dict[str, Any]]:
         """Call LLM to check content against domain axioms."""
         from pydantic import BaseModel
         from pydantic_ai import Agent
 
         class FidelityCheck(BaseModel):
             violations_found: bool
-            violations: list[dict]  # Each: {"axiom": str, "contradiction": str, "excerpt": str}
+            # Each: {"axiom": str, "contradiction": str, "excerpt": str}
+            violations: list[dict[str, Any]]
 
         axiom_text = "\n".join(f"- {a}" for a in axioms)
 
@@ -315,7 +319,7 @@ class CoverageGateRule(GuardrailRule):
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> GuardrailResult:
         """Check coverage. Only applies to code output type."""
         if output_type != "code":
@@ -404,7 +408,7 @@ class TDDVerificationRule(GuardrailRule):
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> GuardrailResult:
         if output_type != "code":
             return GuardrailResult(
@@ -432,13 +436,9 @@ class TDDVerificationRule(GuardrailRule):
         # Check if context mentions test files in files_written
         if context and "files_written" in context:
             files = context["files_written"]
-            has_test_files = any(
-                "test_" in f or f.startswith("tests/") for f in files
-            )
+            has_test_files = any("test_" in f or f.startswith("tests/") for f in files)
             has_impl_files = any(
-                "test_" not in f and not f.startswith("tests/")
-                for f in files
-                if f.endswith(".py")
+                "test_" not in f and not f.startswith("tests/") for f in files if f.endswith(".py")
             )
             if has_impl_files and not has_test_files:
                 return GuardrailResult(
@@ -447,9 +447,7 @@ class TDDVerificationRule(GuardrailRule):
                     severity=self.severity,
                     violation_details={
                         "reason": "Implementation files written without corresponding test files",
-                        "impl_files": [
-                            f for f in files if "test_" not in f and f.endswith(".py")
-                        ],
+                        "impl_files": [f for f in files if "test_" not in f and f.endswith(".py")],
                     },
                 )
 
@@ -507,7 +505,7 @@ class SecurityScanRule(GuardrailRule):
     name = "security_scan"
     severity = "high"
 
-    _PATTERNS: list[tuple[str, re.Pattern]] = [
+    _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ("sql_injection", _SQL_INJECTION_RE),
         ("hardcoded_secrets", _HARDCODED_SECRET_RE),
         ("xss", _XSS_RE),
@@ -518,7 +516,7 @@ class SecurityScanRule(GuardrailRule):
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> GuardrailResult:
         if output_type != "code":
             return GuardrailResult(
@@ -569,24 +567,28 @@ class SpecComplianceRule(GuardrailRule):
 
     def __init__(self, model: str = "anthropic:claude-haiku-4-5-20251001") -> None:
         self.model = model
-        self._check_fn: Callable | None = None
+        self._check_fn: Callable[..., Any] | None = None
 
     def check(
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> GuardrailResult:
         if context is None:
             return GuardrailResult(
-                rule_name=self.name, passed=True, severity=self.severity,
+                rule_name=self.name,
+                passed=True,
+                severity=self.severity,
             )
 
         prd = context.get("prd")
         acceptance_criteria = context.get("acceptance_criteria")
         if not prd or not acceptance_criteria:
             return GuardrailResult(
-                rule_name=self.name, passed=True, severity=self.severity,
+                rule_name=self.name,
+                passed=True,
+                severity=self.severity,
             )
 
         task_description = context.get("task_description", "")
@@ -606,7 +608,9 @@ class SpecComplianceRule(GuardrailRule):
             )
 
         return GuardrailResult(
-            rule_name=self.name, passed=True, severity=self.severity,
+            rule_name=self.name,
+            passed=True,
+            severity=self.severity,
         )
 
     def _llm_check(
@@ -615,7 +619,7 @@ class SpecComplianceRule(GuardrailRule):
         prd: str,
         acceptance_criteria: list[str],
         task_description: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Call LLM to check output against spec."""
         from pydantic import BaseModel
         from pydantic_ai import Agent
@@ -628,7 +632,7 @@ class SpecComplianceRule(GuardrailRule):
 
         class SpecComplianceResult(BaseModel):
             violations: list[RequirementVerdict]
-            coverage: dict  # total_requirements, satisfied, not_satisfied, not_applicable
+            coverage: dict[str, int]  # total_requirements, satisfied, not_satisfied, not_applicable
 
         criteria_text = "\n".join(f"- {c}" for c in acceptance_criteria)
 
@@ -660,9 +664,7 @@ class SpecComplianceRule(GuardrailRule):
         result = agent.run_sync(prompt)
         return {
             "violations": [
-                v.model_dump()
-                for v in result.output.violations
-                if v.verdict == "NOT_SATISFIED"
+                v.model_dump() for v in result.output.violations if v.verdict == "NOT_SATISFIED"
             ],
             "coverage": result.output.coverage,
         }
@@ -686,19 +688,19 @@ def emit_guardrail_violation(
     """
     from etc_platform.events import EventType, emit_event
 
-    critical_failures = [
-        r for r in results if not r.passed and r.severity == "critical"
-    ]
+    critical_failures = [r for r in results if not r.passed and r.severity == "critical"]
     if not critical_failures:
         return
 
     violation_details = []
     for r in critical_failures:
-        violation_details.append({
-            "rule_name": r.rule_name,
-            "severity": r.severity,
-            "violation_details": r.violation_details,
-        })
+        violation_details.append(
+            {
+                "rule_name": r.rule_name,
+                "severity": r.severity,
+                "violation_details": r.violation_details,
+            }
+        )
 
     emit_event(
         conn=conn,
@@ -730,7 +732,7 @@ def override_guardrail_check(
     Re-evaluates the parent agent_output acceptance.
     Returns True if the override was applied.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Update the check
     result = conn.execute(
@@ -749,7 +751,7 @@ def override_guardrail_check(
     if row is None:
         return False
 
-    output_id = row["output_id"]
+    output_id = cast("Any", row)["output_id"]
 
     # Re-evaluate acceptance: check if any critical failures remain
     remaining_failures = conn.execute(
@@ -760,7 +762,7 @@ def override_guardrail_check(
         (output_id,),
     ).fetchone()
 
-    if remaining_failures["cnt"] == 0:
+    if remaining_failures is None or cast("Any", remaining_failures)["cnt"] == 0:
         conn.execute(
             "UPDATE agent_outputs SET accepted = TRUE WHERE id = %s",
             (output_id,),
@@ -773,7 +775,7 @@ def list_guardrail_checks(
     conn: psycopg.Connection,
     project_id: UUID,
     failed_only: bool = False,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """List guardrail checks for a project's current phase outputs."""
     query = """
         SELECT gc.id, gc.rule_name, gc.passed, gc.severity,
@@ -788,7 +790,7 @@ def list_guardrail_checks(
         JOIN execution_graphs eg ON en.graph_id = eg.id
         WHERE eg.project_id = %s
     """
-    params: list = [project_id]
+    params: list[Any] = [project_id]
 
     if failed_only:
         query += " AND gc.passed = FALSE"
@@ -796,7 +798,7 @@ def list_guardrail_checks(
     query += " ORDER BY gc.checked_at DESC"
 
     rows = conn.execute(query, params).fetchall()
-    return [dict(r) for r in rows]
+    return [dict(cast("Any", r)) for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -818,7 +820,7 @@ class GuardrailMiddleware:
         self,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> list[GuardrailResult]:
         """Run all guardrail rules against the content."""
         return [rule.check(content, output_type, context) for rule in self.rules]
@@ -838,7 +840,8 @@ class GuardrailMiddleware:
         for r in results:
             conn.execute(
                 """
-                INSERT INTO guardrail_checks (output_id, rule_name, passed, severity, violation_details)
+                INSERT INTO guardrail_checks
+                    (output_id, rule_name, passed, severity, violation_details)
                 VALUES (%s, %s, %s, %s, %s)
                 """,
                 (
@@ -851,9 +854,7 @@ class GuardrailMiddleware:
             )
 
         # Determine acceptance: rejected if any critical rule fails
-        has_critical_fail = any(
-            not r.passed and r.severity == "critical" for r in results
-        )
+        has_critical_fail = any(not r.passed and r.severity == "critical" for r in results)
         accepted = not has_critical_fail
 
         summary = {
@@ -885,7 +886,7 @@ class GuardrailMiddleware:
         output_id: UUID,
         content: str,
         output_type: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
         node_id: UUID | None = None,
         project_id: UUID | None = None,
     ) -> list[GuardrailResult]:
@@ -904,7 +905,7 @@ class GuardrailMiddleware:
         return results
 
     @staticmethod
-    def get_check_results(conn: psycopg.Connection, output_id: UUID) -> list[dict]:
+    def get_check_results(conn: psycopg.Connection, output_id: UUID) -> list[dict[str, Any]]:
         """Get all guardrail check results for an output."""
         rows = conn.execute(
             """
@@ -915,4 +916,4 @@ class GuardrailMiddleware:
             """,
             (output_id,),
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [dict(cast("Any", row)) for row in rows]

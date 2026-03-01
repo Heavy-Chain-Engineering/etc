@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import json
-from uuid import UUID
-
-import psycopg
-import pytest
+from typing import TYPE_CHECKING
 
 from etc_platform.guardrails import (
     AntiPatternScanRule,
@@ -14,17 +10,22 @@ from etc_platform.guardrails import (
     DomainFidelityRule,
     GuardrailMiddleware,
     GuardrailResult,
-    GuardrailRule,
     OutputSchemaValidationRule,
     SecurityScanRule,
     SpecComplianceRule,
     TDDVerificationRule,
 )
 
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _setup_output_chain(db: psycopg.Connection, output_type: str = "research_report") -> UUID:
     """Create the full FK chain: project -> phase -> graph -> node -> run -> output.
@@ -263,7 +264,11 @@ class TestDomainFidelityRule:
         """Fails when check function finds violations."""
         rule = DomainFidelityRule()
         rule._check_fn = lambda content, axioms: [
-            {"axiom": "Status is always computed", "contradiction": "Output says status is stored", "excerpt": "status field is persisted"}
+            {
+                "axiom": "Status is always computed",
+                "contradiction": "Output says status is stored",
+                "excerpt": "status field is persisted",
+            }
         ]
         result = rule.check(
             "The status field is persisted in the database",
@@ -408,17 +413,25 @@ class UserService:
 
     def test_fails_with_impl_files_no_test_files(self) -> None:
         rule = TDDVerificationRule()
-        result = rule.check("code", "code", context={
-            "files_written": ["src/service.py", "src/models.py"],
-        })
+        result = rule.check(
+            "code",
+            "code",
+            context={
+                "files_written": ["src/service.py", "src/models.py"],
+            },
+        )
         assert result.passed is False
         assert "impl_files" in result.violation_details
 
     def test_passes_with_test_and_impl_files(self) -> None:
         rule = TDDVerificationRule()
-        result = rule.check("code", "code", context={
-            "files_written": ["src/service.py", "tests/test_service.py"],
-        })
+        result = rule.check(
+            "code",
+            "code",
+            context={
+                "files_written": ["src/service.py", "tests/test_service.py"],
+            },
+        )
         assert result.passed is True
 
     def test_rule_attributes(self) -> None:
@@ -511,7 +524,7 @@ class TestGuardrailMiddleware:
 
         # guardrail_results should be a JSONB summary
         gr = output["guardrail_results"]
-        assert isinstance(gr, dict) or isinstance(gr, str)
+        assert isinstance(gr, (dict, str))
 
     def test_record_checks_accepts_on_all_pass(self, db: psycopg.Connection) -> None:
         output_id = _setup_output_chain(db)
@@ -619,10 +632,10 @@ class TestSecurityScanRule:
 
     def test_passes_clean_code(self) -> None:
         rule = SecurityScanRule()
-        code = '''
+        code = """
 def get_user(conn, user_id):
     return conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
-'''
+"""
         result = rule.check(code, "code")
         assert result.passed is True
 
@@ -635,10 +648,10 @@ def get_user(conn, user_id):
 
     def test_multiple_violations(self) -> None:
         rule = SecurityScanRule()
-        code = '''
+        code = """
 password = "supersecretpass123"
 cursor.execute(f"SELECT * FROM users WHERE name = {name}")
-'''
+"""
         result = rule.check(code, "code")
         assert result.passed is False
         assert len(result.violation_details) >= 2
@@ -674,7 +687,8 @@ class TestSpecComplianceRule:
     def test_passes_when_acceptance_criteria_empty(self) -> None:
         rule = SpecComplianceRule()
         result = rule.check(
-            "some output", "code",
+            "some output",
+            "code",
             context={"prd": "some prd", "acceptance_criteria": []},
         )
         assert result.passed is True
@@ -714,7 +728,8 @@ class TestSpecComplianceRule:
         assert result.severity == "critical"
         assert "violations" in result.violation_details
         assert len(result.violation_details["violations"]) == 1
-        assert result.violation_details["violations"][0]["requirement"] == "Must support date filtering"
+        violation = result.violation_details["violations"][0]
+        assert violation["requirement"] == "Must support date filtering"
 
     def test_no_violation(self) -> None:
         """Passes when check function finds all requirements satisfied."""
@@ -744,8 +759,18 @@ class TestSpecComplianceRule:
         rule = SpecComplianceRule()
         rule._check_fn = lambda content, prd, criteria, task_desc: {
             "violations": [
-                {"requirement": "Req 1", "verdict": "NOT_SATISFIED", "evidence": "Missing", "output_excerpt": "..."},
-                {"requirement": "Req 2", "verdict": "NOT_SATISFIED", "evidence": "Missing", "output_excerpt": "..."},
+                {
+                    "requirement": "Req 1",
+                    "verdict": "NOT_SATISFIED",
+                    "evidence": "Missing",
+                    "output_excerpt": "...",
+                },
+                {
+                    "requirement": "Req 2",
+                    "verdict": "NOT_SATISFIED",
+                    "evidence": "Missing",
+                    "output_excerpt": "...",
+                },
             ],
             "coverage": {
                 "total_requirements": 3,
@@ -772,13 +797,24 @@ class TestSpecComplianceRule:
         rule = SpecComplianceRule()
         rule._check_fn = lambda content, prd, criteria, task_desc: {
             "violations": [
-                {"requirement": "Must include summary", "verdict": "NOT_SATISFIED", "evidence": "Missing", "output_excerpt": "..."},
+                {
+                    "requirement": "Must include summary",
+                    "verdict": "NOT_SATISFIED",
+                    "evidence": "Missing",
+                    "output_excerpt": "...",
+                },
             ],
-            "coverage": {"total_requirements": 1, "satisfied": 0, "not_satisfied": 1, "not_applicable": 0},
+            "coverage": {
+                "total_requirements": 1,
+                "satisfied": 0,
+                "not_satisfied": 1,
+                "not_applicable": 0,
+            },
         }
         for output_type in ("code", "research_report", "prd", "design", "test"):
             result = rule.check(
-                "some content", output_type,
+                "some content",
+                output_type,
                 context={
                     "prd": "PRD text",
                     "acceptance_criteria": ["Must include summary"],
@@ -790,14 +826,24 @@ class TestSpecComplianceRule:
     def test_task_description_passed_to_check_fn(self) -> None:
         """Verifies task_description is forwarded to the check function."""
         captured = {}
+
         def capture_fn(content, prd, criteria, task_desc):
             captured["task_desc"] = task_desc
-            return {"violations": [], "coverage": {"total_requirements": 0, "satisfied": 0, "not_satisfied": 0, "not_applicable": 0}}
+            return {
+                "violations": [],
+                "coverage": {
+                    "total_requirements": 0,
+                    "satisfied": 0,
+                    "not_satisfied": 0,
+                    "not_applicable": 0,
+                },
+            }
 
         rule = SpecComplianceRule()
         rule._check_fn = capture_fn
         rule.check(
-            "output", "code",
+            "output",
+            "code",
             context={
                 "prd": "PRD",
                 "acceptance_criteria": ["AC1"],
