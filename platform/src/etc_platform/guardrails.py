@@ -811,6 +811,7 @@ class GuardrailMiddleware:
         self.rules: list[GuardrailRule] = rules or [
             AntiPatternScanRule(),
             OutputSchemaValidationRule(),
+            SpecComplianceRule(),
         ]
 
     def run_checks(

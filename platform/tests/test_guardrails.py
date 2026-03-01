@@ -440,7 +440,7 @@ class TestGuardrailMiddleware:
             output_type="research_report",
         )
         assert isinstance(results, list)
-        assert len(results) == 2  # default two rules
+        assert len(results) == 3  # default three rules
         assert all(isinstance(r, GuardrailResult) for r in results)
 
     def test_all_rules_executed(self) -> None:
@@ -452,6 +452,13 @@ class TestGuardrailMiddleware:
         rule_names = {r.rule_name for r in results}
         assert "anti_pattern_scan" in rule_names
         assert "output_schema_validation" in rule_names
+        assert "spec_compliance" in rule_names
+
+    def test_spec_compliance_in_default_rules(self) -> None:
+        """SpecComplianceRule should be in the default middleware rule set."""
+        mw = GuardrailMiddleware()
+        rule_names = {rule.name for rule in mw.rules}
+        assert "spec_compliance" in rule_names
 
     def test_custom_rules(self) -> None:
         """Middleware accepts a custom list of rules."""
@@ -473,7 +480,7 @@ class TestGuardrailMiddleware:
             "SELECT rule_name, passed, severity FROM guardrail_checks WHERE output_id = %s",
             (output_id,),
         ).fetchall()
-        assert len(rows) == 2
+        assert len(rows) == 3
         rule_names = {r["rule_name"] for r in rows}
         assert "anti_pattern_scan" in rule_names
         assert "output_schema_validation" in rule_names
@@ -537,13 +544,13 @@ class TestGuardrailMiddleware:
         )
 
         assert isinstance(results, list)
-        assert len(results) == 2
+        assert len(results) == 3
 
         # Verify DB was written
         rows = db.execute(
             "SELECT * FROM guardrail_checks WHERE output_id = %s", (output_id,)
         ).fetchall()
-        assert len(rows) == 2
+        assert len(rows) == 3
 
         output = db.execute(
             "SELECT accepted FROM agent_outputs WHERE id = %s", (output_id,)
@@ -562,7 +569,7 @@ class TestGuardrailMiddleware:
 
         results = GuardrailMiddleware.get_check_results(db, output_id)
         assert isinstance(results, list)
-        assert len(results) == 2
+        assert len(results) == 3
         # Each result should be a dict with expected keys
         for r in results:
             assert "rule_name" in r
