@@ -85,7 +85,7 @@ The `getting-started/` directory contains a spec for a project progress dashboar
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Agents | 22 | SDLC role definitions (SEM orchestrator, PM, architect, developers, reviewers, etc.) |
+| Agents | 24 | SDLC role definitions (SEM orchestrator, PM, architect, developers, reviewers, etc.) |
 | Standards | 17 | Engineering standards across 6 categories (process, code, testing, architecture, security, quality) |
 | Hooks | 3 | TDD enforcement scripts (test-exists check, dirty marker, verification gate) |
 | Tracker | 1 | SDLC phase state tracker with DoD gating |
@@ -109,7 +109,7 @@ Human (stakeholder, SME, final authority)
 ## Repo Structure
 
 ```
-agents/              22 agent definitions (source of truth)
+agents/              24 agent definitions (source of truth)
 standards/           17 engineering standards
   process/             SDLC phases, TDD workflow, code review, definition of done
   code/                Clean code, error handling, typing, Python conventions
@@ -122,17 +122,28 @@ hooks/               3 TDD enforcement scripts
 getting-started/     Onboarding exercise (spec only — implementation is the exercise)
 settings-hooks.json  Hook wiring template
 install.sh           Bootstrap installer
-docs/                Design documents and plans
+platform/            v2 orchestration engine (Python, PydanticAI, Postgres)
+  src/etc_platform/    Core modules (orchestrator, graph engine, guardrails, etc.)
+  sql/                 Postgres schema migrations
+  tests/               24 test files, 66+ tests
+docs/                Design documents, PRDs, and plans
 ```
 
 ## Background
 
 This explores ideas from [Industrialized System Synthesis](docs/plans/2026-02-25-coding-harness-design.md#connection-to-industrialized-system-synthesis) — the notion that specs act as genotype and agent teams express them into running systems. Whether that holds up in practice is what we're finding out.
 
+## v2: Orchestration Platform
+
+The `platform/` directory contains the v2 durable orchestration engine — an event-driven Python platform that persists all state to Postgres, enforces guardrails as middleware (not advice), and supports recursive task decomposition.
+
+**[How It Works](platform/HOW-IT-WORKS.md)** — full architecture guide with data flow diagrams.
+
 ## Status
 
-Phase 1 complete. User-level platform built and verified. Not yet tested on a real project.
+Phase 1 complete. User-level platform built and verified. v2 orchestration platform under active development.
 
 - [Design Document](docs/plans/2026-02-25-coding-harness-design.md)
 - [Implementation Plan](docs/plans/2026-02-25-phase1-user-level-platform.md)
-- [Design Notes](docs/plans/harness-design-notes.md)
+- [v2 PRD](docs/vision/v2-orchestration-platform-prd.md)
+- [Spec Enforcer Design](docs/plans/2026-02-28-spec-enforcer-design.md)
