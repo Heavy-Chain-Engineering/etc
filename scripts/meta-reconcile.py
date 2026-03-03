@@ -8,7 +8,7 @@ Finds stale .meta/ descriptions in a project and either:
 3. Shows detailed stale info (--verbose)
 
 This script handles the bookkeeping. The actual regeneration is done by
-the brownfield-bootstrapper agent, which reads directory contents and
+the project-bootstrapper agent, which reads directory contents and
 produces .meta/description.md files.
 
 Usage:
@@ -82,7 +82,7 @@ def cmd_list(root: Path, verbose: bool = False) -> int:
             print()
 
     if not verbose:
-        print(f"\nRun with --verbose for details, or invoke brownfield-bootstrapper to regenerate.")
+        print(f"\nRun with --verbose for details, or invoke project-bootstrapper to regenerate.")
 
     return len(markers)
 

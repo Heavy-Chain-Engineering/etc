@@ -152,7 +152,7 @@ Litmus test: "If we ship without this, does the system still solve the core prob
 
 ## Error Recovery
 - IF standards file missing: note gap in Open Questions, continue with available context.
-- IF `.meta/description.md` missing: ask stakeholder for system description, or suggest brownfield-bootstrapper.
+- IF `.meta/description.md` missing: ask stakeholder for system description, or suggest project-bootstrapper.
 - IF stakeholder unavailable: document assumptions, mark "Draft -- Assumptions Unvalidated," flag for PO.
 - IF existing PRD conflicts with new request: surface conflict, ask stakeholder to resolve first.
 

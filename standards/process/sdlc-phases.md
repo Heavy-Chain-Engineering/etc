@@ -13,12 +13,12 @@
 
 ### Bootstrap Phase
 **Purpose:** Derive system understanding from existing code (brownfield) or establish initial structure (greenfield).
-**Team:** Brownfield Bootstrapper (solo — internally spawns sub-teams per directory)
+**Team:** Project Bootstrapper (solo — internally spawns sub-teams per directory)
 **Output:** Complete `.meta/` description tree, gap analysis
 
 **How to invoke:**
 ```
-"Bootstrap this codebase — use the brownfield-bootstrapper agent to analyze the existing code and generate .meta/ descriptions."
+"Bootstrap this codebase — use the project-bootstrapper agent to analyze the existing code and generate .meta/ descriptions."
 ```
 
 ### Spec Phase
@@ -161,7 +161,7 @@
 - Agents stand down when their phase completes
 - **Watchdog agents** (Code Reviewer, Verifier, Security Reviewer) run as background tasks during Build
 - Process Evaluator runs continuously across all phases
-- Brownfield Bootstrapper runs at bootstrap AND after significant changes (reconciliation)
+- Project Bootstrapper runs at bootstrap (one-time onboarding)
 
 ## Team Deployment via Agent Teams
 
@@ -176,7 +176,7 @@ All agents are deployed using Claude Code's agent teams feature (Task tool). The
 
 | Phase | Foreground | Background | Tools |
 |-------|-----------|------------|-------|
-| Bootstrap | brownfield-bootstrapper | — | — |
+| Bootstrap | project-bootstrapper | — | — |
 | Spec | product-manager, product-owner, domain-modeler, researcher | — | spec-kit /specify |
 | Design | architect, ux-designer, ui-designer, multi-tenant-auditor (if SaaS) | — | — |
 | Decompose | product-manager, architect | — | TaskMaster MCP |

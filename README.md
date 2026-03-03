@@ -33,7 +33,7 @@ The harness is driven by the **SEM** (Software Engineering Manager) agent — an
 ```
 "Use the sem agent to bootstrap this codebase. We need to understand what's here before we start."
 ```
-The SEM deploys the brownfield-bootstrapper to analyze your code and generate `.meta/` descriptions.
+The SEM deploys the project-bootstrapper to analyze your code and generate `.meta/` descriptions.
 
 **Greenfield (new feature or project):**
 ```
@@ -47,7 +47,7 @@ The SEM walks through seven phases. Each has a definition of done that must be m
 
 | Phase | What Happens | Agents Deployed | Key Tool |
 |-------|-------------|-----------------|----------|
-| **Bootstrap** | Analyze existing code, generate `.meta/` tree | brownfield-bootstrapper | — |
+| **Bootstrap** | Analyze existing code, generate `.meta/` tree | project-bootstrapper | — |
 | **Spec** | Gather requirements, write PRDs | product-manager, product-owner, domain-modeler | spec-kit `/specify` |
 | **Design** | Create architecture, ADRs, interaction flows | architect, ux-designer, ui-designer | — |
 | **Decompose** | Break PRDs into task graph | product-manager, architect | TaskMaster |
@@ -85,7 +85,7 @@ The `getting-started/` directory contains a spec for a project progress dashboar
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Agents | 24 | SDLC role definitions (SEM orchestrator, PM, architect, developers, reviewers, etc.) |
+| Agents | 23 | SDLC role definitions (SEM orchestrator, PM, architect, developers, reviewers, etc.) |
 | Standards | 17 | Engineering standards across 6 categories (process, code, testing, architecture, security, quality) |
 | Hooks | 3 | TDD enforcement scripts (test-exists check, dirty marker, verification gate) |
 | Tracker | 1 | SDLC phase state tracker with DoD gating |
@@ -109,7 +109,7 @@ Human (stakeholder, SME, final authority)
 ## Repo Structure
 
 ```
-agents/              24 agent definitions (source of truth)
+agents/              23 agent definitions (source of truth)
 standards/           17 engineering standards
   process/             SDLC phases, TDD workflow, code review, definition of done
   code/                Clean code, error handling, typing, Python conventions

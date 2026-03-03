@@ -39,7 +39,7 @@ if len(d.get('changed_files', [])) > 3:
 done <<< "$STALE_FILES"
 
 echo ""
-echo "Run 'python3 scripts/meta-reconcile.py' or invoke the brownfield-bootstrapper to update."
+echo "Run 'python3 scripts/meta-reconcile.py' or invoke the project-bootstrapper to update."
 echo ""
 
 if [ "${META_BLOCK_PUSH:-0}" = "1" ]; then

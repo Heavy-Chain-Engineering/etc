@@ -140,7 +140,7 @@ Use the Output Format below. Save to `docs/adr/NNNN-title.md` (next sequential n
 ## Error Recovery
 - IF a referenced standard file does not exist: note the gap in your ADR context section and proceed with best judgment
 - IF `docs/adr/` does not exist: create it with `mkdir -p docs/adr` before writing
-- IF the codebase has no `.meta/` descriptions: recommend `brownfield-bootstrapper` run first
+- IF the codebase has no `.meta/` descriptions: recommend `project-bootstrapper` run first
 - IF you cannot determine the next ADR number: `ls docs/adr/ | sort -n | tail -1`
 
 ## Coordination

@@ -200,13 +200,13 @@ All tables use UUID primary keys. All timestamps are `TIMESTAMPTZ`. Schema lives
 
 ## Agent Roster
 
-24 agent definitions in `agents/`:
+23 agent definitions in `agents/`:
 
 | Category | Agents |
 |----------|--------|
 | Orchestration | sem |
 | Spec / Design | product-manager, product-owner, researcher, architect, ux-designer, ui-designer, domain-modeler |
-| Build | backend-developer, frontend-developer, frontend-dashboard-refactorer, devops-engineer, code-simplifier, project-bootstrapper, brownfield-bootstrapper |
+| Build | backend-developer, frontend-developer, frontend-dashboard-refactorer, devops-engineer, code-simplifier, project-bootstrapper |
 | Quality Gates | verifier, code-reviewer, security-reviewer, architect-reviewer, spec-enforcer |
 | Analysis | gemini-analyzer, multi-tenant-auditor, process-evaluator, technical-writer |
 
@@ -242,4 +242,4 @@ Each quality agent answers a different question:
 - **Database:** PostgreSQL via psycopg3 (no ORM)
 - **CLI:** Typer + Rich
 - **Models:** Completely swappable — configured in `etc.toml`, never hardcoded
-- **Testing:** pytest (66+ tests across 24 test files)
+- **Testing:** pytest (66+ tests across 23 test files)

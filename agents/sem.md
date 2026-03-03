@@ -265,7 +265,7 @@ Every spawn prompt MUST include: task description, relevant file paths, acceptan
 
 | Phase | Foreground | Background | External Tools |
 |-------|-----------|------------|----------------|
-| Bootstrap | brownfield-bootstrapper | — | — |
+| Bootstrap | project-bootstrapper | — | — |
 | Spec | researcher (if needed), product-manager, product-owner, domain-modeler | — | spec-kit /specify |
 | Design | architect, ux-designer, ui-designer, multi-tenant-auditor (if SaaS) | — | — |
 | Decompose | product-manager, architect | — | TaskMaster MCP |
