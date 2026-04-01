@@ -1,0 +1,28 @@
+[project]
+name = "etc-system-engineering"
+version = "1.0.0"
+description = "Engineering Team, Codified — SDLC harness for AI-assisted software development"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+compile-sdlc = "compile_sdlc:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=9.0",
+    "pytest-cov>=7.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]

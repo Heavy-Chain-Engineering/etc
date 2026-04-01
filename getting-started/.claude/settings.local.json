@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(cat:*)",
+      "Bash(pip install:*)",
+      "Bash(echo === INV-001: Checking for hardcoded paths ===:*)",
+      "Bash(open:*)"
+    ]
+  }
+}

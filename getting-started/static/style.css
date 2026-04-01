@@ -1,0 +1,470 @@
+/* SDLC Dashboard — Styles */
+
+/* ===== CSS Custom Properties (Light Theme) ===== */
+:root,
+[data-theme="light"] {
+    --bg-primary: #f5f7fa;
+    --bg-card: #ffffff;
+    --bg-header: #1a1a2e;
+    --text-primary: #2d3748;
+    --text-secondary: #718096;
+    --text-header: #ffffff;
+    --border-color: #e2e8f0;
+    --accent: #4c6ef5;
+    --accent-light: #748ffc;
+    --success: #38a169;
+    --warning: #d69e2e;
+    --danger: #e53e3e;
+    --info: #3182ce;
+    --pending-bg: #edf2f7;
+    --pending-text: #718096;
+    --active-bg: #ebf4ff;
+    --active-border: #4c6ef5;
+    --completed-bg: #f0fff4;
+    --completed-text: #38a169;
+    --progress-bg: #e2e8f0;
+    --progress-fill: #4c6ef5;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* ===== Dark Theme ===== */
+[data-theme="dark"] {
+    --bg-primary: #1a202c;
+    --bg-card: #2d3748;
+    --bg-header: #0d1117;
+    --text-primary: #e2e8f0;
+    --text-secondary: #a0aec0;
+    --text-header: #e2e8f0;
+    --border-color: #4a5568;
+    --pending-bg: #2d3748;
+    --pending-text: #a0aec0;
+    --active-bg: #2a4365;
+    --active-border: #63b3ed;
+    --completed-bg: #22543d;
+    --completed-text: #68d391;
+    --progress-bg: #4a5568;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ===== Reset & Base ===== */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+        Ubuntu, Cantarell, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* ===== Header ===== */
+.header {
+    background: var(--bg-header);
+    color: var(--text-header);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: var(--shadow-lg);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.header-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.current-phase-badge {
+    background: var(--accent);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.connection-status {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.theme-toggle {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: var(--text-header);
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: background 0.2s;
+}
+
+.theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ===== Dashboard Grid ===== */
+.dashboard {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 2rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+/* ===== Cards ===== */
+.card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ===== Phase Timeline ===== */
+.phase-timeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+}
+
+.phase-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 100px;
+    position: relative;
+}
+
+.phase-dot {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    z-index: 1;
+    transition: all 0.3s ease;
+}
+
+.phase-dot.pending {
+    background: var(--pending-bg);
+    color: var(--pending-text);
+    border: 2px solid var(--border-color);
+}
+
+.phase-dot.active {
+    background: var(--accent);
+    color: white;
+    border: 3px solid var(--accent-light);
+    box-shadow: 0 0 0 4px rgba(76, 110, 245, 0.2);
+    transform: scale(1.15);
+}
+
+.phase-dot.completed {
+    background: var(--success);
+    color: white;
+    border: 2px solid var(--success);
+}
+
+.phase-label {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.phase-node.active .phase-label {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.phase-node.completed .phase-label {
+    color: var(--success);
+}
+
+.phase-connector {
+    flex: 0.5;
+    height: 3px;
+    background: var(--border-color);
+    margin-top: -18px;
+    align-self: flex-start;
+    margin-left: -4px;
+    margin-right: -4px;
+}
+
+.phase-connector.completed {
+    background: var(--success);
+}
+
+/* ===== DoD Section ===== */
+.dod-phase-label {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+.progress-bar-container {
+    background: var(--progress-bg);
+    border-radius: 9999px;
+    height: 24px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.progress-bar {
+    background: linear-gradient(90deg, var(--accent), var(--accent-light));
+    height: 100%;
+    border-radius: 9999px;
+    transition: width 0.5s ease;
+    min-width: 0;
+    width: 0%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.progress-text {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: white;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.dod-checklist {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.dod-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    background: var(--bg-primary);
+    transition: background 0.2s;
+}
+
+.dod-item.done {
+    opacity: 0.7;
+}
+
+.dod-check {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    margin-top: 2px;
+}
+
+.dod-check.checked {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+}
+
+.dod-text {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* ===== Task Summary ===== */
+.task-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-box {
+    text-align: center;
+    padding: 1rem;
+    border-radius: 8px;
+    background: var(--bg-primary);
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
+}
+
+.stat-box.total .stat-value { color: var(--text-primary); }
+.stat-box.completed .stat-value { color: var(--success); }
+.stat-box.in-progress .stat-value { color: var(--info); }
+.stat-box.pending .stat-value { color: var(--warning); }
+.stat-box.blocked .stat-value { color: var(--danger); }
+
+/* ===== Task Chart (CSS bar chart) ===== */
+.task-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.chart-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.chart-label {
+    width: 90px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-align: right;
+    color: var(--text-secondary);
+}
+
+.chart-bar-container {
+    flex: 1;
+    height: 20px;
+    background: var(--progress-bg);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.chart-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    min-width: 0;
+}
+
+.chart-bar.completed { background: var(--success); }
+.chart-bar.in-progress { background: var(--info); }
+.chart-bar.pending { background: var(--warning); }
+.chart-bar.blocked { background: var(--danger); }
+.chart-bar.deferred { background: var(--text-secondary); }
+
+.chart-count {
+    width: 30px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: left;
+}
+
+/* ===== History Table ===== */
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.history-table th,
+.history-table td {
+    padding: 0.625rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-table th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+}
+
+.history-table tr:last-child td {
+    border-bottom: none;
+}
+
+.history-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 2rem;
+    font-style: italic;
+}
+
+/* ===== Error Banner ===== */
+.error-banner {
+    background: #fff5f5;
+    border: 1px solid var(--danger);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    color: var(--danger);
+    font-size: 0.9rem;
+}
+
+[data-theme="dark"] .error-banner {
+    background: #3b1a1a;
+}
+
+/* ===== Footer ===== */
+.footer {
+    text-align: center;
+    padding: 1.5rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+}
+
+/* ===== Empty / Loading States ===== */
+.loading-text, .empty-text {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 2rem;
+    font-style: italic;
+}

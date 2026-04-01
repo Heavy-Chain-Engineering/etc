@@ -1,0 +1,59 @@
+{
+  "Bootstrap": [
+    ".meta/ description tree generated for all top-level directories",
+    "Gap analysis produced (missing tests, undocumented APIs, arch concerns)",
+    "Project structure understood and documented"
+  ],
+  "Spec": [
+    "Project intake completed — type classified, source material triaged (docs/plans/)",
+    "Domain briefing reviewed or created (docs/domain-briefing.md)",
+    "Domain fidelity verified — human confirmed core concept understanding",
+    "Research plan produced and approved by human (if research needed)",
+    "PRD written with /specify and reviewed by stakeholder",
+    "Common architectural concerns checklist completed (multi-tenancy, auth, billing, etc.)",
+    "Acceptance criteria defined for all features",
+    "Domain model validated by domain-modeler agent",
+    "Edge cases and error scenarios documented"
+  ],
+  "Design": [
+    "Architecture Decision Records (ADRs) written for key decisions",
+    "System boundaries and component interfaces defined",
+    "UX interaction flows designed (if applicable)",
+    "Technical risks identified and mitigated"
+  ],
+  "Decompose": [
+    "All PRD items decomposed into tasks via TaskMaster",
+    "Task dependencies mapped and ordered",
+    "Each task has acceptance criteria and test strategy",
+    "Every task has a t-shirt size (XS/S/M/L/XL)",
+    "Architect has reviewed technical detail on all tasks"
+  ],
+  "Build": [
+    "All tasks implemented with TDD (red/green)",
+    "All tests passing",
+    "Coverage meets project threshold",
+    "Code reviewed by code-reviewer agent",
+    "Security review passed",
+    "Docker Compose (or project run command) configured for local dev",
+    "No blocking issues open"
+  ],
+  "Verify": [
+    "Stack stood up via docker-compose (or project run command)",
+    "SEM provided human with access URL and test instructions",
+    "Human has completed acceptance testing",
+    "Feedback addressed or deferred with justification"
+  ],
+  "Ship": [
+    "Documentation updated (API docs, README, .meta/)",
+    "Deployment configuration verified",
+    "CI pipeline passing all stages",
+    "Final verification by verifier agent"
+  ],
+  "Evaluate": [
+    "Metrics collected and analyzed",
+    "Release notes written to docs/release-notes/ with velocity metric",
+    "Retrospective completed with process-evaluator agent",
+    "Improvement recommendations documented",
+    "Lessons learned captured for next iteration"
+  ]
+}

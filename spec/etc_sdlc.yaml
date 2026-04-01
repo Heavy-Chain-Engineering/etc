@@ -1,0 +1,586 @@
+# ═════���═════════════════════════════════════════════════════════════════════
+# etc — Engineering Team, Codified
+# SDLC Specification v1.0
+#
+# This file is the SINGLE SOURCE OF TRUTH for the engineering harness.
+# Everything else — hooks, scripts, agents, skills, standards — is a
+# compiled artifact derived from this specification.
+#
+# To modify the harness: edit this file, then run:
+#   python3 compile-sdlc.py spec/etc_sdlc.yaml
+#   ./install.sh
+#
+# ═══════════════════════════════════════════════════════════════════════════
+
+version: "1.0"
+
+# ─── Defaults ────────────────────────────────────────────────────────────
+# Applied to all gates unless overridden at the gate level.
+defaults:
+  model: sonnet                # Default model for prompt/agent hooks
+  on_failure: block            # block = give agent feedback to retry
+  on_loop: escalate            # escalate = fail loud, kill agent, tell human
+  max_retries: 2               # After N retries on same gate, escalate
+  coverage_threshold: 98       # Minimum test coverage percentage
+
+# ─── Task File Format ───────────────────────────────────────────────────
+# Tasks are the contract between the orchestrator and subagents.
+# Generated during PRD decomposition by the /implement skill.
+# Stored in: .etc_sdlc/tasks/{task_id}-{slug}.yaml
+task_format:
+  location: .etc_sdlc/tasks
+  fields:
+    task_id:          { required: true,  type: string, description: "Unique task identifier (e.g., '001')" }
+    title:            { required: true,  type: string, description: "Human-readable task title" }
+    assigned_agent:   { required: true,  type: string, description: "Agent role from agents section (e.g., 'backend-developer')" }
+    status:           { required: true,  type: enum,   values: [pending, in_progress, completed, blocked, escalated] }
+    requires_reading: { required: true,  type: list,   description: "Files the agent MUST read before implementing" }
+    files_in_scope:   { required: true,  type: list,   description: "Files the agent is allowed to create/modify" }
+    acceptance_criteria: { required: true, type: list,  description: "Measurable criteria — all must pass for task to be 'done'" }
+    dependencies:     { required: false, type: list,   description: "Task IDs that must complete before this task starts" }
+    context:          { required: false, type: string,  description: "Additional context from the PRD or decomposition" }
+
+# ─── Gates ────���─────────────────────────────────────���────────────────────
+# Each gate compiles to one or more hooks in settings-hooks.json.
+# Gates are the mechanical enforcement of engineering practices.
+#
+# Types:
+#   command  — deterministic shell script, fast (<1s), binary pass/fail
+#   prompt   — single LLM call with role, judgment-based (~5s)
+#   agent    — multi-turn LLM with tool access, verification-based (~30-60s)
+#
+# Hooks under the same event run in parallel. Most restrictive result wins.
+# This enforces an ALL-must-pass rule, not OR.
+
+gates:
+
+  # ── Preconditions: Before Work Begins ──────────────────────────────────
+
+  definition-of-ready:
+    description: >
+      Validates that incoming work requests have enough specificity, context,
+      and acceptance criteria for an agent to implement without guessing.
+      Mirrors sprint planning refinement. Rejects vague requests immediately.
+    event: UserPromptSubmit
+    type: prompt
+    model: sonnet
+    role: |
+      You are the VP of Engineering for a disciplined software team with
+      20 years of experience leading high-performing engineering organizations.
+      You have seen thousands of vague tickets waste developer time. Your job
+      is to evaluate whether incoming work requests meet your Definition of
+      Ready. You are firm but constructive — when you reject, you tell the
+      requestor exactly what's missing so they can fix it.
+    prompt: |
+      Review this incoming request:
+
+      $ARGUMENTS
+
+      Definition of Ready checklist:
+      - [ ] Specific enough to implement without ambiguity
+      - [ ] Names concrete files, modules, endpoints, or components
+      - [ ] Has measurable success criteria or acceptance criteria
+      - [ ] Does not require unstated domain knowledge or assumptions
+      - [ ] Scope boundaries are clear (what's IN and what's NOT)
+
+      If this is a simple, self-contained request (e.g., "fix the typo in
+      README.md line 42") that doesn't need formal criteria, allow it.
+
+      Respond with ONLY valid JSON:
+      {"ok": true} if the request meets Definition of Ready.
+      {"ok": false, "reason": "Specific gaps: [list what's missing]"} if not.
+    on_failure: block
+
+  safety-guardrails:
+    description: >
+      Blocks destructive shell commands. The equivalent of "production access
+      requires approval." Prevents rm -rf, force push, DROP TABLE, etc.
+    event: PreToolUse
+    matcher: "Bash"
+    type: command
+    script: block-dangerous-commands.sh
+    on_failure: block
+
+  tdd-gate:
+    description: >
+      Enforces write-test-first TDD. Blocks edits to production source files
+      unless a corresponding test file already exists. This is non-negotiable —
+      the test is the specification, the implementation satisfies it.
+    event: PreToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-test-exists.sh
+    timeout: 5
+    on_failure: block
+
+  invariant-check:
+    description: >
+      Validates project invariants from INVARIANTS.md before allowing code
+      modifications. Invariants are machine-verifiable contracts declared at
+      the project and component level. Any violation blocks the edit.
+    event: PreToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-invariants.sh
+    timeout: 10
+    on_failure: block
+
+  enough-context:
+    description: >
+      Checks whether the agent has read the files declared in the active task's
+      requires_reading list before attempting code changes. Converts a judgment
+      call into a deterministic checklist. The task file is the contract.
+    event: PreToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-required-reading.sh
+    timeout: 10
+    on_failure: block
+
+  # ── During Work: Tracking ───────���──────────────────────────────────────
+
+  dirty-marker:
+    description: >
+      Touches .tdd-dirty breadcrumb when production source code is modified.
+      Zero-cost tracking for the CI pipeline gate. Never blocks.
+    event: PostToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: mark-dirty.sh
+    on_failure: allow  # Never blocks — just tracking
+
+  # ── Task Lifecycle: Assignment & Completion ────────────────────────────
+
+  task-readiness:
+    description: >
+      Definition of Ready for subtasks. When the orchestrator creates a task
+      and assigns it to a subagent, this gate validates that the task file
+      has clear scope, acceptance criteria, and required reading list.
+      Mirrors "is this ticket refined enough for a developer to pick up?"
+    event: TaskCreated
+    type: prompt
+    model: sonnet
+    role: |
+      You are a senior engineering manager who has refined thousands of
+      tickets. You know that vague tasks produce vague implementations.
+      A task is only ready when a developer can read it and know exactly
+      what to build, what files to touch, and how to verify they're done.
+    prompt: |
+      A task is being assigned to an agent:
+
+      $ARGUMENTS
+
+      A task is NOT ready if:
+      - The description is fewer than 2 sentences
+      - It lacks specific, measurable acceptance criteria
+      - It doesn't specify which files/modules are in scope
+      - It has no requires_reading list
+      - Dependencies are unclear or circular
+
+      Respond with ONLY valid JSON:
+      {"ok": true} if the task meets Definition of Ready.
+      {"ok": false, "reason": "Specific gaps: [what's missing]"} if not.
+    on_failure: block
+
+  task-completion:
+    description: >
+      Definition of Done for completed tasks. When an agent claims a task
+      is complete, this gate verifies the deliverable actually matches the
+      task description and acceptance criteria. Runs tests, checks coverage,
+      inspects the work product.
+    event: TaskCompleted
+    type: agent
+    model: sonnet
+    role: |
+      You are a QA lead who has seen developers mark tasks "done" when
+      they're clearly not. Your job is to mechanically verify every
+      acceptance criterion. You don't take the developer's word for it —
+      you check the code, run the tests, and verify the deliverables exist.
+    prompt: |
+      An agent claims this task is complete:
+
+      $ARGUMENTS
+
+      Verify by inspecting the actual codebase:
+      1. All files listed in files_in_scope exist and contain relevant changes
+      2. Tests exist and cover the acceptance criteria
+      3. Run the test suite — all tests pass
+      4. Coverage meets the project threshold
+      5. Each acceptance criterion is demonstrably satisfied
+
+      If this is a second attempt (stop_hook_active=true in $ARGUMENTS) and
+      verification still fails:
+        Return {"continue": false, "stopReason": "TASK NOT DONE: [details]"}
+
+      Otherwise:
+        {"ok": true} if all criteria met.
+        {"ok": false, "reason": "[what's missing or failing]"} if not.
+    timeout: 90
+    max_retries: 2
+    on_loop: escalate
+
+  # ── Subagent Lifecycle ─────────────────────────────────────────────────
+
+  standards-injection:
+    description: >
+      Injects engineering standards and project constraints into every
+      subagent's context at spawn time. The "onboarding packet" for new
+      team members. Ensures every subagent knows the rules before it starts.
+    event: SubagentStart
+    type: command
+    script: inject-standards.sh
+
+  subagent-review:
+    description: >
+      Quality gate for subagent output. Before a subagent's work returns to
+      the parent orchestrator, this gate reviews whether the output meets
+      engineering standards. Mirrors code review before merge.
+    event: SubagentStop
+    type: prompt
+    model: sonnet
+    role: |
+      You are a senior staff engineer conducting a code review. You review
+      the subagent's final output for completeness, quality, and adherence
+      to engineering standards. You are constructive but rigorous — you
+      don't let sloppy work pass just because it "mostly works."
+    prompt: |
+      A subagent just finished its work. Review its final output:
+
+      $ARGUMENTS
+
+      Check:
+      1. Is the output complete relative to what was asked?
+      2. Does it follow the project's coding standards?
+      3. Are there obvious issues, TODOs, or incomplete sections?
+      4. Would you approve this in a code review?
+
+      If stop_hook_active is true and output is still inadequate:
+        Return {"continue": false, "stopReason": "QUALITY GATE FAILED: [details]"}
+
+      Otherwise:
+        {"ok": true} if the output meets standards.
+        {"ok": false, "reason": "[specific issues to address]"} if not.
+    on_failure: block
+    max_retries: 1
+    on_loop: escalate
+
+  # ── Session Lifecycle ──────────────────────────────────────────────────
+
+  ci-pipeline:
+    description: >
+      Full CI pipeline that runs before the agent can stop. The equivalent
+      of "green build before merge." Tests + coverage + types + lint +
+      invariants. This is the final quality gate.
+    event: Stop
+    type: agent
+    model: sonnet
+    role: |
+      You are the CI/CD pipeline for a disciplined engineering team.
+      You are mechanical and thorough. You run every check, report every
+      failure, and never let a red build through. You don't make judgment
+      calls — you run the checks and report the results.
+    prompt: |
+      The agent is about to finish its turn.
+
+      $ARGUMENTS
+
+      If no production code was modified (no .tdd-dirty marker in the
+      project root), allow the stop — not every turn produces code.
+
+      If production code WAS modified, run these checks:
+      1. Run the test suite with coverage (threshold from project config)
+      2. Run type checking (mypy src/)
+      3. Run linting (ruff check src/ tests/)
+      4. Check INVARIANTS.md verify commands if the file exists
+
+      If stop_hook_active is true and checks STILL fail:
+        Return {"continue": false, "stopReason": "CI FAILED: [details]. Escalating to human."}
+        This kills the agent and surfaces the failure. Do NOT retry infinitely.
+
+      If all checks pass (or no code was modified):
+        {"ok": true}
+
+      If any check fails:
+        {"ok": false, "reason": "[what failed, exact error output, how to fix]"}
+    timeout: 120
+    max_retries: 2
+    on_loop: escalate
+
+  change-control:
+    description: >
+      Prevents the agent from modifying its own governance. Blocks
+      unauthorized changes to settings, standards, or hook configurations.
+      The agent cannot loosen its own constraints.
+    event: ConfigChange
+    type: command
+    script: block-config-changes.sh
+    on_failure: block
+
+  compaction-recovery:
+    description: >
+      Re-injects critical project context after context compaction. When
+      Claude's context window fills up and gets summarized, important details
+      can be lost. This hook restores: current SDLC phase, active task,
+      project constraints, and recent decisions.
+    event: SessionStart
+    matcher: compact
+    type: command
+    script: reinject-context.sh
+
+# ─── Agents ────────���─────────────────────────────────────────────────────
+# Agent definitions that compile to .md files in dist/agents/.
+# Each agent has a role, tools, and behavioral constraints.
+# The compiler generates the full agent markdown from these declarations.
+
+agents:
+  # ── Orchestration ──────────────────────────────────────────────────────
+
+  sem:
+    name: "Software Engineering Manager"
+    description: >
+      The sole orchestrator. Owns SDLC phase lifecycle, deploys agent teams,
+      enforces definition of done between phases, and runs quality watchdogs
+      during Build. Never writes code. Never makes architectural decisions.
+      Delegates everything.
+    tools: [Read, Grep, Glob, Bash, Agent]
+    constraints:
+      - "You NEVER write code directly — you delegate to specialized agents"
+      - "You are stateless between decisions — reload state from .sdlc/state.json"
+      - "You gate phase transitions on Definition of Done checklists"
+      - "You deploy watchdog agents (code-reviewer, verifier, security-reviewer) during Build"
+    source: agents/sem.md  # Existing agent definition to pass through
+
+  # ── Specification & Design ─────────────────────────────────────────────
+
+  product-manager:
+    name: "Product Manager"
+    description: "Translates business intent into structured PRDs through Socratic questioning."
+    source: agents/product-manager.md
+
+  product-owner:
+    name: "Product Owner"
+    description: "Validates PRDs, writes acceptance criteria, identifies gaps."
+    source: agents/product-owner.md
+
+  architect:
+    name: "Software Architect"
+    description: "Designs boundaries, data flow, integration patterns. Writes ADRs."
+    source: agents/architect.md
+
+  researcher:
+    name: "Technical Researcher"
+    description: "Deep-dives into source material, prior art, domain knowledge."
+    source: agents/researcher.md
+
+  domain-modeler:
+    name: "Domain Modeler"
+    description: "Validates ubiquitous language, bounded contexts, aggregate design."
+    source: agents/domain-modeler.md
+
+  ux-designer:
+    name: "UX Designer"
+    description: "User flows, information architecture, interaction patterns."
+    source: agents/ux-designer.md
+
+  ui-designer:
+    name: "UI Designer"
+    description: "Visual design system, component specs, design tokens."
+    source: agents/ui-designer.md
+
+  # ── Implementation ──���──────────────────────────────────────────────────
+
+  backend-developer:
+    name: "Backend Developer"
+    description: "Clean coder and TDD zealot. Python/FastAPI. Red/Green/Refactor."
+    source: agents/backend-developer.md
+
+  frontend-developer:
+    name: "Frontend Developer"
+    description: "Component thinker and accessibility zealot. TDD."
+    source: agents/frontend-developer.md
+
+  devops-engineer:
+    name: "DevOps Engineer"
+    description: "Infrastructure-as-code. Docker, CI/CD, monitoring."
+    source: agents/devops-engineer.md
+
+  code-simplifier:
+    name: "Code Simplifier"
+    description: "Refactoring and code quality improvement specialist."
+    source: agents/code-simplifier.md
+
+  # ── Quality & Review (Watchdogs) ───────────────────────────────────────
+
+  code-reviewer:
+    name: "Code Reviewer"
+    description: "Reviews completed code. Error handling, data integrity, standards."
+    source: agents/code-reviewer.md
+
+  verifier:
+    name: "Verifier"
+    description: "Mechanical quality gate. Tests, coverage, types, lint. Pass/fail."
+    source: agents/verifier.md
+
+  security-reviewer:
+    name: "Security Reviewer"
+    description: "OWASP-trained. Injection, XSS, auth bypass, secrets, SSRF."
+    source: agents/security-reviewer.md
+
+  architect-reviewer:
+    name: "Architect Reviewer"
+    description: "Reviews architectural compliance and invariant enforcement."
+    source: agents/architect-reviewer.md
+
+  # ── Project Lifecycle ────────���─────────────────────────────────────────
+
+  project-bootstrapper:
+    name: "Project Bootstrapper"
+    description: "Analyzes existing code, generates .meta/ descriptions."
+    source: agents/project-bootstrapper.md
+
+  technical-writer:
+    name: "Technical Writer"
+    description: "API docs, architecture overviews, setup guides, READMEs."
+    source: agents/technical-writer.md
+
+  process-evaluator:
+    name: "Process Evaluator"
+    description: "Retrospectives, metrics collection, improvement recommendations."
+    source: agents/process-evaluator.md
+
+# ─── Skills ────────────────────────────���─────────────────────────────────
+# Skills compile to .md files in dist/skills/.
+# The /implement skill is the primary user-facing entry point.
+
+skills:
+  implement:
+    name: "implement"
+    description: >
+      Spec-based implementation workflow. Takes a PRD or specification,
+      validates it meets Definition of Ready, decomposes it into tasks,
+      dispatches to subagents, and orchestrates the full build cycle.
+    usage: "/implement <path-to-spec-or-prd>"
+    flow:
+      validate_spec:
+        description: "Verify the spec/PRD has enough detail to implement"
+        on_failure: "Reject immediately with specific gaps"
+      decompose_tasks:
+        description: "Parse PRD into task graph with dependencies"
+        output: ".etc_sdlc/tasks/{task_id}-{slug}.yaml per task"
+      dispatch_subagents:
+        description: "Assign tasks to subagents respecting dependencies and file-set isolation"
+        parallel_rule: "Tasks with overlapping files_in_scope MUST be serialized"
+      verify_and_report:
+        description: "Run architectural review, full CI, report results to human"
+        model: opus  # Final verification uses strongest model
+
+# ─── Standards ───���───────────────────────────────────────────────────────
+# Engineering standards passed through to dist/standards/.
+# These are read by agents and referenced in hook prompts.
+
+standards:
+  source_dir: standards/
+  categories:
+    process:
+      - sdlc-phases.md
+      - tdd-workflow.md
+      - code-review-process.md
+      - definition-of-done.md
+      - domain-fidelity.md
+      - invariants.md
+    code:
+      - clean-code.md
+      - error-handling.md
+      - typing-standards.md
+      - python-conventions.md
+    testing:
+      - testing-standards.md
+      - test-naming.md
+      - llm-evaluation.md
+    architecture:
+      - abstraction-rules.md
+      - adr-process.md
+      - layer-boundaries.md
+    security:
+      - data-handling.md
+      - owasp-checklist.md
+    quality:
+      - metrics.md
+
+# ─── SDLC Phases ────────���────────────────────────────────────────────────
+# Phase definitions compile to tracker templates in dist/sdlc/.
+# Each phase has a Definition of Done that gates transition to the next.
+
+phases:
+  bootstrap:
+    description: "Analyze existing code, generate .meta/, gap analysis"
+    team: [project-bootstrapper, architect]
+    definition_of_done:
+      - ".meta/ descriptions exist for all top-level directories"
+      - "Gap analysis document produced"
+      - "Existing patterns and anti-patterns cataloged"
+
+  spec:
+    description: "Gather requirements, write PRDs, validate domain model"
+    team: [product-manager, product-owner, domain-modeler, researcher]
+    definition_of_done:
+      - "PRD exists with acceptance criteria for every feature"
+      - "Domain model validated — ubiquitous language defined"
+      - "Edge cases documented"
+      - "Stakeholder review completed"
+
+  design:
+    description: "Architecture, ADRs, interaction flows, system design"
+    team: [architect, ux-designer, ui-designer]
+    definition_of_done:
+      - "System design document with component boundaries"
+      - "ADRs for all significant technical decisions"
+      - "API contracts defined"
+      - "Data model designed"
+
+  decompose:
+    description: "Break specs into task graph with dependencies"
+    team: [sem]
+    definition_of_done:
+      - "Task files generated in .etc_sdlc/tasks/"
+      - "Each task meets task_format requirements"
+      - "Dependency graph has no cycles"
+      - "File-set isolation verified for parallel tasks"
+
+  build:
+    description: "Implement with TDD + continuous quality watchdogs"
+    team: [backend-developer, frontend-developer, devops-engineer]
+    watchdogs: [code-reviewer, verifier, security-reviewer]
+    definition_of_done:
+      - "All tasks completed and verified"
+      - "Test coverage meets threshold"
+      - "Type checking passes"
+      - "Lint passes"
+      - "All invariants hold"
+      - "Security review completed"
+
+  verify:
+    description: "Stand up running system for human acceptance testing"
+    team: [verifier, product-owner]
+    definition_of_done:
+      - "System runs end-to-end"
+      - "Acceptance criteria verified against PRD"
+      - "No critical or high-severity bugs"
+
+  ship:
+    description: "Documentation, deployment config, final verification"
+    team: [technical-writer, devops-engineer, verifier]
+    definition_of_done:
+      - "API documentation complete"
+      - "Deployment configuration ready"
+      - "README updated"
+      - "Final verification passed"
+
+  evaluate:
+    description: "Retrospective, metrics, lessons learned"
+    team: [process-evaluator, sem]
+    definition_of_done:
+      - "Retrospective document produced"
+      - "Metrics collected (coverage, velocity, defect rate)"
+      - "Lessons learned captured"
+      - "Recommendations for next iteration"

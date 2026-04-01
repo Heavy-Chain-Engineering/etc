@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# hooks/git/pre-push
+#
+# Pre-push git hook that warns if any .meta/description.md files are stale.
+# Does NOT block the push by default — just warns. Set META_BLOCK_PUSH=1 to block.
+#
+# Install: cp hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Find all stale.json markers
+STALE_FILES=$(find "$REPO_ROOT" -name "stale.json" -path "*/.meta/stale.json" 2>/dev/null) || true
+
+if [ -z "$STALE_FILES" ]; then
+    exit 0
+fi
+
+STALE_COUNT=$(echo "$STALE_FILES" | wc -l | tr -d ' ')
+
+echo ""
+echo "⚠  $STALE_COUNT .meta/ description(s) are stale:"
+echo ""
+
+while IFS= read -r stale_file; do
+    meta_dir=$(dirname "$stale_file")
+    parent_dir=$(dirname "$meta_dir")
+    rel_path="${parent_dir#$REPO_ROOT/}"
+    changed=$(python3 -c "
+import json
+with open('$stale_file') as f:
+    d = json.load(f)
+print(', '.join(d.get('changed_files', [])[:3]))
+if len(d.get('changed_files', [])) > 3:
+    print(f'  ... and {len(d[\"changed_files\"]) - 3} more')
+" 2>/dev/null || echo "  (could not read)")
+    echo "  $rel_path/.meta/ — changed: $changed"
+done <<< "$STALE_FILES"
+
+echo ""
+echo "Run 'python3 scripts/meta-reconcile.py' or invoke the project-bootstrapper to update."
+echo ""
+
+if [ "${META_BLOCK_PUSH:-0}" = "1" ]; then
+    echo "Push blocked (META_BLOCK_PUSH=1). Reconcile .meta/ descriptions first."
+    exit 1
+fi
+
+exit 0

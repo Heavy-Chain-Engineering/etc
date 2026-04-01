@@ -1,0 +1,54 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Dependency directories
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Claude Code local settings (may contain API keys or user-specific config)
+.claude/settings.local.json
+
+# Compiled SDLC artifacts (regenerate with: python3 compile-sdlc.py spec/etc_sdlc.yaml)
+dist/
+
+# TDD dirty marker
+.tdd-dirty
+
+# SDLC task files (ephemeral, per-implementation-run)
+.etc_sdlc/
+
+# Internal docs (valuable ideas, not for public release)
+docs/.internal/
+
+# OS specific
+.DS_Store
+
+# Taskmaster internal state
+.taskmaster/

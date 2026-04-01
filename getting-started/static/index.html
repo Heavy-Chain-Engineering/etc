@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDLC Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <h1 class="header-title">SDLC Dashboard</h1>
+            <span class="current-phase-badge" id="current-phase-badge">Loading...</span>
+        </div>
+        <div class="header-right">
+            <span class="connection-status" id="connection-status"></span>
+            <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode">
+                <span class="theme-icon" id="theme-icon">&#9790;</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="dashboard">
+        <!-- Phase Timeline -->
+        <section class="card phase-timeline-card">
+            <h2 class="card-title">Phase Timeline</h2>
+            <div class="phase-timeline" id="phase-timeline">
+                <!-- Rendered by JS -->
+            </div>
+        </section>
+
+        <!-- DoD Section -->
+        <section class="card dod-card">
+            <h2 class="card-title">Definition of Done
+                <span class="dod-phase-label" id="dod-phase-label"></span>
+            </h2>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="dod-progress-bar">
+                    <span class="progress-text" id="dod-progress-text">0%</span>
+                </div>
+            </div>
+            <ul class="dod-checklist" id="dod-checklist">
+                <!-- Rendered by JS -->
+            </ul>
+        </section>
+
+        <!-- Task Summary -->
+        <section class="card task-card">
+            <h2 class="card-title">Task Summary</h2>
+            <div class="task-stats" id="task-stats">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="task-chart" id="task-chart">
+                <!-- Rendered by JS -->
+            </div>
+        </section>
+
+        <!-- Phase Transition History -->
+        <section class="card history-card">
+            <h2 class="card-title">Phase Transition History</h2>
+            <div class="history-table-container" id="history-container">
+                <!-- Rendered by JS -->
+            </div>
+        </section>
+
+        <!-- Error Display -->
+        <div class="error-banner" id="error-banner" style="display: none;">
+            <span id="error-message"></span>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <span>SDLC Dashboard v0.1.0</span>
+        <span>Polling every 5s</span>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

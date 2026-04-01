@@ -1,0 +1,64 @@
+{
+  "current_phase": "Build",
+  "phases": {
+    "Bootstrap": {
+      "dod": [
+        {"item": "Meta descriptions generated", "done": true},
+        {"item": "Gap analysis produced", "done": true}
+      ],
+      "entered_at": "2026-02-25T10:00:00Z",
+      "completed_at": "2026-02-25T10:05:00Z"
+    },
+    "Spec": {
+      "dod": [
+        {"item": "PRD written", "done": true}
+      ],
+      "entered_at": "2026-02-25T10:05:00Z",
+      "completed_at": "2026-02-25T10:10:00Z"
+    },
+    "Design": {
+      "dod": [],
+      "entered_at": "2026-02-25T10:10:00Z",
+      "completed_at": "2026-02-25T10:15:00Z"
+    },
+    "Decompose": {
+      "dod": [],
+      "entered_at": "2026-02-25T10:15:00Z",
+      "completed_at": "2026-02-25T10:20:00Z"
+    },
+    "Build": {
+      "dod": [
+        {"item": "All tasks implemented", "done": true},
+        {"item": "All tests passing", "done": false},
+        {"item": "Coverage meets threshold", "done": false}
+      ],
+      "entered_at": "2026-02-25T10:20:00Z",
+      "completed_at": null
+    },
+    "Ship": {
+      "dod": [],
+      "entered_at": null,
+      "completed_at": null
+    },
+    "Evaluate": {
+      "dod": [],
+      "entered_at": null,
+      "completed_at": null
+    }
+  },
+  "transitions": [
+    {
+      "from": "Bootstrap",
+      "to": "Spec",
+      "reason": "Bootstrap complete",
+      "timestamp": "2026-02-25T10:05:00Z"
+    },
+    {
+      "from": "Spec",
+      "to": "Design",
+      "reason": "Spec reviewed",
+      "timestamp": "2026-02-25T10:10:00Z"
+    }
+  ],
+  "created_at": "2026-02-25T10:00:00Z"
+}

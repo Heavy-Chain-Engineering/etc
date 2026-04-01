@@ -1,0 +1,44 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Setup project",
+      "status": "done",
+      "priority": "high",
+      "description": "Create project scaffold",
+      "dependencies": []
+    },
+    {
+      "id": 2,
+      "title": "Build models",
+      "status": "done",
+      "priority": "high",
+      "description": "Create Pydantic models",
+      "dependencies": [1]
+    },
+    {
+      "id": 3,
+      "title": "Build readers",
+      "status": "in-progress",
+      "priority": "high",
+      "description": "Create JSON readers",
+      "dependencies": [2]
+    },
+    {
+      "id": 4,
+      "title": "Build API",
+      "status": "pending",
+      "priority": "high",
+      "description": "Create FastAPI endpoints",
+      "dependencies": [3]
+    },
+    {
+      "id": 5,
+      "title": "Blocked task",
+      "status": "blocked",
+      "priority": "medium",
+      "description": "Waiting on something",
+      "dependencies": [4]
+    }
+  ]
+}
