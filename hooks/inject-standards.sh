@@ -66,4 +66,13 @@ if [[ -f "${CWD}/INVARIANTS.md" ]]; then
   echo '```'
 fi
 
+# Inject antipatterns if file exists
+if [[ -f "${CWD}/.etc_sdlc/antipatterns.md" ]]; then
+  echo ""
+  echo "### Known Antipatterns"
+  echo '```markdown'
+  cat "${CWD}/.etc_sdlc/antipatterns.md"
+  echo '```'
+fi
+
 exit 0

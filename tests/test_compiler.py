@@ -149,21 +149,25 @@ class TestShouldIncludeRoleInPromptHooks:
             f"Got: {first_prompt[:80]!r}"
         )
 
-    def test_should_start_with_role_when_subagent_stop(
+    def test_should_be_agent_type_with_adversarial_role_when_subagent_stop(
         self, hooks_json: dict[str, Any]
     ) -> None:
-        """SubagentStop prompt must start with 'You are a senior staff engineer'."""
+        """SubagentStop must be an agent hook with adversarial/hostile role text."""
         # Arrange
         hook_entries = hooks_json["hooks"]["SubagentStop"]
-        prompt_hooks = _extract_hooks_by_type(hook_entries, "prompt")
+        agent_hooks = _extract_hooks_by_type(hook_entries, "agent")
 
-        # Act
-        first_prompt = prompt_hooks[0]["prompt"]
+        # Act — the SubagentStop gate should now be type 'agent', not 'prompt'
+        assert len(agent_hooks) > 0, (
+            "SubagentStop has no agent-type hooks. "
+            "Expected adversarial-review to be type 'agent'."
+        )
+        role_text = agent_hooks[0]["prompt"].lower()
 
-        # Assert
-        assert first_prompt.startswith("You are a senior staff engineer"), (
-            f"SubagentStop prompt does not start with expected role. "
-            f"Got: {first_prompt[:80]!r}"
+        # Assert — role text must contain adversarial framing
+        assert "hostile" in role_text or "adversarial" in role_text, (
+            f"SubagentStop agent role does not contain 'hostile' or 'adversarial'. "
+            f"Got: {agent_hooks[0]['prompt'][:120]!r}"
         )
 
 
@@ -202,6 +206,22 @@ class TestShouldReferenceCorrectScripts:
 
         # Assert
         assert "~/.claude/hooks/check-test-exists.sh" in commands
+
+    def test_should_reference_check_phase_gate_when_edit_write_gate(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """PreToolUse Edit|Write matcher must include check-phase-gate.sh."""
+        # Arrange
+        pre_tool_entries = hooks_json["hooks"]["PreToolUse"]
+        edit_write_hooks = _extract_hooks_for_matcher(pre_tool_entries, "Edit|Write")
+        command_hooks = [h for h in edit_write_hooks if h["type"] == "command"]
+        commands = [h["command"] for h in command_hooks]
+
+        # Assert
+        assert "~/.claude/hooks/check-phase-gate.sh" in commands, (
+            "PreToolUse Edit|Write hooks must include check-phase-gate.sh "
+            f"for phase-aware file gating. Found commands: {commands}"
+        )
 
     def test_should_reference_block_dangerous_when_bash_gate(
         self, hooks_json: dict[str, Any]

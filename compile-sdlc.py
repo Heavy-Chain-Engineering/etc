@@ -181,17 +181,32 @@ tools: [{', '.join(tools)}]
 
 
 def compile_skills(spec: dict, dist_dir: Path, repo_root: Path) -> None:
-    """Compile skill definitions to dist/skills/."""
+    """Compile skill definitions to dist/skills/.
+
+    Two sources:
+    1. DSL-declared skills (spec.skills) — generated from the YAML definition
+    2. Hand-authored skills (repo_root/skills/**/SKILL.md) — passed through as-is
+    """
     skills = spec.get("skills", {})
     skills_dir = dist_dir / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
 
+    # 1. Generate DSL-declared skills
     for skill_name, skill_def in skills.items():
         if skill_name == "implement":
             generate_implement_skill(skill_def, skills_dir, spec)
         else:
-            # Generic skill generation
             generate_generic_skill(skill_def, skill_name, skills_dir)
+
+    # 2. Pass through hand-authored skills from repo_root/skills/
+    hand_authored_dir = repo_root / "skills"
+    if hand_authored_dir.is_dir():
+        for skill_path in hand_authored_dir.iterdir():
+            if skill_path.is_dir() and (skill_path / "SKILL.md").exists():
+                dst = skills_dir / skill_path.name
+                if not dst.exists():  # Don't overwrite DSL-generated skills
+                    dst.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(skill_path / "SKILL.md", dst / "SKILL.md")
 
 
 def generate_implement_skill(skill_def: dict, skills_dir: Path, spec: dict) -> None:

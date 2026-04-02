@@ -137,6 +137,17 @@ gates:
     timeout: 10
     on_failure: block
 
+  phase-gate:
+    description: >
+      Blocks file edits inappropriate for the current SDLC phase.
+      During Spec, you can't edit source code. During Build, you
+      can't rewrite the PRD. Phase discipline, mechanically enforced.
+    event: PreToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-phase-gate.sh
+    on_failure: block
+
   # ── During Work: Tracking ───────���──────────────────────────────────────
 
   dirty-marker:
@@ -230,37 +241,50 @@ gates:
     type: command
     script: inject-standards.sh
 
-  subagent-review:
+  adversarial-review:
     description: >
-      Quality gate for subagent output. Before a subagent's work returns to
-      the parent orchestrator, this gate reviews whether the output meets
-      engineering standards. Mirrors code review before merge.
+      Fresh agent reviews subagent output with adversarial intent.
+      "What could go wrong? What did the agent miss? What edge cases
+      are unhandled?" Never lets the implementer grade their own work.
     event: SubagentStop
-    type: prompt
+    type: agent
     model: sonnet
     role: |
-      You are a senior staff engineer conducting a code review. You review
-      the subagent's final output for completeness, quality, and adherence
-      to engineering standards. You are constructive but rigorous — you
-      don't let sloppy work pass just because it "mostly works."
+      You are a hostile code reviewer. Your job is NOT to confirm the
+      work looks good — it's to find what's wrong. You have seen
+      thousands of bugs escape well-intentioned reviews because the
+      reviewer was too agreeable.
+
+      You are a FRESH agent with no context from the implementation.
+      You review the output cold, looking for:
+      - Edge cases the implementer didn't consider
+      - Error handling gaps (what happens when X fails?)
+      - Assumptions that aren't validated
+      - Security implications
+      - Missing test cases for failure paths
+      - Spec compliance gaps (does it ACTUALLY meet criteria?)
+
+      You are constructive but relentless. You don't say "looks good"
+      unless you genuinely cannot find issues.
     prompt: |
-      A subagent just finished its work. Review its final output:
+      A subagent just completed its work. Review it adversarially.
 
       $ARGUMENTS
 
-      Check:
-      1. Is the output complete relative to what was asked?
-      2. Does it follow the project's coding standards?
-      3. Are there obvious issues, TODOs, or incomplete sections?
-      4. Would you approve this in a code review?
+      Read the actual files that were modified. Don't trust the summary.
+      Check the tests — do they test failure paths or only happy paths?
+      Check error handling — are exceptions caught too broadly?
+      Check the acceptance criteria — is each one demonstrably met?
 
-      If stop_hook_active is true and output is still inadequate:
-        Return {"continue": false, "stopReason": "QUALITY GATE FAILED: [details]"}
+      If stop_hook_active is true and you still find critical issues:
+        Return {"continue": false, "stopReason": "ADVERSARIAL REVIEW FAILED: [details]"}
 
-      Otherwise:
-        {"ok": true} if the output meets standards.
-        {"ok": false, "reason": "[specific issues to address]"} if not.
-    on_failure: block
+      If you find issues the agent should fix:
+        Return {"ok": false, "reason": "[specific issues with file:line references]"}
+
+      If the work genuinely passes adversarial scrutiny:
+        Return {"ok": true}
+    timeout: 90
     max_retries: 1
     on_loop: escalate
 

@@ -95,6 +95,49 @@ class TestInvariantsInjection:
         assert "All endpoints require authentication" in result.stdout
 
 
+class TestAntipattersInjection:
+    """Verify antipatterns content is injected when present."""
+
+    def test_should_include_antipatterns_when_present(
+        self, run_hook: Any, tmp_project: Path
+    ) -> None:
+        # Arrange
+        antipatterns_content = (
+            "# Antipatterns — Lessons from Escaped Bugs\n"
+            "\n"
+            "## AP-001: Async exception swallowing in FastAPI middleware\n"
+            "- **Date discovered:** 2026-04-01\n"
+            "- **Root cause:** try/except caught all exceptions\n"
+            "- **Class of bug:** Error handling that's too broad\n"
+            "- **Prevention rule:** Never catch bare Exception in middleware.\n"
+        )
+        antipatterns_path = tmp_project / ".etc_sdlc" / "antipatterns.md"
+        antipatterns_path.write_text(antipatterns_content)
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+
+        # Act
+        result = run_hook("inject-standards.sh", hook_input)
+
+        # Assert
+        assert result.exit_code == 0
+        assert "Known Antipatterns" in result.stdout
+        assert "AP-001" in result.stdout
+        assert "Async exception swallowing" in result.stdout
+
+    def test_should_not_include_antipatterns_section_when_absent(
+        self, run_hook: Any, tmp_path: Path
+    ) -> None:
+        # Arrange — bare tmp_path with no antipatterns file
+        hook_input = {"cwd": str(tmp_path), "agent_type": "unknown"}
+
+        # Act
+        result = run_hook("inject-standards.sh", hook_input)
+
+        # Assert
+        assert result.exit_code == 0
+        assert "Known Antipatterns" not in result.stdout
+
+
 class TestBareProject:
     """Verify hook succeeds on a bare directory with no tasks or invariants."""
 
