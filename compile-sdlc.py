@@ -417,6 +417,18 @@ def compile_sdlc_tracker(spec: dict, dist_dir: Path, repo_root: Path) -> None:
         f.write("\n")
 
 
+def compile_templates(dist_dir: Path, repo_root: Path) -> None:
+    """Copy artifact templates to dist/templates/."""
+    templates_src = repo_root / "templates"
+    templates_dst = dist_dir / "templates"
+
+    if templates_src.exists():
+        templates_dst.mkdir(parents=True, exist_ok=True)
+        for tmpl in templates_src.iterdir():
+            if tmpl.is_file() and tmpl.suffix == ".tmpl":
+                shutil.copy2(tmpl, templates_dst / tmpl.name)
+
+
 def compile_git_hooks(dist_dir: Path, repo_root: Path) -> None:
     """Copy git hook templates."""
     git_hooks_src = repo_root / "hooks" / "git"
@@ -491,6 +503,11 @@ def main() -> None:
     compile_sdlc_tracker(spec, dist_dir, repo_root)
     phase_count = len(spec.get("phases", {}))
     print(f"    {phase_count} phases with DoD templates")
+
+    print("  Copying templates → dist/templates/...")
+    compile_templates(dist_dir, repo_root)
+    tmpl_count = len(list((dist_dir / "templates").glob("*.tmpl"))) if (dist_dir / "templates").exists() else 0
+    print(f"    {tmpl_count} templates")
 
     print("  Copying git hooks → dist/hooks/git/...")
     compile_git_hooks(dist_dir, repo_root)

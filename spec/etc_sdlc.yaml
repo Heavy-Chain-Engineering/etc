@@ -22,6 +22,10 @@ defaults:
   on_loop: escalate            # escalate = fail loud, kill agent, tell human
   max_retries: 2               # After N retries on same gate, escalate
   coverage_threshold: 98       # Minimum test coverage percentage
+  changeset_budget:
+    target_loc: 300            # Ideal lines of code per task
+    warn_loc: 500              # Warn if task exceeds this
+    max_loc: 1000              # Block if task exceeds this
 
 # ─── Task File Format ───────────────────────────────────────────────────
 # Tasks are the contract between the orchestrator and subagents.

@@ -160,6 +160,19 @@ improvements. Present these as options -- the user decides what to act on:
 These suggestions are optional. The antipattern entry (Step 5) is the mandatory
 output. Prevention improvements are offered but only acted on with user approval.
 
+## Step 7: Governance Journal Entry
+
+After writing the antipattern, append a journal entry to `.etc_sdlc/journal.md`.
+Create the file with a header if it doesn't exist.
+
+```markdown
+### {YYYY-MM-DD HH:MM} — postmortem
+AP-{NNN} recorded: {short description}. Root cause: {root cause summary}.
+Phase introduced: {phase}. Gate that should have caught it: {gate}.
+```
+
+This creates an audit trail of all governance events across sessions.
+
 ## Constraints
 
 - You are interactive -- you ask questions and wait for answers

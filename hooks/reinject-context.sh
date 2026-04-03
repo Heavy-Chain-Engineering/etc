@@ -50,6 +50,22 @@ if git -C "$CWD" rev-parse --git-dir > /dev/null 2>&1; then
   echo ""
 fi
 
+# Governance journal (recent entries)
+JOURNAL="${CWD}/.etc_sdlc/journal.md"
+if [[ -f "$JOURNAL" ]]; then
+  echo "### Governance Journal (Recent)"
+  tail -30 "$JOURNAL"
+  echo ""
+fi
+
+# Checkpoint (session state from last save)
+CHECKPOINT="${CWD}/.etc_sdlc/checkpoint.md"
+if [[ -f "$CHECKPOINT" ]]; then
+  echo "### Last Checkpoint"
+  cat "$CHECKPOINT"
+  echo ""
+fi
+
 # Dirty marker status
 if [[ -f "${CWD}/.tdd-dirty" ]]; then
   echo "**WARNING:** .tdd-dirty marker present — production code was modified but verification has not run."

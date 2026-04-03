@@ -55,7 +55,7 @@ else
 fi
 
 # ── 1. Create directory structure ────────────────────────────────────────
-mkdir -p "$TARGET_DIR"/{agents,skills,standards/{process,code,testing,architecture,security,quality},hooks,sdlc,scripts}
+mkdir -p "$TARGET_DIR"/{agents,skills,standards/{process,code,testing,architecture,security,quality},hooks,sdlc,scripts,templates}
 info "Directory structure ready"
 
 # ── 2. Install agents ───────────────────────────────────────────────────
@@ -153,7 +153,18 @@ if [ -d "$DIST_DIR/sdlc" ]; then
     info "Installed SDLC tracker templates"
 fi
 
-# ── 8. Install git hooks & scripts ──────────────────────────────────────
+# ── 8. Install templates ─────────────────────────────────────────────────
+TEMPLATE_COUNT=0
+if [ -d "$DIST_DIR/templates" ]; then
+    for f in "$DIST_DIR"/templates/*.tmpl; do
+        [ -f "$f" ] || continue
+        cp "$f" "$TARGET_DIR/templates/"
+        TEMPLATE_COUNT=$((TEMPLATE_COUNT + 1))
+    done
+fi
+info "Installed $TEMPLATE_COUNT templates"
+
+# ── 9. Install git hooks & scripts ──────────────────────────────────────
 if [ -d "$DIST_DIR/hooks/git" ]; then
     mkdir -p "$TARGET_DIR/hooks/git"
     for f in "$DIST_DIR/hooks/git/"*; do
