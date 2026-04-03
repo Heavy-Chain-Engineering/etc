@@ -7,8 +7,8 @@ The idea: take 20 years of engineering leadership lessons — TDD, Definition of
 ## Quick Start
 
 ```bash
-git clone https://github.com/jvertrees/etc-system-engineering.git
-cd etc-system-engineering
+git clone https://github.com/Heavy-Chain-Engineering/etc.git
+cd etc
 
 # 1. Compile the SDLC specification into deployable artifacts
 python3 compile-sdlc.py spec/etc_sdlc.yaml
@@ -23,7 +23,7 @@ python3 compile-sdlc.py spec/etc_sdlc.yaml
 
 ```bash
 uv sync            # Install test dependencies
-uv run pytest      # 109 tests, ~3 seconds
+uv run pytest      # 121 tests, ~3 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file without writing a test first. The TDD hook will block you.
@@ -40,7 +40,7 @@ Then in Claude Code, try editing a `src/` file without writing a test first. The
 
 Command hooks fire on every Edit/Write (hundreds of times per session). Prompt hooks fire on task boundaries (a few times). Agent hooks fire on Stop (once per turn). The cost profile is intentional — cheap gates run often, expensive verification runs once.
 
-### The 13 Gates
+### The 14 Gates
 
 ```yaml
 # Preconditions — before work begins
@@ -49,6 +49,7 @@ safety-guardrails:       PreToolUse (Bash) → command  Block rm -rf, force push
 tdd-gate:                PreToolUse (Edit) → command  Test file must exist before source
 invariant-check:         PreToolUse (Edit) → command  INVARIANTS.md contracts must hold
 enough-context:          PreToolUse (Edit) → command  Agent must read required files first
+phase-gate:              PreToolUse (Edit) → command  Block edits inappropriate for current SDLC phase
 
 # During work
 dirty-marker:            PostToolUse (Edit) → command  Track which files changed
@@ -59,7 +60,7 @@ task-completion:         TaskCompleted      → agent   Verify deliverable match
 
 # Subagent lifecycle
 standards-injection:     SubagentStart      → command  Inject engineering standards into every subagent
-subagent-review:         SubagentStop       → prompt  "Does this output meet quality standards?"
+adversarial-review:      SubagentStop       → agent   Fresh hostile reviewer — never grades its own work
 
 # Session lifecycle
 ci-pipeline:             Stop               → agent   Full CI: tests + types + lint + invariants
@@ -67,21 +68,23 @@ change-control:          ConfigChange       → command  Agent cannot loosen its
 compaction-recovery:     SessionStart       → command  Re-inject context after compaction
 ```
 
-### The `/implement` Skill
+### The `/spec` → `/implement` Pipeline
 
-The primary workflow entry point:
+Two skills work together to go from idea to working code:
 
-```
-/implement spec/prd-authentication.md
-```
+**`/spec "Add user authentication"`** — Socratic specification loop:
+1. Asks clarifying questions (never starts writing immediately)
+2. Researches the codebase and web for patterns, pitfalls, security considerations
+3. Builds the PRD section by section, each approved by the user
+4. Validates against Definition of Ready before finalizing
 
-This:
-1. **Validates the spec** against Definition of Ready — rejects vague requests immediately
-2. **Decomposes into tasks** with dependencies, required reading, and acceptance criteria
-3. **Dispatches to subagents** respecting file-set isolation for safe parallelization
-4. **Verifies and reports** — runs CI, checks coverage, summarizes what was built
+**`/implement spec/prd-authentication.md`** — Orchestrated implementation:
+1. Validates the spec against Definition of Ready — rejects vague requests
+2. Decomposes into tasks with dependencies, required reading, and acceptance criteria
+3. Dispatches to subagents respecting file-set isolation for safe parallelization
+4. Verifies and reports — runs CI, checks coverage, summarizes what was built
 
-The main thread stays clean (control plane only). All implementation happens in subagent contexts.
+**`/postmortem`** — When bugs escape, traces them to root cause and appends prevention rules to `.etc_sdlc/antipatterns.md`. Every future spec and subagent reads this file — the system learns from its mistakes.
 
 ## SDLC-as-Code
 
@@ -161,19 +164,26 @@ phases:
 spec/
   etc_sdlc.yaml            The SDLC specification (single source of truth)
   prd-hook-test-suite.md   Example PRD (used to build the test suite)
+  prd-v1.1-harness-evolution.md  PRD for v1.1 features
 
 compile-sdlc.py            DSL compiler → dist/
 install.sh                 Deploys compiled artifacts to ~/.claude/
 
-hooks/                     8 hook scripts
+hooks/                     9 hook scripts
   check-test-exists.sh       TDD gate — test file must exist before source edit
   check-invariants.sh        Validates INVARIANTS.md contracts
   check-required-reading.sh  Agent must read required files before coding
-  block-dangerous-commands.sh Safety — blocks rm -rf, force push, DROP TABLE
+  check-phase-gate.sh        Blocks edits inappropriate for current SDLC phase
+  block-dangerous-commands.sh Safety — blocks rm -rf, force push, DROP TABLE, git add -A
   block-config-changes.sh    Agent cannot modify its own governance
-  inject-standards.sh        Onboards every subagent with engineering standards
+  inject-standards.sh        Onboards every subagent with standards + antipatterns
   reinject-context.sh        Restores context after compaction
   mark-dirty.sh              Tracks which files changed (breadcrumb for CI)
+
+skills/                    3 skills
+  implement/SKILL.md         /implement — spec-based orchestration with subagent dispatch
+  spec/SKILL.md              /spec — Socratic loop to generate implementation-ready PRDs
+  postmortem/SKILL.md        /postmortem — trace escaped bugs, build antipatterns knowledge
 
 agents/                    23 agent definitions
   sem.md                     Orchestrator — owns SDLC phases, deploys teams
@@ -182,23 +192,24 @@ agents/                    23 agent definitions
   security-reviewer.md       OWASP-trained security scanner
   ... and 19 more
 
-standards/                 17 engineering standards across 6 categories
+standards/                 18 engineering standards across 6 categories
   process/                   SDLC phases, TDD workflow, code review, definition of done
   code/                      Clean code, error handling, typing, Python conventions
   testing/                   Test naming, testing standards, LLM evaluation
   architecture/              Abstraction rules, ADR process, layer boundaries
   security/                  Data handling, OWASP checklist
-  quality/                   Metrics
+  quality/                   Metrics, guardrail rules
 
-tests/                     109 tests (pytest, ~3 seconds)
+tests/                     121 tests (pytest, ~3 seconds)
   test_block_dangerous.py    18 tests — dangerous command blocking
   test_tdd_gate.py           6 tests — TDD enforcement
   test_invariants.py         15 tests — invariant checking
   test_required_reading.py   5 tests — required reading verification
   test_config_changes.py     11 tests — config change protection
-  test_inject_standards.py   5 tests — standards injection
+  test_inject_standards.py   7 tests — standards + antipatterns injection
   test_reinject_context.py   4 tests — compaction recovery
   test_mark_dirty.py         7 tests — dirty marker tracking
+  test_phase_gate.py         9 tests — SDLC phase enforcement
   test_compiler.py           12 tests — DSL compiler output
   conftest.py                Shared fixtures (run_hook, tmp_project, etc.)
 ```

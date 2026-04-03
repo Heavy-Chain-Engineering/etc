@@ -13,19 +13,20 @@ Thanks for your interest in contributing to etc (Engineering Team, Codified).
 ## Development Setup
 
 ```bash
-git clone https://github.com/your-fork/etc-system-engineering.git
-cd etc-system-engineering
+git clone https://github.com/Heavy-Chain-Engineering/etc.git
+cd etc
 uv sync           # Install dependencies
-uv run pytest     # Run 109 tests
+uv run pytest     # Run 121 tests
 ```
 
 ## Key Principles
 
-- **The DSL is the source of truth.** Don't edit `dist/` or `settings-hooks.json` directly — modify `spec/etc_sdlc.yaml` and recompile.
+- **The DSL is the source of truth.** Don't edit `dist/` directly — modify `spec/etc_sdlc.yaml` and recompile.
 - **Command hooks must be deterministic.** They check binary conditions (file exists? pattern matches?) and return exit 0 or exit 2. No ambiguity.
 - **Prompt/agent hooks are for judgment.** Use them when the decision requires reasoning, not when a grep would do.
 - **Every hook needs tests.** Add tests in `tests/` before submitting. The `conftest.py` fixtures make this straightforward.
 - **Fail early and loud.** Hooks should never swallow errors. If something is wrong, block and explain why.
+- **Never `git add -A`.** Stage specific files by name. The harness blocks blind staging.
 
 ## What to Contribute
 
@@ -44,7 +45,7 @@ uv run pytest     # Run 109 tests
 ## Running Tests
 
 ```bash
-uv run pytest              # All 109 tests
+uv run pytest              # All 121 tests
 uv run pytest -k dangerous # Just the dangerous-commands tests
 uv run pytest --tb=long    # Full tracebacks on failure
 ```
