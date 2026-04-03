@@ -165,6 +165,7 @@ spec/
   etc_sdlc.yaml            The SDLC specification (single source of truth)
   prd-hook-test-suite.md   Example PRD (used to build the test suite)
   prd-v1.1-harness-evolution.md  PRD for v1.1 features
+  prd-v1.2-templates-journal-checkpoint.md  PRD for v1.2 features
 
 compile-sdlc.py            DSL compiler → dist/
 install.sh                 Deploys compiled artifacts to ~/.claude/
@@ -180,10 +181,17 @@ hooks/                     9 hook scripts
   reinject-context.sh        Restores context after compaction
   mark-dirty.sh              Tracks which files changed (breadcrumb for CI)
 
-skills/                    3 skills
+skills/                    4 skills
   implement/SKILL.md         /implement — spec-based orchestration with subagent dispatch
   spec/SKILL.md              /spec — Socratic loop to generate implementation-ready PRDs
   postmortem/SKILL.md        /postmortem — trace escaped bugs, build antipatterns knowledge
+  checkpoint/SKILL.md        /checkpoint — save session state before compaction
+
+templates/                 4 artifact templates
+  adr.md.tmpl                Architecture Decision Record
+  agent.md.tmpl              Agent definition with frontmatter
+  task.yaml.tmpl             Task file for /implement
+  invariant.md.tmpl          INVARIANTS.md entry
 
 agents/                    23 agent definitions
   sem.md                     Orchestrator — owns SDLC phases, deploys teams
@@ -200,14 +208,14 @@ standards/                 18 engineering standards across 6 categories
   security/                  Data handling, OWASP checklist
   quality/                   Metrics, guardrail rules
 
-tests/                     121 tests (pytest, ~3 seconds)
+tests/                     123 tests (pytest, ~3 seconds)
   test_block_dangerous.py    18 tests — dangerous command blocking
   test_tdd_gate.py           6 tests — TDD enforcement
   test_invariants.py         15 tests — invariant checking
   test_required_reading.py   5 tests — required reading verification
   test_config_changes.py     11 tests — config change protection
   test_inject_standards.py   7 tests — standards + antipatterns injection
-  test_reinject_context.py   4 tests — compaction recovery
+  test_reinject_context.py   6 tests — compaction recovery + journal + checkpoint
   test_mark_dirty.py         7 tests — dirty marker tracking
   test_phase_gate.py         9 tests — SDLC phase enforcement
   test_compiler.py           12 tests — DSL compiler output

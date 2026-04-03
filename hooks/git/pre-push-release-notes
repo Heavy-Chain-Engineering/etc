@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# hooks/git/pre-push-release-notes
+#
+# Pre-push git hook that generates release notes from commits being pushed.
+# Appends a summary of new commits to RELEASE_NOTES.md in the repo root.
+#
+# Install: cp hooks/git/pre-push-release-notes .git/hooks/pre-push
+# Or chain with existing pre-push:
+#   Add to .git/hooks/pre-push: bash hooks/git/pre-push-release-notes "$@"
+#
+# Behavior:
+#   - Compares local HEAD vs remote HEAD to find new commits
+#   - Groups commits by type (feat, fix, chore, docs, refactor)
+#   - Prepends a dated section to RELEASE_NOTES.md
+#   - Does NOT block the push — informational only
+
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+RELEASE_NOTES="$REPO_ROOT/RELEASE_NOTES.md"
+
+# Read stdin for push refs: <local ref> <local sha> <remote ref> <remote sha>
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    # If remote sha is all zeros, this is a new branch — use all commits
+    if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+        COMMITS=$(git log --oneline "$local_sha" -20 2>/dev/null)
+    else
+        COMMITS=$(git log --oneline "${remote_sha}..${local_sha}" 2>/dev/null)
+    fi
+
+    if [[ -z "$COMMITS" ]]; then
+        exit 0
+    fi
+
+    # Count commits
+    COMMIT_COUNT=$(echo "$COMMITS" | wc -l | tr -d ' ')
+
+    # Group by conventional commit type
+    FEATS=$(echo "$COMMITS" | grep -E '^\w+ feat:' || true)
+    FIXES=$(echo "$COMMITS" | grep -E '^\w+ fix:' || true)
+    DOCS=$(echo "$COMMITS" | grep -E '^\w+ docs:' || true)
+    CHORES=$(echo "$COMMITS" | grep -E '^\w+ chore:' || true)
+    OTHER=$(echo "$COMMITS" | grep -vE '^\w+ (feat|fix|docs|chore|refactor):' || true)
+
+    # Build the release note section
+    DATE=$(date +"%Y-%m-%d")
+    SECTION="## $DATE ($COMMIT_COUNT commits)\n\n"
+
+    if [[ -n "$FEATS" ]]; then
+        SECTION+="### Features\n"
+        while IFS= read -r line; do
+            HASH=$(echo "$line" | cut -d' ' -f1)
+            MSG=$(echo "$line" | sed 's/^[a-f0-9]* feat: //')
+            SECTION+="- $MSG ($HASH)\n"
+        done <<< "$FEATS"
+        SECTION+="\n"
+    fi
+
+    if [[ -n "$FIXES" ]]; then
+        SECTION+="### Fixes\n"
+        while IFS= read -r line; do
+            HASH=$(echo "$line" | cut -d' ' -f1)
+            MSG=$(echo "$line" | sed 's/^[a-f0-9]* fix: //')
+            SECTION+="- $MSG ($HASH)\n"
+        done <<< "$FIXES"
+        SECTION+="\n"
+    fi
+
+    if [[ -n "$DOCS" ]]; then
+        SECTION+="### Documentation\n"
+        while IFS= read -r line; do
+            HASH=$(echo "$line" | cut -d' ' -f1)
+            MSG=$(echo "$line" | sed 's/^[a-f0-9]* docs: //')
+            SECTION+="- $MSG ($HASH)\n"
+        done <<< "$DOCS"
+        SECTION+="\n"
+    fi
+
+    if [[ -n "$CHORES" ]]; then
+        SECTION+="### Maintenance\n"
+        while IFS= read -r line; do
+            HASH=$(echo "$line" | cut -d' ' -f1)
+            MSG=$(echo "$line" | sed 's/^[a-f0-9]* chore: //')
+            SECTION+="- $MSG ($HASH)\n"
+        done <<< "$CHORES"
+        SECTION+="\n"
+    fi
+
+    # Prepend to RELEASE_NOTES.md
+    if [[ -f "$RELEASE_NOTES" ]]; then
+        EXISTING=$(cat "$RELEASE_NOTES")
+        HEADER=$(head -2 "$RELEASE_NOTES")
+        BODY=$(tail -n +3 "$RELEASE_NOTES")
+        printf "%s\n\n%b\n%s\n" "$HEADER" "$SECTION" "$BODY" > "$RELEASE_NOTES"
+    else
+        printf "# Release Notes\n\n%b" "$SECTION" > "$RELEASE_NOTES"
+    fi
+
+    echo ""
+    echo "Release notes updated: $RELEASE_NOTES ($COMMIT_COUNT commits)"
+    echo ""
+done
+
+exit 0

@@ -16,7 +16,7 @@ Thanks for your interest in contributing to etc (Engineering Team, Codified).
 git clone https://github.com/Heavy-Chain-Engineering/etc.git
 cd etc
 uv sync           # Install dependencies
-uv run pytest     # Run 121 tests
+uv run pytest     # Run 123 tests
 ```
 
 ## Key Principles
@@ -45,13 +45,23 @@ uv run pytest     # Run 121 tests
 ## Running Tests
 
 ```bash
-uv run pytest              # All 121 tests
+uv run pytest              # All 123 tests
 uv run pytest -k dangerous # Just the dangerous-commands tests
 uv run pytest --tb=long    # Full tracebacks on failure
 ```
+
+## Using Templates
+
+When creating new artifacts, start from the templates in `~/.claude/templates/`:
+
+- `adr.md.tmpl` — Architecture Decision Records
+- `agent.md.tmpl` — Agent definitions with frontmatter
+- `task.yaml.tmpl` — Task files for `/implement`
+- `invariant.md.tmpl` — INVARIANTS.md entries
 
 ## Code Style
 
 - Python 3.11+, strict typing
 - Test names: `test_should_<behavior>_when_<condition>`
 - Hook scripts: bash, no external dependencies beyond jq and python3
+- Commit messages: conventional commits (feat:, fix:, docs:, chore:)
