@@ -94,6 +94,48 @@ anything else?
 The user can request additional research at this point: "Research more about X."
 Honor all such requests before proceeding.
 
+### Phase 2.5: Gray Area Resolution
+
+Before writing the spec, systematically identify **decisions that could go either
+way** — architectural choices, technology selections, design trade-offs where the
+research found multiple valid options.
+
+Present each gray area to the user for resolution:
+
+```
+I found N gray areas that need your input before I write the spec:
+
+1. **[Decision topic]**: [Option A] vs [Option B]?
+   Research found: [trade-off summary]
+   → Which approach?
+
+2. **[Decision topic]**: [Option A] vs [Option B] vs [Option C]?
+   Research found: [trade-off summary]
+   → Which approach?
+```
+
+Wait for the user to resolve ALL gray areas before proceeding.
+
+Save resolutions to `.etc_sdlc/features/{slug}/gray-areas.md`:
+
+```markdown
+# Gray Areas — Resolved Decisions
+
+## GA-001: [Topic]
+- **Options:** [A] vs [B]
+- **Decision:** [chosen option]
+- **Rationale:** [why]
+- **Decided by:** [user], {date}
+```
+
+These resolutions will be:
+- Incorporated into the PRD's Technical Constraints section
+- Injected into subagent context during implementation
+- Referenced by acceptance criteria
+
+If no gray areas are found, state explicitly: "No gray areas identified —
+research findings are unambiguous." and proceed.
+
 ### Phase 3: Iterative Spec Writing
 
 Write the PRD section by section. Present EACH section to the user for approval
@@ -158,21 +200,31 @@ Iterate until all items pass.
 
 Once the Definition of Ready passes:
 
-1. **Write the final PRD** to `spec/{slug}.md`
-2. **Remove the draft** from `spec/.drafts/{slug}.md` (if it exists)
-3. **Report the summary:**
+1. **Create feature directory:** `.etc_sdlc/features/{slug}/`
+2. **Write the final PRD** to `.etc_sdlc/features/{slug}/spec.md`
+3. **Copy to spec/{slug}.md** for backward compatibility and browsability
+4. **Save research** to `.etc_sdlc/features/{slug}/research/`
+5. **Gray areas** are already saved from Phase 2.5
+6. **Remove the draft** from `spec/.drafts/{slug}.md` (if it exists)
+7. **Report the summary:**
 
 ```
-Spec written to: spec/{slug}.md
+Feature directory: .etc_sdlc/features/{slug}/
+  spec.md         — the PRD
+  gray-areas.md   — N resolved decisions
+  research/       — codebase + web findings
+
+Also written to: spec/{slug}.md
 
 Definition of Ready: PASSED
 - [N] acceptance criteria
 - [N] edge cases documented
 - [N] security considerations
+- [N] gray areas resolved
 - [N] files in scope
 
 Ready to build:
-  /implement spec/{slug}.md
+  /implement .etc_sdlc/features/{slug}/spec.md
 ```
 
 ## PRD Output Format

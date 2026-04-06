@@ -191,22 +191,16 @@ def compile_skills(spec: dict, dist_dir: Path, repo_root: Path) -> None:
     skills_dir = dist_dir / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Generate DSL-declared skills
-    for skill_name, skill_def in skills.items():
-        if skill_name == "implement":
-            generate_implement_skill(skill_def, skills_dir, spec)
-        else:
-            generate_generic_skill(skill_def, skill_name, skills_dir)
-
-    # 2. Pass through hand-authored skills from repo_root/skills/
+    # All skills are hand-authored in repo_root/skills/.
+    # DSL skill declarations are metadata only (description, flow) — not templates.
+    # The compiler passes through the hand-authored SKILL.md files as-is.
     hand_authored_dir = repo_root / "skills"
     if hand_authored_dir.is_dir():
         for skill_path in hand_authored_dir.iterdir():
             if skill_path.is_dir() and (skill_path / "SKILL.md").exists():
                 dst = skills_dir / skill_path.name
-                if not dst.exists():  # Don't overwrite DSL-generated skills
-                    dst.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(skill_path / "SKILL.md", dst / "SKILL.md")
+                dst.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(skill_path / "SKILL.md", dst / "SKILL.md")
 
 
 def generate_implement_skill(skill_def: dict, skills_dir: Path, spec: dict) -> None:
