@@ -68,23 +68,37 @@ change-control:          ConfigChange       → command  Agent cannot loosen its
 compaction-recovery:     SessionStart       → command  Re-inject context after compaction
 ```
 
-### The `/spec` → `/implement` Pipeline
+### The `/spec` → `/build` Pipeline
 
-Two skills work together to go from idea to working code:
+The full pipeline from idea to verified, working code:
 
-**`/spec "Add user authentication"`** — Socratic specification loop:
+```
+/spec "Add user authentication"       → PRD with gray areas resolved
+/build .etc_sdlc/features/auth/spec.md → validated, decomposed, built, verified
+```
+
+**`/spec`** — Socratic specification loop:
 1. Asks clarifying questions (never starts writing immediately)
-2. Researches the codebase and web for patterns, pitfalls, security considerations
-3. Builds the PRD section by section, each approved by the user
-4. Validates against Definition of Ready before finalizing
+2. Researches the codebase and web for patterns, pitfalls, security
+3. Surfaces gray areas — ambiguous decisions resolved before writing
+4. Builds the PRD section by section, each approved by the user
+5. Validates against Definition of Ready before finalizing
 
-**`/implement spec/prd-authentication.md`** — Orchestrated implementation:
-1. Validates the spec against Definition of Ready — rejects vague requests
-2. Decomposes into tasks with dependencies, required reading, and acceptance criteria
-3. Dispatches to subagents respecting file-set isolation for safe parallelization
-4. Verifies and reports — runs CI, checks coverage, summarizes what was built
+**`/build`** — The conductor. Orchestrates the full pipeline:
+1. **Validate** — spec passes Definition of Ready
+2. **Decompose** — break PRD into tasks with hierarchical IDs
+3. **Score & Recurse** — any task scoring > 7 gets decomposed further (arbitrary depth)
+4. **Plan Waves** — group by dependency, verify no file overlaps
+5. **Execute** — dispatch wave by wave, verify after each wave
+6. **Verify** — full CI + architectural review
+7. **Report** — verification.md + summary
 
-**`/postmortem`** — When bugs escape, traces them to root cause and appends prevention rules to `.etc_sdlc/antipatterns.md`. Every future spec and subagent reads this file — the system learns from its mistakes.
+**`/decompose`** — Recursive hierarchical breakdown. Tasks too complex
+for a single agent session get broken into subtasks, which get broken into
+sub-subtasks, until every leaf is implementable. Enables arbitrary scale.
+
+**`/postmortem`** — When bugs escape, traces them to root cause and appends
+prevention rules to `.etc_sdlc/antipatterns.md`. The system learns from mistakes.
 
 ## SDLC-as-Code
 
@@ -181,9 +195,12 @@ hooks/                     9 hook scripts
   reinject-context.sh        Restores context after compaction
   mark-dirty.sh              Tracks which files changed (breadcrumb for CI)
 
-skills/                    4 skills
-  implement/SKILL.md         /implement — spec-based orchestration with subagent dispatch
+skills/                    7 skills
+  build/SKILL.md             /build — the conductor: full pipeline from spec to verified code
   spec/SKILL.md              /spec — Socratic loop to generate implementation-ready PRDs
+  decompose/SKILL.md         /decompose — recursive hierarchical task breakdown
+  implement/SKILL.md         /implement — scale-adaptive dispatch (QUICK/STANDARD/DEEP)
+  tasks/SKILL.md             /tasks — native task tracker (list, next, board, tree, waves)
   postmortem/SKILL.md        /postmortem — trace escaped bugs, build antipatterns knowledge
   checkpoint/SKILL.md        /checkpoint — save session state before compaction
 
@@ -208,7 +225,7 @@ standards/                 18 engineering standards across 6 categories
   security/                  Data handling, OWASP checklist
   quality/                   Metrics, guardrail rules
 
-tests/                     123 tests (pytest, ~3 seconds)
+tests/                     148 tests (pytest, ~4 seconds)
   test_block_dangerous.py    18 tests — dangerous command blocking
   test_tdd_gate.py           6 tests — TDD enforcement
   test_invariants.py         15 tests — invariant checking

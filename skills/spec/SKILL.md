@@ -224,7 +224,7 @@ Definition of Ready: PASSED
 - [N] files in scope
 
 Ready to build:
-  /implement .etc_sdlc/features/{slug}/spec.md
+  /build .etc_sdlc/features/{slug}/spec.md
 ```
 
 ## PRD Output Format
