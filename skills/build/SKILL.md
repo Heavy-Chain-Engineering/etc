@@ -287,3 +287,38 @@ If no incomplete features found: "No build in progress. Start with: /build spec/
 - You ALWAYS write state.yaml after each step for resume capability.
 - You ALWAYS write verification.md before reporting success.
 - If context is getting large (> 60%), suggest `/checkpoint` then `/compact`.
+
+## Post-Completion Guidance
+
+After a successful build, prompt the user:
+
+```
+Build complete. All {N} tests pass, {C}% coverage.
+
+This feature is ready to commit. Next steps:
+  • Review the changes: git diff
+  • Commit when satisfied
+  • If you find issues later: /postmortem to trace and prevent recurrence
+  • Ready to build something else? /spec "your next idea"
+```
+
+After a failed build (escalation or test failure):
+
+```
+Build paused at Wave {N}. {reason}
+
+Options:
+  • Fix the issue, then: /build --resume
+  • Review the task board: /tasks board
+  • Check what's blocking: /tasks deps {task_id}
+  • If you need to rethink: /spec to revisit the specification
+```
+
+After a wave completes mid-pipeline:
+
+```
+Wave {N} of {total} complete. {M} tasks done, {K} remaining.
+Tests passing. Proceeding to Wave {N+1}...
+```
+
+Keep the user informed at every natural boundary.

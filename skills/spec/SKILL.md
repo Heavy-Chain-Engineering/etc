@@ -299,3 +299,25 @@ starting point. The user can add, remove, or modify these:
 - The PRD format MUST match what `/implement` expects (see PRD Output Format above)
 - If the user says "research more about X" at any point, honor the request before continuing
 - AP entries from `.etc_sdlc/antipatterns.md` are incorporated when relevant -- never ignored
+
+## Post-Completion Guidance
+
+After the PRD is finalized and written, prompt the user with the natural next step:
+
+```
+This PRD is solid and meets all Definition of Ready criteria.
+
+Next steps:
+  /build .etc_sdlc/features/{slug}/spec.md
+    → Validates, decomposes recursively, executes wave-by-wave, verifies.
+    → This is the recommended path for most features.
+
+  /decompose .etc_sdlc/features/{slug}/spec.md
+    → If you want to review the task breakdown before building.
+    → You can then run /build when you're satisfied with the decomposition.
+
+Shall I kick off the build?
+```
+
+Always suggest `/build` as the primary path. Offer `/decompose` for users who
+want manual control over the breakdown. Wait for the user's response.

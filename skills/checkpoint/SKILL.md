@@ -106,3 +106,15 @@ Safe to run /compact. State will be restored via reinject-context hook.
 - If `.sdlc/state.json` doesn't exist, report phase as "not initialized"
 - Keep the checkpoint concise — it's injected into context after compaction,
   so every line costs context window space
+
+## Post-Completion Guidance
+
+After the checkpoint is saved:
+
+```
+Checkpoint saved. Context will be restored automatically after compaction.
+
+  /compact          — safe to compact now, state is preserved
+  /build --resume   — after compaction, resume any in-progress build
+  /tasks board      — check task status anytime
+```

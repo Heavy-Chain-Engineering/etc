@@ -161,3 +161,22 @@ what's ready for dispatch.
 - ALWAYS verify the tree after decomposition
 - If a task can't be decomposed further (already 1-2 criteria, 1-2 files),
   leave it as-is even if complexity is high — some tasks are irreducibly complex
+
+## Post-Completion Guidance
+
+After decomposition is complete, prompt the user:
+
+```
+Decomposition complete.
+  {N} leaf tasks, max depth {D}, all scoring ≤ 7.
+
+  /tasks tree     — view the full hierarchy
+  /tasks waves    — see the execution plan
+  /tasks board    — kanban view of all tasks
+
+Ready to execute?
+  /build {spec_path}
+    → Picks up from the decomposition (skips Steps 1-4, goes straight to wave planning)
+
+Shall I start the build?
+```

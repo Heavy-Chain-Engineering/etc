@@ -65,3 +65,34 @@ A task is "ready" when:
 - Every task ID in its `dependencies` list has status `completed`
 
 `/tasks next` automatically resolves this.
+
+## Context-Aware Guidance
+
+After showing task information, suggest the natural next action:
+
+**If there are tasks ready to work on:**
+```
+{N} tasks ready. Next up: {task_id} — {title}
+  /build --resume    to continue the pipeline
+  /decompose {id}    if any tasks need further breakdown
+```
+
+**If all tasks are completed:**
+```
+All {N} tasks complete!
+  /build --resume    to run final verification
+```
+
+**If tasks are escalated or blocked:**
+```
+⚠ {N} tasks escalated, {M} blocked.
+  /tasks deps {id}   to see what's blocking
+  /postmortem        if an escalation reveals a systemic issue
+```
+
+**If complex tasks are found:**
+```
+⚠ {N} tasks score > 7 (too complex for single agent).
+  /decompose {id}    to break them down
+  /tasks score       to see all complexity scores
+```

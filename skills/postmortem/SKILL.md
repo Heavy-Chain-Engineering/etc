@@ -185,3 +185,26 @@ This creates an audit trail of all governance events across sessions.
   `## AP-NNN:` headers, so the hook can display them to subagents
 - If the user provides a one-liner with the command, use it as the bug description
   and skip directly to question 2
+
+## Post-Completion Guidance
+
+After the antipattern is recorded:
+
+```
+AP-{NNN} recorded. This lesson will be injected into every future spec
+and subagent context automatically.
+
+{If a new invariant was suggested and accepted:}
+  INVARIANTS.md updated with INV-{NNN}. This will be enforced by hooks.
+
+{If a hook change was suggested:}
+  Suggested hook change noted. To implement:
+  1. Edit spec/etc_sdlc.yaml
+  2. python3 compile-sdlc.py spec/etc_sdlc.yaml
+  3. ./install.sh
+
+What's next?
+  • Continue working: the harness is now smarter
+  • /spec to start a new feature (antipatterns will be incorporated)
+  • /build --resume if a build was in progress
+```
