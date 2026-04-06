@@ -2,6 +2,9 @@ task_id: "{NNN}"
 title: "{Clear, actionable title}"
 assigned_agent: backend-developer
 status: pending
+parent_task: null              # Set to parent ID for subtasks (e.g., "002")
+complexity: null               # Auto-scored 1-10 by tasks.py score
+wave: null                     # Execution wave (0=first, parallel within wave)
 requires_reading:
   - spec/{prd}.md
 files_in_scope:
@@ -9,6 +12,6 @@ files_in_scope:
   - tests/test_{module}.py
 acceptance_criteria:
   - "{Specific, measurable criterion}"
-dependencies: []
+dependencies: []               # Task IDs that must complete first
 context: |
-  {Additional context from the PRD.}
+  {Additional context from the PRD or parent task.}

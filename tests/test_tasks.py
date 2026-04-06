@@ -1,4 +1,4 @@
-"""Tests for scripts/tasks.py — native task tracker."""
+"""Tests for scripts/tasks.py — native task tracker with hierarchical decomposition."""
 
 from __future__ import annotations
 
@@ -19,27 +19,40 @@ def _run_tasks(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _create_task(tasks_dir: Path, task_id: str, title: str, status: str = "pending",
-                 deps: list[str] | None = None, agent: str = "backend-developer") -> Path:
+def _create_task(
+    tasks_dir: Path,
+    task_id: str,
+    title: str,
+    status: str = "pending",
+    deps: list[str] | None = None,
+    agent: str = "backend-developer",
+    parent: str | None = None,
+    criteria: list[str] | None = None,
+    files: list[str] | None = None,
+) -> Path:
     """Create a task YAML file."""
     tasks_dir.mkdir(parents=True, exist_ok=True)
     path = tasks_dir / f"{task_id}-{title.lower().replace(' ', '-')}.yaml"
     lines = [
-        f"task_id: \"{task_id}\"",
-        f"title: \"{title}\"",
+        f'task_id: "{task_id}"',
+        f'title: "{title}"',
         f"assigned_agent: {agent}",
         f"status: {status}",
-        "requires_reading:",
-        "  - spec/prd.md",
-        "files_in_scope:",
-        "  - src/app.py",
-        "acceptance_criteria:",
-        "  - \"Tests pass\"",
     ]
+    if parent:
+        lines.append(f'parent_task: "{parent}"')
+    lines.append("requires_reading:")
+    lines.append("  - spec/prd.md")
+    lines.append("files_in_scope:")
+    for f in (files or ["src/app.py"]):
+        lines.append(f"  - {f}")
+    lines.append("acceptance_criteria:")
+    for c in (criteria or ["Tests pass"]):
+        lines.append(f'  - "{c}"')
     if deps:
         lines.append("dependencies:")
         for d in deps:
-            lines.append(f"  - \"{d}\"")
+            lines.append(f'  - "{d}"')
     else:
         lines.append("dependencies: []")
     path.write_text("\n".join(lines) + "\n")
@@ -112,6 +125,15 @@ class TestNext:
         result = _run_tasks(tmp_path, "next")
         assert "No tasks ready" in result.stdout
 
+    def test_should_only_show_leaf_tasks(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Parent", "decomposed")
+        _create_task(tasks_dir, "001.001", "Child", "pending", parent="001")
+
+        result = _run_tasks(tmp_path, "next")
+        assert "001.001" in result.stdout
+        # Parent should not appear as next (it's decomposed, not a leaf)
+
 
 class TestStatus:
     def test_should_show_counts(self, tmp_path: Path) -> None:
@@ -126,6 +148,17 @@ class TestStatus:
         assert "in_progress: 1" in result.stdout
         assert "completed: 1" in result.stdout
 
+    def test_should_show_leaf_vs_parent_count(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Parent", "decomposed")
+        _create_task(tasks_dir, "001.001", "Child A", "pending", parent="001")
+        _create_task(tasks_dir, "001.002", "Child B", "pending", parent="001")
+
+        result = _run_tasks(tmp_path, "status")
+        assert "3 total" in result.stdout
+        assert "2 leaf" in result.stdout
+        assert "1 parent" in result.stdout
+
 
 class TestBoard:
     def test_should_group_by_status(self, tmp_path: Path) -> None:
@@ -138,6 +171,15 @@ class TestBoard:
         assert "PENDING" in result.stdout
         assert "IN_PROGRESS" in result.stdout
         assert "COMPLETED" in result.stdout
+
+    def test_should_only_show_leaf_tasks(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Parent", "decomposed")
+        _create_task(tasks_dir, "001.001", "Leaf", "pending", parent="001")
+
+        result = _run_tasks(tmp_path, "board")
+        assert "001.001" in result.stdout
+        # Decomposed parent should not appear on the board
 
 
 class TestSetStatus:
@@ -158,6 +200,14 @@ class TestSetStatus:
         result = _run_tasks(tmp_path, "set-status", "001", "bogus")
         assert result.returncode == 1
 
+    def test_should_accept_decomposed_status(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        path = _create_task(tasks_dir, "001", "Task", "pending")
+
+        result = _run_tasks(tmp_path, "set-status", "001", "decomposed")
+        assert result.returncode == 0
+        assert "status: decomposed" in path.read_text()
+
 
 class TestDeps:
     def test_should_show_dependency_tree(self, tmp_path: Path) -> None:
@@ -168,3 +218,88 @@ class TestDeps:
         result = _run_tasks(tmp_path, "deps", "002")
         assert "001" in result.stdout
         assert "002" in result.stdout
+
+
+class TestScore:
+    def test_should_score_simple_task(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Simple", criteria=["Pass"], files=["src/a.py"])
+
+        result = _run_tasks(tmp_path, "score")
+        assert "001" in result.stdout
+        # 1 criterion + 1 file = base score of 1
+        assert "1" in result.stdout
+
+    def test_should_flag_complex_task(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(
+            tasks_dir, "001", "Complex",
+            criteria=["A", "B", "C", "D", "E", "F"],
+            files=["src/a.py", "src/b.py", "src/c.py", "src/d.py", "tests/t.py"],
+        )
+
+        result = _run_tasks(tmp_path, "score")
+        assert "DECOMPOSE" in result.stdout
+
+
+class TestTree:
+    def test_should_show_hierarchy(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Parent", "decomposed")
+        _create_task(tasks_dir, "001.001", "Child A", "pending", parent="001")
+        _create_task(tasks_dir, "001.002", "Child B", "completed", parent="001")
+
+        result = _run_tasks(tmp_path, "tree")
+        assert "001" in result.stdout
+        assert "001.001" in result.stdout
+        assert "001.002" in result.stdout
+        assert "✓" in result.stdout  # completed marker
+
+
+class TestWaves:
+    def test_should_group_independent_tasks(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Independent A", "pending", files=["src/a.py"])
+        _create_task(tasks_dir, "002", "Independent B", "pending", files=["src/b.py"])
+
+        result = _run_tasks(tmp_path, "waves")
+        assert "Wave 0" in result.stdout
+        assert "2 tasks" in result.stdout
+
+    def test_should_separate_dependent_tasks(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "First", "pending", files=["src/a.py"])
+        _create_task(tasks_dir, "002", "Second", "pending", deps=["001"], files=["src/b.py"])
+
+        result = _run_tasks(tmp_path, "waves")
+        assert "Wave 0" in result.stdout
+        assert "Wave 1" in result.stdout
+
+    def test_should_warn_on_file_overlap(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Task A", "pending", files=["src/shared.py"])
+        _create_task(tasks_dir, "002", "Task B", "pending", files=["src/shared.py"])
+
+        result = _run_tasks(tmp_path, "waves")
+        assert "FILE OVERLAP" in result.stdout
+
+
+class TestReadyToDecompose:
+    def test_should_flag_complex_tasks(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(
+            tasks_dir, "001", "Huge task",
+            criteria=["A", "B", "C", "D", "E", "F", "G"],
+            files=["src/a.py", "src/b.py", "src/c.py", "src/d.py"],
+        )
+
+        result = _run_tasks(tmp_path, "ready-to-decompose")
+        assert "001" in result.stdout
+        assert "/decompose" in result.stdout
+
+    def test_should_show_nothing_when_all_small(self, tmp_path: Path) -> None:
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Small", criteria=["Pass"], files=["src/a.py"])
+
+        result = _run_tasks(tmp_path, "ready-to-decompose")
+        assert "No tasks exceed" in result.stdout

@@ -34,14 +34,17 @@ defaults:
 task_format:
   location: .etc_sdlc/tasks
   fields:
-    task_id:          { required: true,  type: string, description: "Unique task identifier (e.g., '001')" }
+    task_id:          { required: true,  type: string, description: "Hierarchical ID (e.g., '001', '001.001' for subtask)" }
     title:            { required: true,  type: string, description: "Human-readable task title" }
     assigned_agent:   { required: true,  type: string, description: "Agent role from agents section (e.g., 'backend-developer')" }
-    status:           { required: true,  type: enum,   values: [pending, in_progress, completed, blocked, escalated] }
+    status:           { required: true,  type: enum,   values: [pending, in_progress, completed, blocked, escalated, decomposed] }
     requires_reading: { required: true,  type: list,   description: "Files the agent MUST read before implementing" }
     files_in_scope:   { required: true,  type: list,   description: "Files the agent is allowed to create/modify" }
     acceptance_criteria: { required: true, type: list,  description: "Measurable criteria — all must pass for task to be 'done'" }
     dependencies:     { required: false, type: list,   description: "Task IDs that must complete before this task starts" }
+    parent_task:      { required: false, type: string,  description: "Parent task ID if this is a subtask (enables recursive decomposition)" }
+    complexity:       { required: false, type: integer, description: "Complexity score 1-10 (auto-calculated from criteria + files)" }
+    wave:             { required: false, type: integer, description: "Execution wave (0=first, tasks in same wave can parallelize)" }
     context:          { required: false, type: string,  description: "Additional context from the PRD or decomposition" }
 
 # ─── Gates ────���─────────────────────────────────────���────────────────────
