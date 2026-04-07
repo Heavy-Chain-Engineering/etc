@@ -505,6 +505,40 @@ skills:
         description: "Run architectural review, full CI, report results to human"
         model: opus  # Final verification uses strongest model
 
+  pull-tickets:
+    name: "pull-tickets"
+    description: >
+      Closed-loop ticket pipeline. Pulls eligible tickets from Linear via MCP,
+      generates full PRDs from ticket content and codebase research, runs each
+      through the complete SDLC pipeline (/build), and either creates a PR
+      (on success) or rejects the ticket back to the source with specific
+      questions (on failure). Source-aware rejection routing ensures feedback
+      reaches SMEs in their own tool.
+    usage: "/pull-tickets [--concurrency N] [--team TEAM] [--project PROJECT] [--triage-only]"
+    flow:
+      verify_mcp:
+        description: "Verify Linear MCP is connected, cache status map"
+        on_failure: "Stop immediately — cannot process without rejection channel"
+      pull_eligible:
+        description: "Pull tickets in Todo status from configured team/project"
+        on_failure: "Report zero tickets and exit"
+      analyze_batch:
+        description: "Detect cross-ticket dependencies, plan execution order"
+      translate_to_prd:
+        description: "Generate full 8-section PRD per ticket from content + codebase research"
+        output: ".etc_sdlc/features/{ticket-id}/spec.md"
+      build:
+        description: "Run /build on generated PRD — full pipeline, all gates"
+        on_failure: "Reject ticket back to source with specific questions"
+      close_loop:
+        description: "On success: create PR, update ticket to In Review, comment with summary"
+      scope_gate:
+        description: "If decomposition yields >15 leaf tasks, create sub-issues in Linear instead of building"
+        on_failure: "Decompose into sub-tickets, comment on parent, move to Needs Clarification"
+      triage_only:
+        description: "Analyze and reorganize board without building — score complexity, map dependencies, decompose epics"
+        on_failure: "N/A — triage is non-destructive, always succeeds"
+
 # ─── Standards ───���───────────────────────────────────────────────────────
 # Engineering standards passed through to dist/standards/.
 # These are read by agents and referenced in hook prompts.

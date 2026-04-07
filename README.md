@@ -23,7 +23,7 @@ python3 compile-sdlc.py spec/etc_sdlc.yaml
 
 ```bash
 uv sync            # Install test dependencies
-uv run pytest      # 121 tests, ~3 seconds
+uv run pytest      # 161 tests, ~5 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file without writing a test first. The TDD hook will block you.
@@ -92,6 +92,28 @@ The full pipeline from idea to verified, working code:
 5. **Execute** — dispatch wave by wave, verify after each wave
 6. **Verify** — full CI + architectural review
 7. **Report** — verification.md + summary
+
+**`/decompose`** — Recursive hierarchical breakdown. Tasks too complex
+for a single agent session get broken into subtasks, which get broken into
+sub-subtasks, until every leaf is implementable. Enables arbitrary scale.
+
+**`/pull-tickets`** — Closed-loop ticket pipeline. Connects to Linear (or any
+task tracker via MCP) and autonomously processes tickets through the full SDLC:
+
+```
+/pull-tickets                    # Pull from Linear, build, create PRs
+/pull-tickets --triage-only      # Analyze and organize board without building
+/pull-tickets --concurrency 3    # Process up to 3 tickets in parallel
+```
+
+For each ticket: generates a full PRD from ticket content + codebase research,
+runs `/build` with all governance gates, and either creates a PR or rejects the
+ticket back to the source with specific, tactful questions. SMEs get feedback in
+their own tool — not in an engineering chat they don't follow.
+
+**Triage mode** (`--triage-only`) analyzes the board without building: scores
+ticket complexity (S/M/L/XL), maps cross-ticket dependencies, decomposes epics
+into sub-issues, and comments analysis on each ticket.
 
 **`/decompose`** — Recursive hierarchical breakdown. Tasks too complex
 for a single agent session get broken into subtasks, which get broken into
@@ -180,6 +202,7 @@ spec/
   prd-hook-test-suite.md   Example PRD (used to build the test suite)
   prd-v1.1-harness-evolution.md  PRD for v1.1 features
   prd-v1.2-templates-journal-checkpoint.md  PRD for v1.2 features
+  closed-loop-ticket-pipeline.md  PRD for /pull-tickets (Linear → build → PR)
 
 compile-sdlc.py            DSL compiler → dist/
 install.sh                 Deploys compiled artifacts to ~/.claude/
@@ -195,11 +218,12 @@ hooks/                     9 hook scripts
   reinject-context.sh        Restores context after compaction
   mark-dirty.sh              Tracks which files changed (breadcrumb for CI)
 
-skills/                    7 skills
+skills/                    8 skills
   build/SKILL.md             /build — the conductor: full pipeline from spec to verified code
   spec/SKILL.md              /spec — Socratic loop to generate implementation-ready PRDs
   decompose/SKILL.md         /decompose — recursive hierarchical task breakdown
   implement/SKILL.md         /implement — scale-adaptive dispatch (QUICK/STANDARD/DEEP)
+  pull-tickets/SKILL.md      /pull-tickets — closed-loop ticket pipeline (Linear → PRD → build → PR)
   tasks/SKILL.md             /tasks — native task tracker (list, next, board, tree, waves)
   postmortem/SKILL.md        /postmortem — trace escaped bugs, build antipatterns knowledge
   checkpoint/SKILL.md        /checkpoint — save session state before compaction
@@ -225,7 +249,7 @@ standards/                 18 engineering standards across 6 categories
   security/                  Data handling, OWASP checklist
   quality/                   Metrics, guardrail rules
 
-tests/                     148 tests (pytest, ~4 seconds)
+tests/                     161 tests (pytest, ~5 seconds)
   test_block_dangerous.py    18 tests — dangerous command blocking
   test_tdd_gate.py           6 tests — TDD enforcement
   test_invariants.py         15 tests — invariant checking
@@ -236,6 +260,7 @@ tests/                     148 tests (pytest, ~4 seconds)
   test_mark_dirty.py         7 tests — dirty marker tracking
   test_phase_gate.py         9 tests — SDLC phase enforcement
   test_compiler.py           12 tests — DSL compiler output
+  test_pull_tickets.py       13 tests — ticket pipeline skill validation
   conftest.py                Shared fixtures (run_hook, tmp_project, etc.)
 ```
 
