@@ -1,0 +1,26 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "filesystem": {
+      "allowWrite": [
+        "./.venv",
+        "./dist",
+        "./build",
+        "./.pytest_cache",
+        "./.mypy_cache",
+        "./.ruff_cache",
+        "~/.cache/uv",
+        "~/.cache/pip"
+      ],
+      "denyRead": [
+        "./.env",
+        "./.env.local",
+        "./.env.production"
+      ]
+    },
+    "excludedCommands": [
+      "docker *",
+      "docker compose *"
+    ]
+  }
+}
