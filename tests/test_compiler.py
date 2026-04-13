@@ -7,6 +7,7 @@ content, and correctness of the generated files.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 from typing import Any
@@ -94,6 +95,175 @@ def test_should_produce_valid_json(hooks_json: dict[str, Any]) -> None:
 
 
 # -- Test 2: All gate events present ------------------------------------------
+
+
+def test_should_exempt_slash_commands_from_definition_of_ready(
+    hooks_json: dict[str, Any],
+) -> None:
+    """The definition-of-ready UserPromptSubmit hook must exempt slash
+    commands, continuation messages, and information queries from DoR.
+
+    Regression test: without this exemption, every slash command (/init-project,
+    /spec, /build, /postmortem, etc.) hits DoR and gets rejected because
+    structured invocations are not free-form feature requests. The skill
+    itself is responsible for refinement via its interactive prompt.
+
+    This test reads the compiled settings-hooks.json and verifies the
+    early-exit language is present. If someone rewrites the DoR prompt
+    without preserving the exemption, this test fails loudly instead of
+    users being blocked at the slash command prompt.
+    """
+    user_prompt_hooks = hooks_json.get("hooks", {}).get("UserPromptSubmit", [])
+    assert user_prompt_hooks, "No UserPromptSubmit hooks registered"
+
+    dor_prompts: list[str] = []
+    for matcher_group in user_prompt_hooks:
+        for handler in matcher_group.get("hooks", []):
+            prompt_text = handler.get("prompt", "")
+            if "Definition of Ready" in prompt_text:
+                dor_prompts.append(prompt_text)
+
+    assert dor_prompts, "definition-of-ready hook not found on UserPromptSubmit"
+
+    for prompt_text in dor_prompts:
+        assert "EARLY EXIT" in prompt_text, (
+            "DoR prompt missing EARLY EXIT section — slash commands will be blocked"
+        )
+        assert "Slash commands" in prompt_text, (
+            "DoR prompt missing slash command exemption — /init-project, "
+            "/spec, /build etc. will be rejected by DoR"
+        )
+        # Short-prompt length exemption is the STRONGEST continuation signal.
+        # Terse replies like "Now", "yes please", "create it" must bypass DoR
+        # because they are responses to interactive skill questions, not
+        # vague feature requests. The evaluator cannot see prior conversation
+        # turns, so length is the only discriminator.
+        assert "Short prompts" in prompt_text, (
+            "DoR prompt missing short-prompt length exemption — terse "
+            "replies to interactive skill questions ('Now', 'yes', 'create it') "
+            "will be rejected as vague work requests"
+        )
+        assert "15 words" in prompt_text, (
+            "DoR prompt short-prompt exemption must name a concrete word "
+            "threshold so the AI evaluator has a deterministic rule"
+        )
+        assert "FAIL OPEN" in prompt_text, (
+            "DoR prompt must include the fail-open directive — when in doubt, "
+            "allow. The hook is a coarse filter, not a strict gate."
+        )
+        # The exemption must appear BEFORE the checklist, otherwise the AI
+        # evaluator may apply the checklist before recognising the exemption.
+        idx_exit = prompt_text.find("EARLY EXIT")
+        idx_checklist = prompt_text.find("Definition of Ready checklist")
+        assert idx_exit < idx_checklist, (
+            "EARLY EXIT section must appear BEFORE the DoR checklist so the "
+            "AI evaluator short-circuits on structured invocations"
+        )
+        # Short-prompt exemption must be LISTED FIRST so the AI evaluator
+        # checks it before any keyword lookup. Length is a stronger, cheaper
+        # signal than keyword matching.
+        idx_short = prompt_text.find("Short prompts")
+        idx_slash = prompt_text.find("Slash commands")
+        assert idx_short < idx_slash, (
+            "Short-prompt exemption must appear BEFORE the slash-command "
+            "exemption so length is the first filter the evaluator applies"
+        )
+
+
+def test_should_exempt_builtin_todos_from_task_readiness(
+    hooks_json: dict[str, Any],
+) -> None:
+    """The task-readiness TaskCreated hook must exempt built-in TaskCreate
+    todos from formal ETC DoR evaluation.
+
+    Regression test: Claude Code's built-in TaskCreate tool creates
+    lightweight todos (`{title, status, activeForm}`) that don't have the
+    fields the ETC DoR checklist requires (`task_id`, `files_in_scope`,
+    `acceptance_criteria`, `requires_reading`). Without a shape check, the
+    task-readiness gate rejects every built-in todo an agent tries to
+    create, blocking in-context progress tracking inside skills like
+    /init-project and /build.
+    """
+    task_created_hooks = hooks_json.get("hooks", {}).get("TaskCreated", [])
+    assert task_created_hooks, "No TaskCreated hooks registered"
+
+    readiness_prompts: list[str] = []
+    for matcher_group in task_created_hooks:
+        for handler in matcher_group.get("hooks", []):
+            prompt_text = handler.get("prompt", "")
+            if "Definition of Ready" in prompt_text:
+                readiness_prompts.append(prompt_text)
+
+    assert readiness_prompts, "task-readiness hook not found on TaskCreated"
+
+    for prompt_text in readiness_prompts:
+        assert "SHAPE CHECK" in prompt_text, (
+            "task-readiness prompt missing SHAPE CHECK section — built-in "
+            "TaskCreate todos will be rejected"
+        )
+        assert "built-in TaskCreate" in prompt_text or "built-in todo" in prompt_text, (
+            "task-readiness prompt does not name the built-in TaskCreate "
+            "exemption — future maintainers will not understand why the "
+            "shape check exists"
+        )
+        # Must name at least one of the formal task fields as the discriminator
+        assert "task_id" in prompt_text and "files_in_scope" in prompt_text, (
+            "task-readiness prompt must name formal task fields "
+            "(task_id, files_in_scope) so the AI evaluator knows how to "
+            "discriminate formal tasks from built-in todos"
+        )
+        # Shape check must come BEFORE the DoR checklist
+        idx_shape = prompt_text.find("SHAPE CHECK")
+        idx_checklist = prompt_text.find("A task is NOT ready")
+        assert idx_shape < idx_checklist, (
+            "SHAPE CHECK must appear BEFORE the 'task is NOT ready' "
+            "checklist so the AI evaluator short-circuits on built-in todos"
+        )
+
+
+def test_should_exempt_builtin_todos_from_task_completion(
+    hooks_json: dict[str, Any],
+) -> None:
+    """The task-completion TaskCompleted hook must exempt built-in
+    TaskCreate todo completions from formal ETC DoD verification.
+
+    Regression test: same class of bug as task-readiness — the
+    TaskCompleted event fires for both formal ETC task YAML files and
+    lightweight built-in todos. Running the full DoD verification
+    (coverage, type check, test suite) on a built-in todo is nonsensical.
+    """
+    task_completed_hooks = hooks_json.get("hooks", {}).get("TaskCompleted", [])
+    assert task_completed_hooks, "No TaskCompleted hooks registered"
+
+    dod_prompts: list[str] = []
+    for matcher_group in task_completed_hooks:
+        for handler in matcher_group.get("hooks", []):
+            prompt_text = handler.get("prompt", "")
+            if "Definition of Done" in prompt_text:
+                dod_prompts.append(prompt_text)
+
+    assert dod_prompts, "task-completion hook not found on TaskCompleted"
+
+    for prompt_text in dod_prompts:
+        assert "SHAPE CHECK" in prompt_text, (
+            "task-completion prompt missing SHAPE CHECK section — built-in "
+            "todo completions will trigger full DoD verification"
+        )
+        assert "built-in TaskCreate" in prompt_text or "built-in todo" in prompt_text, (
+            "task-completion prompt does not name the built-in TaskCreate "
+            "exemption"
+        )
+        # Must name at least one formal task field
+        assert "task_id" in prompt_text and "files_in_scope" in prompt_text, (
+            "task-completion prompt must name formal task fields as the "
+            "discriminator between formal tasks and built-in todos"
+        )
+        # Shape check before DoD verification
+        idx_shape = prompt_text.find("SHAPE CHECK")
+        idx_verification = prompt_text.find("Verify by inspecting")
+        assert idx_shape < idx_verification, (
+            "SHAPE CHECK must appear BEFORE the DoD verification steps"
+        )
 
 
 def test_should_include_all_gate_events(hooks_json: dict[str, Any]) -> None:
@@ -300,6 +470,53 @@ def test_should_include_dod_items_when_phase_present(
     assert not empty_phases, (
         f"Phases with empty DoD lists: {empty_phases}"
     )
+
+
+# -- Test 8: compile_skills copies skill subdirectories (BR-011, AC7) ---------
+
+
+def _load_compile_sdlc_module() -> Any:
+    """Load compile-sdlc.py as a module (hyphenated filename requires importlib)."""
+    module_path = REPO_ROOT / "compile-sdlc.py"
+    spec = importlib.util.spec_from_file_location("compile_sdlc", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_should_copy_skill_subdir_when_templates_present(tmp_path: Path) -> None:
+    """compile_skills must recursively copy skill subdirectories (BR-011, AC7).
+
+    Regression test for the task 001 change: compile_skills() uses
+    shutil.copytree so templates/ siblings of SKILL.md ride along into dist/.
+    """
+    # Arrange — build a fake repo_root with skills/fake/SKILL.md + templates/foo.txt
+    fake_repo = tmp_path / "repo"
+    skill_src = fake_repo / "skills" / "fake"
+    (skill_src / "templates").mkdir(parents=True)
+    skill_md_content = "# Fake Skill\n\nBody.\n"
+    template_content = "template payload\n"
+    (skill_src / "SKILL.md").write_text(skill_md_content)
+    (skill_src / "templates" / "foo.txt").write_text(template_content)
+
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Act
+    compile_sdlc.compile_skills(dist_dir, fake_repo)
+
+    # Assert — both files present in dist/skills/fake/
+    dst_skill = dist_dir / "skills" / "fake" / "SKILL.md"
+    dst_template = dist_dir / "skills" / "fake" / "templates" / "foo.txt"
+    assert dst_skill.exists(), f"SKILL.md not copied to {dst_skill}"
+    assert dst_template.exists(), f"templates/foo.txt not copied to {dst_template}"
+
+    # Assert — contents are byte-identical to source
+    assert dst_skill.read_bytes() == (skill_src / "SKILL.md").read_bytes()
+    assert dst_template.read_bytes() == (skill_src / "templates" / "foo.txt").read_bytes()
 
 
 # -- Helpers -------------------------------------------------------------------

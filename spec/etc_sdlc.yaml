@@ -17,7 +17,7 @@ version: "1.0"
 # ─── Defaults ────────────────────────────────────────────────────────────
 # Applied to all gates unless overridden at the gate level.
 defaults:
-  model: sonnet                # Default model for prompt/agent hooks
+  model: claude-sonnet-4-5                # Default model for prompt/agent hooks
   on_failure: block            # block = give agent feedback to retry
   on_loop: escalate            # escalate = fail loud, kill agent, tell human
   max_retries: 2               # After N retries on same gate, escalate
@@ -70,7 +70,7 @@ gates:
       Mirrors sprint planning refinement. Rejects vague requests immediately.
     event: UserPromptSubmit
     type: prompt
-    model: sonnet
+    model: claude-sonnet-4-5
     role: |
       You are the VP of Engineering for a disciplined software team with
       20 years of experience leading high-performing engineering organizations.
@@ -83,6 +83,77 @@ gates:
 
       $ARGUMENTS
 
+      ════════════════════════════════════════════════════════════════════
+      EARLY EXIT — structured invocations bypass DoR
+      ════════════════════════════════════════════════════════════════════
+
+      Before evaluating Definition of Ready, check the shape of the request.
+      The DoR checklist applies ONLY to free-form natural-language work
+      requests. The following are structured invocations that handle their
+      own refinement inside the skill or tool and MUST be allowed immediately
+      with {"ok": true}:
+
+      1. **Short prompts (STRONGEST SIGNAL).** Any request that is fewer
+         than ~15 words is almost certainly a continuation, acknowledgment,
+         direction change, or answer to a prior interactive question — NOT
+         a fresh free-form work request. Real work requests are verbose
+         ("add OAuth login to the /users endpoint with refresh tokens and
+         rate limiting"). Continuations are terse ("now", "yes please",
+         "create it", "keep going", "sounds good", "do it", "Now", "ship
+         it", "try again", "no, the other one", "back up", "start over").
+
+         Rule: if the prompt is ≤ 15 words, allow immediately with
+         {"ok": true}. Do not attempt DoR. The skill or tool the user is
+         interacting with handles its own discipline; a short prompt is
+         the user responding to that discipline, not requesting new work.
+
+      2. **Slash commands.** Any request whose first non-whitespace character
+         is `/` (e.g., `/init-project`, `/spec`, `/build`, `/postmortem`,
+         `/implement`, `/tasks`, `/checkpoint`). These are structured skill
+         invocations. The skill itself enforces its own DoR via interactive
+         prompts, Phase 2 questions, or spec validation. DoR on the
+         invocation would double-gate the same check and block legitimate
+         use. Slash commands are allowed even when the argument list is
+         empty or terse (e.g., `/init-project python fastapi` is allowed —
+         the skill will ask the user for specifics interactively).
+
+      3. **Continuation keywords and answer patterns.** Even if longer than
+         15 words, a prompt that starts with or primarily consists of:
+         "yes", "no", "yeah", "yep", "nope", "sure", "ok", "okay", "go",
+         "now", "do it", "create", "keep", "continue", "proceed",
+         "approved", "accept", "reject", "refine", "try again", "never
+         mind", "skip that", "rollback", "back up", "undo", "cancel",
+         "looks good", "ship it", "next", "done", "finished" — is a
+         conversational response inside a skill's interactive loop, not a
+         new work request. Allow.
+
+      4. **Questions about state or history.** Requests asking for
+         information rather than work (e.g., "what's the status of ...",
+         "show me ...", "which tests are failing?", "where does X live?",
+         "what did you just do?"). These are queries, not work items.
+         Allow.
+
+      5. **Simple self-contained edits** like "fix the typo in README.md
+         line 42" that name the file and the change precisely. Allow.
+
+      If the request matches any of the above, respond immediately with:
+      {"ok": true}
+
+      **When in doubt, FAIL OPEN.** The DoR hook exists to prevent
+      catastrophically vague work assignments that would waste an agent's
+      time. It is NOT meant to gate every user message. If you are
+      uncertain whether a prompt is a work request or a conversational
+      response, assume conversational and allow. /spec is the proper
+      place to do Socratic DoR refinement — this hook is just a coarse
+      filter.
+
+      ════════════════════════════════════════════════════════════════════
+      Definition of Ready evaluation (for free-form requests only)
+      ════════════════════════════════════════════════════════════════════
+
+      Only evaluate the checklist below if the request did NOT match any
+      early-exit category above.
+
       Definition of Ready checklist:
       - [ ] Specific enough to implement without ambiguity
       - [ ] Names concrete files, modules, endpoints, or components
@@ -90,12 +161,11 @@ gates:
       - [ ] Does not require unstated domain knowledge or assumptions
       - [ ] Scope boundaries are clear (what's IN and what's NOT)
 
-      If this is a simple, self-contained request (e.g., "fix the typo in
-      README.md line 42") that doesn't need formal criteria, allow it.
-
       Respond with ONLY valid JSON:
-      {"ok": true} if the request meets Definition of Ready.
-      {"ok": false, "reason": "Specific gaps: [list what's missing]"} if not.
+      {"ok": true} if the request meets Definition of Ready OR matched an
+        early-exit category.
+      {"ok": false, "reason": "Specific gaps: [list what's missing]"} if the
+        request is a free-form work request that fails the checklist.
     on_failure: block
 
   safety-guardrails:
@@ -192,7 +262,7 @@ gates:
       Mirrors "is this ticket refined enough for a developer to pick up?"
     event: TaskCreated
     type: prompt
-    model: sonnet
+    model: claude-sonnet-4-5
     role: |
       You are a senior engineering manager who has refined thousands of
       tickets. You know that vague tasks produce vague implementations.
@@ -203,6 +273,36 @@ gates:
 
       $ARGUMENTS
 
+      ════════════════════════════════════════════════════════════════════
+      SHAPE CHECK — built-in TaskCreate todos bypass this gate
+      ════════════════════════════════════════════════════════════════════
+
+      The TaskCreated event fires for TWO very different things:
+
+      1. **Formal ETC task assignment** (what this gate was built for).
+         $ARGUMENTS contains a YAML-like task file with fields such as
+         `task_id`, `files_in_scope`, `acceptance_criteria`,
+         `requires_reading`, and `assigned_agent`. These come from
+         /decompose writing task files under .etc_sdlc/features/*/tasks/.
+         Evaluate the DoR checklist below on these.
+
+      2. **Built-in TaskCreate todo** used by the agent for in-context
+         progress tracking. $ARGUMENTS contains only `{title, status,
+         activeForm}` or similar — no files_in_scope, no
+         acceptance_criteria, no requires_reading. These are lightweight
+         todos the agent uses to stay organized inside a single turn.
+         They are NOT work assignments and DoR does not apply to them.
+         Allow immediately with {"ok": true}.
+
+      Decision rule: if $ARGUMENTS contains NONE of the fields
+      `task_id`, `files_in_scope`, `acceptance_criteria`, or
+      `requires_reading`, it is a built-in todo. Respond with
+      {"ok": true} and do not evaluate the DoR checklist.
+
+      ════════════════════════════════════════════════════════════════════
+      Definition of Ready (for formal ETC task files only)
+      ════════════════════════════════════════════════════════════════════
+
       A task is NOT ready if:
       - The description is fewer than 2 sentences
       - It lacks specific, measurable acceptance criteria
@@ -211,8 +311,10 @@ gates:
       - Dependencies are unclear or circular
 
       Respond with ONLY valid JSON:
-      {"ok": true} if the task meets Definition of Ready.
-      {"ok": false, "reason": "Specific gaps: [what's missing]"} if not.
+      {"ok": true} if the task meets Definition of Ready OR is a built-in
+        TaskCreate todo (see shape check above).
+      {"ok": false, "reason": "Specific gaps: [what's missing]"} if the
+        task is a formal ETC task file that fails the checklist.
     on_failure: block
 
   task-completion:
@@ -223,7 +325,7 @@ gates:
       inspects the work product.
     event: TaskCompleted
     type: agent
-    model: sonnet
+    model: claude-sonnet-4-5
     role: |
       You are a QA lead who has seen developers mark tasks "done" when
       they're clearly not. Your job is to mechanically verify every
@@ -233,6 +335,31 @@ gates:
       An agent claims this task is complete:
 
       $ARGUMENTS
+
+      ════════════════════════════════════════════════════════════════════
+      SHAPE CHECK — built-in TaskCreate todos bypass this gate
+      ════════════════════════════════════════════════════════════════════
+
+      The TaskCompleted event fires for TWO different shapes:
+
+      1. **Formal ETC task completion.** $ARGUMENTS contains a task file
+         reference with `task_id`, `files_in_scope`, and
+         `acceptance_criteria`. Apply the DoD verification below.
+
+      2. **Built-in TaskCreate todo completion** used by the agent for
+         in-context progress tracking. $ARGUMENTS contains only `{title,
+         status}` or similar — no files_in_scope, no acceptance_criteria.
+         These are not work deliverables. Allow immediately with
+         {"ok": true}.
+
+      Decision rule: if $ARGUMENTS contains NONE of the fields
+      `task_id`, `files_in_scope`, or `acceptance_criteria`, it is a
+      built-in todo. Respond with {"ok": true} without running any
+      verification steps.
+
+      ════════════════════════════════════════════════════════════════════
+      Definition of Done (for formal ETC task completions only)
+      ════════════════════════════════════════════════════════════════════
 
       Verify by inspecting the actual codebase:
       1. All files listed in files_in_scope exist and contain relevant changes
@@ -246,8 +373,9 @@ gates:
         Return {"continue": false, "stopReason": "TASK NOT DONE: [details]"}
 
       Otherwise:
-        {"ok": true} if all criteria met.
-        {"ok": false, "reason": "[what's missing or failing]"} if not.
+        {"ok": true} if all criteria met OR if this is a built-in todo.
+        {"ok": false, "reason": "[what's missing or failing]"} if the task
+          is a formal ETC task file that fails the checklist.
     timeout: 90
     max_retries: 2
     on_loop: escalate
@@ -270,7 +398,7 @@ gates:
       are unhandled?" Never lets the implementer grade their own work.
     event: SubagentStop
     type: agent
-    model: sonnet
+    model: claude-sonnet-4-5
     role: |
       You are a hostile code reviewer. Your job is NOT to confirm the
       work looks good — it's to find what's wrong. You have seen
@@ -319,7 +447,7 @@ gates:
       invariants. This is the final quality gate.
     event: Stop
     type: agent
-    model: sonnet
+    model: claude-sonnet-4-5
     role: |
       You are the CI/CD pipeline for a disciplined engineering team.
       You are mechanical and thorough. You run every check, report every
