@@ -108,6 +108,21 @@ gates:
     script: block-dangerous-commands.sh
     on_failure: block
 
+  tier-0-preflight:
+    description: >
+      Blocks code edits when Tier 0 domain context is missing from the repo root.
+      Tier 0 = DOMAIN.md (what business, stakes, canonical terms) + PROJECT.md
+      (what this codebase is, where resources live). Without these, agents
+      fabricate business assumptions and cannot ground their reasoning.
+      Read-only exploration is still allowed so agents can gather the context
+      they need to create the missing files via /init-project.
+    event: PreToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-tier-0.sh
+    timeout: 5
+    on_failure: block
+
   tdd-gate:
     description: >
       Enforces write-test-first TDD. Blocks edits to production source files
