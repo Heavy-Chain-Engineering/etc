@@ -98,6 +98,31 @@ class TestShouldBlockDangerousCommands:
         # Assert
         assert result.exit_code == BLOCKED
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "git add .",
+            "git add . extra-file",
+            "git add -A",
+            "git add -A src/",
+            "git add --all",
+            "git add --all src/",
+        ],
+        ids=["git_add_dot", "git_add_dot_plus", "git_add_A", "git_add_A_path",
+             "git_add_all", "git_add_all_path"],
+    )
+    def test_should_block_when_undisciplined_git_add(
+        self, run_hook: Any, command: str
+    ) -> None:
+        # Arrange
+        hook_input = _make_input(command)
+
+        # Act
+        result = run_hook(HOOK_NAME, hook_input)
+
+        # Assert
+        assert result.exit_code == BLOCKED
+
 
 # -- Allow tests --------------------------------------------------------------
 
@@ -114,6 +139,46 @@ class TestShouldAllowSafeCommands:
 
         # Assert
         assert result.exit_code == ALLOWED
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Regression cases for the bug where `git\s+add\s+\.` matched any
+            # argument starting with a period, incorrectly blocking legitimate
+            # staging of dot-prefixed paths (.etc_sdlc/, .gitignore, etc.).
+            "git add .gitignore",
+            "git add .etc_sdlc/features/init-project/spec.md",
+            "git add .github/workflows/ci.yml",
+            "git add .env.example",
+            "git add .dockerignore .gitattributes",
+            "git add spec/file.md .etc_sdlc/foo.md",
+        ],
+        ids=[
+            "dot_gitignore",
+            "dot_etc_sdlc_nested",
+            "dot_github_workflow",
+            "dot_env_example",
+            "multiple_dot_prefixed",
+            "normal_then_dot_prefixed",
+        ],
+    )
+    def test_should_allow_when_git_add_dot_prefixed_path(
+        self, run_hook: Any, command: str
+    ) -> None:
+        """Regression test: the block regex must not match paths that merely
+        start with a dot. Only the standalone `.` argument (meaning 'stage
+        everything') is undisciplined."""
+        # Arrange
+        hook_input = _make_input(command)
+
+        # Act
+        result = run_hook(HOOK_NAME, hook_input)
+
+        # Assert
+        assert result.exit_code == ALLOWED, (
+            f"Expected {command!r} to be allowed but got exit {result.exit_code}. "
+            f"stderr: {result.stderr}"
+        )
 
     @pytest.mark.parametrize(
         "command",

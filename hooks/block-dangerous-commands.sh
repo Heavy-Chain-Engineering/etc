@@ -62,7 +62,7 @@ if echo "$COMMAND" | grep -qE '>\s*/dev/sd|mkfs\.|dd\s+if=|chmod\s+-R\s+777|chow
 fi
 
 # ── Undisciplined git staging ─────────────────────────────────────────────
-if echo "$COMMAND" | grep -qE 'git\s+add\s+(-A|--all|\.)'; then
+if echo "$COMMAND" | grep -qE 'git\s+add\s+(-A\b|--all\b|\.(\s|$))'; then
   echo "BLOCKED: 'git add -A' / 'git add .' stages everything blindly — including secrets, junk, and unintended files." >&2
   echo "Stage specific files by name: git add file1.py file2.py" >&2
   exit 2
