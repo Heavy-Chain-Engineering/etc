@@ -23,7 +23,7 @@ python3 compile-sdlc.py spec/etc_sdlc.yaml
 
 ```bash
 uv sync            # Install test dependencies
-uv run pytest      # 161 tests, ~5 seconds
+uv run pytest      # 228 tests, ~5 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file without writing a test first. The TDD hook will block you.
@@ -40,12 +40,13 @@ Then in Claude Code, try editing a `src/` file without writing a test first. The
 
 Command hooks fire on every Edit/Write (hundreds of times per session). Prompt hooks fire on task boundaries (a few times). Agent hooks fire on Stop (once per turn). The cost profile is intentional — cheap gates run often, expensive verification runs once.
 
-### The 14 Gates
+### The 15 Gates
 
 ```yaml
 # Preconditions — before work begins
-definition-of-ready:     UserPromptSubmit  → prompt  "Is this request clear enough?"
+definition-of-ready:     UserPromptSubmit  → prompt   "Is this request clear enough?" (fails open on slash commands and short replies)
 safety-guardrails:       PreToolUse (Bash) → command  Block rm -rf, force push, DROP TABLE
+tier-0-preflight:        PreToolUse (Edit) → command  DOMAIN.md and PROJECT.md must exist at repo root
 tdd-gate:                PreToolUse (Edit) → command  Test file must exist before source
 invariant-check:         PreToolUse (Edit) → command  INVARIANTS.md contracts must hold
 enough-context:          PreToolUse (Edit) → command  Agent must read required files first
@@ -68,14 +69,24 @@ change-control:          ConfigChange       → command  Agent cannot loosen its
 compaction-recovery:     SessionStart       → command  Re-inject context after compaction
 ```
 
-### The `/spec` → `/build` Pipeline
+### The `/init-project` → `/spec` → `/build` Pipeline
 
-The full pipeline from idea to verified, working code:
+The full pipeline from an empty repo to verified, working code:
 
 ```
-/spec "Add user authentication"       → PRD with gray areas resolved
+/init-project                          → tiered scaffold + DOMAIN.md + role manifests
+/spec "Add user authentication"        → PRD with gray areas resolved
 /build .etc_sdlc/features/auth/spec.md → validated, decomposed, built, verified
 ```
+
+**`/init-project`** — Bootstraps any repo (greenfield or brownfield) into a
+state where the harness can operate. Four phases: technical scaffold (via
+the `project-bootstrapper` agent), interactive `DOMAIN.md` / `PROJECT.md` /
+`CLAUDE.md` creation, tiered docs skeleton (`docs/prds/`, `docs/plans/`,
+`docs/sources/`, etc.), and starter role manifests under `roles/`. Phase 2
+supports two modes: answer six Socratic questions yourself, or provide a
+company website URL and the skill researches via WebFetch and drafts with
+citations. Idempotent — re-runs on an initialized repo produce no changes.
 
 **`/spec`** — Socratic specification loop:
 1. Asks clarifying questions (never starts writing immediately)
@@ -207,18 +218,20 @@ spec/
 compile-sdlc.py            DSL compiler → dist/
 install.sh                 Deploys compiled artifacts to ~/.claude/
 
-hooks/                     9 hook scripts
+hooks/                     10 hook scripts
   check-test-exists.sh       TDD gate — test file must exist before source edit
-  check-invariants.sh        Validates INVARIANTS.md contracts
+  check-invariants.sh        Validates INVARIANTS.md contracts (case-sensitive match)
   check-required-reading.sh  Agent must read required files before coding
   check-phase-gate.sh        Blocks edits inappropriate for current SDLC phase
-  block-dangerous-commands.sh Safety — blocks rm -rf, force push, DROP TABLE, git add -A
+  check-tier-0.sh            Blocks code edits when DOMAIN.md or PROJECT.md is missing
+  block-dangerous-commands.sh Safety — blocks rm -rf, force push, DROP TABLE, undisciplined staging
   block-config-changes.sh    Agent cannot modify its own governance
   inject-standards.sh        Onboards every subagent with standards + antipatterns
   reinject-context.sh        Restores context after compaction
   mark-dirty.sh              Tracks which files changed (breadcrumb for CI)
 
-skills/                    8 skills
+skills/                    9 skills
+  init-project/SKILL.md      /init-project — tiered repo bootstrap (tooling, DOMAIN.md, docs, roles)
   build/SKILL.md             /build — the conductor: full pipeline from spec to verified code
   spec/SKILL.md              /spec — Socratic loop to generate implementation-ready PRDs
   decompose/SKILL.md         /decompose — recursive hierarchical task breakdown
@@ -241,16 +254,17 @@ agents/                    23 agent definitions
   security-reviewer.md       OWASP-trained security scanner
   ... and 19 more
 
-standards/                 18 engineering standards across 6 categories
-  process/                   SDLC phases, TDD workflow, code review, definition of done
+standards/                 19 engineering standards across 6 categories
+  process/                   SDLC phases, TDD workflow, code review, definition of done,
+                             interactive-user-input (Pattern A picker + Pattern B marker)
   code/                      Clean code, error handling, typing, Python conventions
   testing/                   Test naming, testing standards, LLM evaluation
   architecture/              Abstraction rules, ADR process, layer boundaries
   security/                  Data handling, OWASP checklist
   quality/                   Metrics, guardrail rules
 
-tests/                     161 tests (pytest, ~5 seconds)
-  test_block_dangerous.py    18 tests — dangerous command blocking
+tests/                     228 tests (pytest, ~5 seconds, sandbox-clean)
+  test_block_dangerous.py    30 tests — dangerous command blocking (incl. git-add regex regression)
   test_tdd_gate.py           6 tests — TDD enforcement
   test_invariants.py         15 tests — invariant checking
   test_required_reading.py   5 tests — required reading verification
@@ -259,8 +273,10 @@ tests/                     161 tests (pytest, ~5 seconds)
   test_reinject_context.py   6 tests — compaction recovery + journal + checkpoint
   test_mark_dirty.py         7 tests — dirty marker tracking
   test_phase_gate.py         9 tests — SDLC phase enforcement
-  test_compiler.py           12 tests — DSL compiler output
+  test_compiler.py           17 tests — DSL compiler + hook shape-check contracts
   test_pull_tickets.py       13 tests — ticket pipeline skill validation
+  test_init_project.py       48 tests — /init-project templates, phases, preflight, SKILL contracts
+  test_tasks.py              28 tests — task tracker, waves scoping, feature filter
   conftest.py                Shared fixtures (run_hook, tmp_project, etc.)
 ```
 
