@@ -21,11 +21,25 @@ if [[ -z "$CWD" || "$CWD" == "." ]]; then
   exit 0
 fi
 
+# Case-sensitive INVARIANTS.md existence check.
+#
+# On macOS (APFS) and Windows (NTFS/exFAT), `[[ -f "INVARIANTS.md" ]]` matches
+# lowercase `invariants.md` because the filesystem is case-insensitive. That
+# caused the hook to parse standards/process/invariants.md (a standards
+# document about invariants) as if it were an invariant registry and
+# execute its example verify commands. The fix: use `ls` to list the
+# directory and grep for the EXACT filename case.
+has_invariants_file() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 1
+  ls "$dir" 2>/dev/null | grep -qE '^INVARIANTS\.md$'
+}
+
 # Collect all INVARIANTS.md files to check (project root + component ancestors)
 INVARIANT_FILES=()
 
 # Always check project root
-if [[ -f "${CWD}/INVARIANTS.md" ]]; then
+if has_invariants_file "$CWD"; then
   INVARIANT_FILES+=("${CWD}/INVARIANTS.md")
 fi
 
@@ -39,7 +53,7 @@ if [[ -n "$FILE_PATH" ]]; then
   DIR=$(dirname "$FILE_PATH")
   # Walk from file's directory up to (but not including) CWD, collecting INVARIANTS.md
   while [[ "$DIR" != "$CWD" && "$DIR" != "/" && "$DIR" != "." ]]; do
-    if [[ -f "${DIR}/INVARIANTS.md" ]]; then
+    if has_invariants_file "$DIR"; then
       # Avoid duplicates
       ALREADY_ADDED=false
       for existing in "${INVARIANT_FILES[@]}"; do
