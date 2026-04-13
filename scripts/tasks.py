@@ -38,19 +38,30 @@ FILES_WEIGHT = 1.0      # Each file in scope adds ~1.0 points
 DECOMPOSE_THRESHOLD = 7  # Tasks scoring > 7 should be decomposed
 
 
-def find_task_files(root: Path) -> list[Path]:
-    """Find all task YAML files in feature dirs and global task dir."""
+def find_task_files(root: Path, feature: str | None = None) -> list[Path]:
+    """Find all task YAML files in feature dirs and global task dir.
+
+    When ``feature`` is given, only tasks under
+    ``.etc_sdlc/features/<feature>/tasks/`` are returned. The global
+    ``.etc_sdlc/tasks/`` dir is skipped in that case because it is not
+    scoped to any feature.
+    """
     files: list[Path] = []
 
-    # Per-feature tasks (preferred)
     features_dir = root / ".etc_sdlc" / "features"
+    if feature is not None:
+        scoped = features_dir / feature / "tasks"
+        if scoped.is_dir():
+            files.extend(sorted(scoped.glob("*.yaml")))
+        return files
+
+    # No feature filter — include every feature plus the legacy global dir.
     if features_dir.is_dir():
         for feature_dir in sorted(features_dir.iterdir()):
             tasks_dir = feature_dir / "tasks"
             if tasks_dir.is_dir():
                 files.extend(sorted(tasks_dir.glob("*.yaml")))
 
-    # Global tasks (backward compat)
     global_tasks = root / ".etc_sdlc" / "tasks"
     if global_tasks.is_dir():
         files.extend(sorted(global_tasks.glob("*.yaml")))
@@ -66,9 +77,9 @@ def load_task(path: Path) -> dict:
     return task
 
 
-def load_all_tasks(root: Path) -> list[dict]:
-    """Load all task files."""
-    return [load_task(p) for p in find_task_files(root)]
+def load_all_tasks(root: Path, feature: str | None = None) -> list[dict]:
+    """Load all task files, optionally scoped to a single feature."""
+    return [load_task(p) for p in find_task_files(root, feature=feature)]
 
 
 def score_complexity(task: dict) -> int:
@@ -109,15 +120,30 @@ def get_leaf_tasks(all_tasks: list[dict]) -> list[dict]:
 
 
 def compute_waves(tasks: list[dict]) -> dict[int, list[dict]]:
-    """Group leaf tasks into execution waves by dependency.
+    """Group pending leaf tasks into execution waves by dependency.
 
-    Wave 0: tasks with no dependencies
-    Wave N: tasks whose dependencies are all in waves < N
+    Wave 0: tasks with no unmet dependencies
+    Wave N: tasks whose dependencies are all in waves < N or already completed
+
+    Already-completed and decomposed tasks never appear in any wave, but
+    their task_ids are pre-populated into ``satisfied_ids`` so pending tasks
+    that depend on them are scheduled in Wave 0 instead of waiting forever.
     """
     leaf_tasks = get_leaf_tasks(tasks)
-    completed_ids: set[str] = set()
+
+    # Pre-populate: anything already completed or decomposed counts as satisfied
+    # for dependency purposes, and is excluded from the remaining work.
+    satisfied_ids: set[str] = {
+        t.get("task_id", "")
+        for t in tasks
+        if t.get("status") in ("completed", "decomposed")
+    }
+    remaining = [
+        t for t in leaf_tasks
+        if t.get("status") not in ("completed", "decomposed")
+    ]
+
     waves: dict[int, list[dict]] = {}
-    remaining = list(leaf_tasks)
     wave_num = 0
 
     while remaining:
@@ -133,7 +159,7 @@ def compute_waves(tasks: list[dict]) -> dict[int, list[dict]]:
                 if parent:
                     deps = list(set(deps + (parent.get("dependencies") or [])))
 
-            if all(d in completed_ids for d in deps):
+            if all(d in satisfied_ids for d in deps):
                 current_wave.append(t)
             else:
                 still_remaining.append(t)
@@ -144,7 +170,7 @@ def compute_waves(tasks: list[dict]) -> dict[int, list[dict]]:
             break
 
         waves[wave_num] = current_wave
-        completed_ids.update(t.get("task_id", "") for t in current_wave)
+        satisfied_ids.update(t.get("task_id", "") for t in current_wave)
         remaining = still_remaining
         wave_num += 1
 
@@ -349,9 +375,16 @@ def cmd_tree(root: Path) -> None:
     _print_tree(tasks)
 
 
-def cmd_waves(root: Path) -> None:
-    """Show execution wave grouping."""
-    tasks = load_all_tasks(root)
+def cmd_waves(root: Path, feature: str | None = None) -> None:
+    """Show execution wave grouping.
+
+    When ``feature`` is given, scopes to that feature's tasks only. This is
+    essential for multi-feature repos: without it, pending tasks from other
+    features pollute the wave plan and false-positive file conflicts get
+    flagged when a completed task from feature A happens to touch the same
+    file as a pending task from feature B.
+    """
+    tasks = load_all_tasks(root, feature=feature)
     waves = compute_waves(tasks)
 
     if not waves:
@@ -446,7 +479,12 @@ def main() -> None:
     elif command == "tree":
         cmd_tree(root)
     elif command == "waves":
-        cmd_waves(root)
+        feature: str | None = None
+        if "--feature" in sys.argv:
+            idx = sys.argv.index("--feature")
+            if idx + 1 < len(sys.argv):
+                feature = sys.argv[idx + 1]
+        cmd_waves(root, feature=feature)
     elif command == "ready-to-decompose":
         cmd_ready_to_decompose(root)
     else:

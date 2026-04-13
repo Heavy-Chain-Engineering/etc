@@ -283,6 +283,67 @@ class TestWaves:
         result = _run_tasks(tmp_path, "waves")
         assert "FILE OVERLAP" in result.stdout
 
+    def test_should_exclude_completed_tasks_from_waves(self, tmp_path: Path) -> None:
+        """A completed task must not appear in any wave, and its dependents
+        must schedule in Wave 0 because the dep is already satisfied."""
+        tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(tasks_dir, "001", "Done", "completed", files=["src/a.py"])
+        _create_task(tasks_dir, "002", "Pending dep", "pending", deps=["001"], files=["src/b.py"])
+
+        result = _run_tasks(tmp_path, "waves")
+        # 002 depends on completed 001 — it should land in Wave 0, not wait forever
+        assert "Wave 0" in result.stdout
+        assert "002" in result.stdout
+        assert "Pending dep" in result.stdout
+        # 001 is completed — it must NOT appear in any wave
+        assert "Done" not in result.stdout
+
+    def test_should_scope_to_feature_when_flag_given(self, tmp_path: Path) -> None:
+        """--feature <name> must show only that feature's tasks, ignoring other
+        features and the global tasks dir."""
+        # Feature A (the one we want to see)
+        a_tasks = tmp_path / ".etc_sdlc" / "features" / "alpha" / "tasks"
+        _create_task(a_tasks, "001", "Alpha one", "pending", files=["src/alpha.py"])
+        _create_task(a_tasks, "002", "Alpha two", "pending", files=["src/alpha2.py"])
+
+        # Feature B (should be invisible)
+        b_tasks = tmp_path / ".etc_sdlc" / "features" / "beta" / "tasks"
+        _create_task(b_tasks, "001", "Beta one", "pending", files=["src/beta.py"])
+
+        # Global tasks (should also be invisible with --feature)
+        global_tasks = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(global_tasks, "001", "Legacy one", "pending", files=["src/legacy.py"])
+
+        result = _run_tasks(tmp_path, "waves", "--feature", "alpha")
+        assert "Alpha one" in result.stdout
+        assert "Alpha two" in result.stdout
+        assert "Beta one" not in result.stdout
+        assert "Legacy one" not in result.stdout
+
+    def test_should_not_flag_false_overlap_across_features(self, tmp_path: Path) -> None:
+        """When --feature scopes to one feature, file overlaps with OTHER
+        features' completed tasks must not be flagged. This was the bug that
+        surfaced during the /init-project build."""
+        # init-project has a pending task touching tests/test_compiler.py
+        init_tasks = tmp_path / ".etc_sdlc" / "features" / "init-project" / "tasks"
+        _create_task(
+            init_tasks, "002", "New compiler test", "pending",
+            files=["tests/test_compiler.py"],
+        )
+
+        # old test-suite already shipped a (completed) task touching the same file
+        old_tasks = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(
+            old_tasks, "010", "Historical compiler test", "completed",
+            files=["tests/test_compiler.py"],
+        )
+
+        # Scoped view: no overlap flag because the completed cross-feature
+        # task is not considered.
+        scoped = _run_tasks(tmp_path, "waves", "--feature", "init-project")
+        assert "FILE OVERLAP" not in scoped.stdout
+        assert "New compiler test" in scoped.stdout
+
 
 class TestReadyToDecompose:
     def test_should_flag_complex_tasks(self, tmp_path: Path) -> None:
