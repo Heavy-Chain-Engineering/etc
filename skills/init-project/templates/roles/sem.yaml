@@ -1,0 +1,94 @@
+# Role manifest: sem (System Engineering Manager / orchestrator)
+#
+# SEM is the single orchestrator that receives the top-level task and
+# dispatches work to subagents. It holds the widest default projection
+# in the harness because it needs to reason about the whole project
+# surface before deciding who does what.
+#
+# SEM is context-disciplined: it reads specs and plans, decomposes into
+# tasks, and delegates. It does NOT write production code. Its job is
+# dispatch, not implementation — narrow context per subagent, wide
+# context for itself.
+#
+# Uses the soft-POLA pattern: default_consumes + discovery.allowed_requests.
+# There is intentionally no `forbids` block — widening is logged, not blocked.
+
+role: sem
+description: >
+  Orchestrator. Reads the full project spec surface, decomposes work into
+  file-isolated tasks, and dispatches them to subagent roles. Does not
+  implement — delegates every code change. Maintains a narrow per-decision
+  context while retaining access to the full project orientation layer.
+
+tier_access:
+  tier_0: full        # DOMAIN.md, PROJECT.md always
+  tier_1: full        # all PRDs, plans, sources, standards visible
+  tier_2: scoped      # ADRs and invariants visible but filtered by active task
+  tier_3: none        # SEM escalates for Tier 3 regulated-domain needs
+
+default_consumes:
+  # --- Tier 0: orientation (always) ---
+  - DOMAIN.md
+  - PROJECT.md
+
+  # --- Tier 1: the full spec surface ---
+  # SEM is the only role that consumes the complete PRD and plan set by
+  # default. Leaf roles get a filtered slice; SEM needs the whole picture
+  # to decompose and dispatch correctly.
+  - docs/prds/**/*
+  - docs/plans/**/*
+  - docs/sources/**/*        # EDIT ME: narrow if your source corpus is large
+  - docs/standards/**/*
+
+  # --- Tier 2: invariants and ADRs (project-wide view) ---
+  - docs/invariants/**/*
+  - docs/adrs/**/*
+
+  # --- Role manifests themselves ---
+  # SEM needs to know which roles exist and what each role can see, so it
+  # can dispatch tasks to the right role with the right files_in_scope.
+  - roles/**/*
+
+discovery:
+  # SEM is already wide. Discovery is mostly used for cross-cutting lookups
+  # (pulling a specific plan by id, checking a past build retrospective, or
+  # crossing a bounded context line to validate a dispatch decision).
+  allowed_requests:
+    - kind: plan_reference
+      pattern: "docs/plans/*.md"
+      auto_grant: true       # SEM reads plans routinely; grant and log
+      requires: reference_id
+
+    - kind: cross_context_source
+      pattern: "docs/sources/**/*"
+      auto_grant: false
+      requires: justification
+
+    - kind: build_retrospective
+      pattern: "docs/builds/**/*"
+      auto_grant: true       # retrospectives inform dispatch decisions
+      requires: reference_id
+
+  request_schema:
+    kind: string
+    target: string
+    justification: string
+    blocking: boolean
+
+required_outputs:
+  # SEM's deliverable is a dispatch plan, not code
+  - dispatch_plan: true           # concrete list of subagent invocations
+  - files_isolated: true          # no two parallel tasks touch the same file
+  - dependencies_respected: true  # task ordering matches the spec's dependency graph
+
+escalation_triggers:
+  - kind: architectural
+    when: "task exposes a new invariant, a new ADR, or a structural conflict"
+    to: architect
+
+  - kind: human_approval_needed
+    when: "a decision requires product, business, or regulatory judgment"
+    to: human
+
+  # EDIT ME: add project-specific escalation triggers here
+  # (e.g., "when touching the payments context, escalate to payments-lead")

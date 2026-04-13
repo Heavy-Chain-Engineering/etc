@@ -1,0 +1,44 @@
+# Agent Working Rules — {{PROJECT_NAME}}
+
+## First: Read These Two Files
+
+Before taking any action in this repository, read in order:
+1. `DOMAIN.md` — business domain, constraints, and design implications
+2. `PROJECT.md` — where things live and how the repo is structured
+
+Do not skip this step. Context you skip becomes an assumption you will regret.
+
+---
+
+## Source Discipline
+
+- Cite sources from `docs/sources/` or `DOMAIN.md`; do not invent facts.
+- If you need to make a factual claim about the business and cannot find a source, say so — do not fabricate.
+- If source material is ambiguous or missing, escalate to the user rather than guessing.
+
+---
+
+## Edit Discipline
+
+- Read before you write. Use your read tool; never assume file contents.
+- Prefer targeted edits over full rewrites. Change the minimum necessary.
+- Do not modify files outside your task's stated scope unless blocking.
+- Do not silently delete code. If removing, explain why in your response.
+
+---
+
+## Communication Rules
+
+- State what you are about to do before you do it.
+- When you finish a task, summarize what changed and what the caller should do next.
+- If you discover a blocker, stop and report it immediately — do not work around it silently.
+- Flag unclear requirements as questions, not assumptions.
+
+---
+
+## Boundaries
+
+- Do not make architectural decisions unilaterally. Flag them for the architect or SEM.
+- Do not modify `DOMAIN.md` or `PROJECT.md` without explicit user instruction.
+- Do not modify test files unless your task explicitly covers testing.
+- Do not commit or push to version control unless your task explicitly requires it.

@@ -1,0 +1,128 @@
+# Role manifest: frontend-dev
+#
+# Starter template produced by /init-project. Declares the default context
+# projection a frontend-dev agent receives when given a task. Same structural
+# pattern as backend-dev.yaml — soft POLA with discovery — but with
+# frontend-specific paths and outputs.
+#
+# Pattern: soft POLA with discovery.
+#   - Agent starts with a narrow default projection.
+#   - Agent may REQUEST additional context via a structured discovery protocol.
+#   - Denied requests become escalations.
+#   - There is no `forbids` key.
+#
+# Variables (resolved per task invocation by the runtime):
+#   {task.bounded_context}   e.g. "checkout", "onboarding", "dashboard"
+#   {task.spec_id}           e.g. "PRD-04-checkout" or a dated plan slug
+#
+# EDIT ME: After /init-project, review each section and tune for this project.
+#          Common edits: replace docs/standards/frontend-*.md with the actual
+#          location of your frontend standards, register your design system's
+#          component library path, narrow default_consumes to match your stack
+#          (React/Next/Vue/Svelte/etc.).
+
+role: frontend-dev
+description: >
+  Frontend/UI implementation agent. Component-driven. Uses TDD for testable
+  logic (reducers, hooks, utilities) and visual regression for UI. Writes code
+  for one bounded context at a time. Starts narrow; requests additional
+  context through discovery when needed.
+
+tier_access:
+  tier_0: full       # DOMAIN.md, PROJECT.md — always
+  tier_1: scoped     # specs/plans/sources scoped by task
+  tier_2: scoped     # bounded-context vocabulary, invariants, ADRs filtered
+  tier_3: none       # leaf dev escalates for Tier 3 (regulated) needs
+
+default_consumes:
+  # --- Tier 0: orientation (always) ---
+  - DOMAIN.md
+  - PROJECT.md
+
+  # --- Tier 1: the task itself ---
+  # EDIT ME: if your PRDs are not named PRD-NN-{context}.md, adjust the glob.
+  - docs/prds/PRD-*-{task.bounded_context}.md
+  - docs/sources/research/R*-{task.bounded_context}*.md
+
+  # --- Tier 2: API contract invariants ---
+  # Frontend cares primarily about the API contract shared with the backend.
+  # Other invariants (DB schemas, event envelopes) are typically not required
+  # for UI work and can be requested via discovery when needed.
+  # EDIT ME: if your API contract invariants live elsewhere, adjust this path.
+  - docs/invariants/api-contract.md
+
+  # --- Tier 2: ADRs filtered by bounded context ---
+  # The runtime reads each file under docs/adrs/, parses the frontmatter, and
+  # returns only ADRs whose `affects_contexts` list contains
+  # {task.bounded_context} or equals ["*"].
+  - docs/adrs/*.md
+
+  # --- Engineering standards: frontend-scoped ---
+  # EDIT ME: adjust to match where frontend standards live in your repo.
+  # Examples: docs/standards/frontend/**/*.md, docs/standards/ui-*.md.
+  - docs/standards/frontend-*.md
+
+discovery:
+  # Same discovery protocol as backend-dev, plus `design_system_component` for
+  # component-library lookups which are typically always-grantable and
+  # frequent enough to warrant a dedicated kind.
+  allowed_requests:
+    - kind: additional_prd
+      pattern: "docs/prds/PRD-*.md"
+      auto_grant: false
+      requires: justification
+
+    - kind: cross_context_research
+      pattern: "docs/sources/research/**/*"
+      auto_grant: false
+      requires: justification
+
+    - kind: adr_unfiltered
+      pattern: "docs/adrs/*.md"
+      auto_grant: true       # ADRs are always grantable, just logged
+      requires: reference_id
+
+    - kind: plan_reference
+      pattern: "docs/plans/*.md"
+      auto_grant: false
+      requires: justification
+
+    - kind: design_system_component
+      # EDIT ME: point this at your design system source of truth (e.g.
+      # src/components/**, packages/ui/**, storybook/**).
+      pattern: "src/components/**"
+      auto_grant: true       # design system lookups are always grantable, just logged
+      requires: reference_id
+
+  request_schema:
+    # Shape of a discovery request the agent emits
+    kind: string              # one of allowed_requests.kind above
+    target: string            # file path or glob matching the pattern
+    justification: string     # why the default projection is insufficient
+    blocking: boolean         # whether the task cannot proceed without this
+
+required_outputs:
+  # Every task execution must produce these or escalate.
+  code_changes_with_tests: true
+  tests_must_fail_before_passing: true   # TDD red/green enforced for testable logic
+  invariants_preserved: true              # API contract invariants preserved
+  cited_sources_listed: true              # every factual claim references a file under docs/sources/ or DOMAIN.md
+  accessibility_checked: true             # UI changes verified against a11y standards
+
+escalation_triggers:
+  # When the agent MUST escalate instead of making a decision.
+  - kind: technical
+    when: "a required context file is missing, empty, or unparseable"
+    to: parent
+
+  - kind: scope
+    when: "task requires changes in a different bounded context"
+    to: sem
+
+  - kind: architectural
+    when: "task requires a new invariant, a new ADR, or violates an existing one"
+    to: architect
+
+  - kind: discovery_denied
+    when: "a discovery request was denied and the task cannot proceed"
+    to: parent

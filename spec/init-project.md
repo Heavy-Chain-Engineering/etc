@@ -32,7 +32,7 @@ This skill composes with, rather than replaces, the existing `project-bootstrapp
 - Tier 3 regulated-domain scaffolding (future enhancement, opt-in via `--tier=3`)
 - Closed-loop ticket pipeline integration (separate spec: `spec/closed-loop-ticket-pipeline.md`)
 - Runtime enforcement of role manifest projections (a separate runtime library, not built yet)
-- Research mode implementation (WebFetch against a company website) — the interactive flow captures which mode the user wants, but actually performing the research is a follow-up enhancement
+- (intentionally removed — research mode is supported and emerged organically via `WebFetch`; see BR-005)
 - Smoke/integration test scaffolding for the skill (a separate task during `/build`'s verify step)
 
 ## Requirements
@@ -56,8 +56,10 @@ Re-running `/init-project` on a repository where some or all phases already comp
 ### BR-005: Research mode vs teach-me mode selected upfront
 
 At the start of Phase 2, the skill asks: "Do you understand this business deeply and can answer questions about it, or should I research and teach you?" User's answer determines the flow:
-- **Deep understanding:** skill asks the 6 questions; user answers; skill drafts DOMAIN.md.
-- **Teach-me mode:** (future enhancement) skill would use WebFetch against a company website and synthesize. For v1, teach-me mode is acknowledged but defers to the "deep understanding" flow with a note that research mode is a future enhancement.
+- **Deep understanding:** skill asks the 6 questions one at a time; user answers; skill drafts DOMAIN.md from the answers.
+- **Teach-me mode:** the user provides source material (company website URL, product docs URL, existing DOMAIN.md from a sibling project, or a short description) and the skill uses `WebFetch` and other read tools to research the business, then drafts the 9 DOMAIN.md sections itself. Each section must cite the fetched source where it derived the content so the user can verify. The skill then presents the draft to the user for approval and answers follow-up questions before writing. The user is still the final authority — the agent does not commit the draft until the user confirms.
+
+This BR was originally scoped as "deep understanding only, teach-me mode is a future enhancement." Teach-me mode emerged naturally during the first end-to-end dogfood run because Claude has `WebFetch` as a built-in capability. The agent interpreted "research and teach you" as "use WebFetch on the URL I was given, then draft answers myself from the real source." This works correctly and produces a higher-quality first draft than rigidly forcing the 6-question flow when source material is available. BR-005 now formalizes both modes as first-class.
 
 ### BR-006: Tiered documentation skeleton
 
@@ -230,7 +232,7 @@ skills/init-project/
 | ID | Topic | Decision | Rationale |
 |---|---|---|---|
 | GA-001 | Phase 1 delegation mechanism | Task tool spawn of `project-bootstrapper` agent | `project-bootstrapper` already exists and is battle-tested; reimplementation would duplicate work and risk divergence |
-| GA-002 | Research vs teach-me mode detection | User selects upfront via a yes/no question at start of Phase 2 | Mode determination is a one-shot user decision; runtime detection is overcomplication |
+| GA-002 | Research vs teach-me mode detection | User selects upfront via a yes/no question at start of Phase 2; teach-me mode uses `WebFetch` against user-provided source URLs and drafts the 9 sections itself with citations | Mode determination is a one-shot user decision; runtime detection is overcomplication. Teach-me mode was originally deferred but emerged organically during the first dogfood run — see BR-005 for the correction. |
 | GA-003 | Can Phase 2 be deferred | Yes, via `--phase=<name>` flag | Supports CI scaffolding workflows where domain creation happens later interactively |
 | GA-004 | Brownfield research source | Read `.meta/` tree produced by Phase 1 | `project-bootstrapper` already produces this; reusing it avoids redundant work |
 | GA-005 | Closed-loop ticket pipeline integration | Out of scope for this PRD | Separate spec (`spec/closed-loop-ticket-pipeline.md`); would expand this PRD's scope beyond initial bootstrap |

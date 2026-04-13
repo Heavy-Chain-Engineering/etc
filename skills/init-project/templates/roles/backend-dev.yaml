@@ -1,0 +1,120 @@
+# Role manifest: backend-dev
+#
+# Starter template produced by /init-project. Declares the default context
+# projection a backend-dev agent receives when given a task. The manifest is a
+# PROJECTION over the tiered domain tree — it produces the agent's starting
+# context window deterministically from (role, task).
+#
+# Pattern: soft POLA with discovery.
+#   - Agent starts with a narrow default projection.
+#   - Agent may REQUEST additional context via a structured discovery protocol.
+#   - Denied requests become escalations.
+#   - There is no `forbids` key — widening is always structured, logged, and
+#     justified rather than walled off.
+#
+# Variables (resolved per task invocation by the runtime):
+#   {task.bounded_context}   e.g. "billing", "auth", "search"
+#   {task.spec_id}           e.g. "PRD-04-billing" or a dated plan slug
+#
+# EDIT ME: After /init-project, review each section and tune for this project.
+#          Common edits: add project-specific standards files, narrow or widen
+#          the tier_2 filters, register project-specific discovery kinds.
+
+role: backend-dev
+description: >
+  Python/backend implementation agent. TDD-first. Writes code for one bounded
+  context at a time. Starts with a narrow default projection; requests
+  additional context through discovery when needed. Escalates when requests
+  are denied or when the task reveals scope/architecture questions.
+
+tier_access:
+  tier_0: full       # DOMAIN.md, PROJECT.md — always
+  tier_1: scoped     # specs/plans/sources scoped by task
+  tier_2: scoped     # bounded-context vocabulary, invariants, ADRs filtered
+  tier_3: none       # leaf dev escalates for Tier 3 (regulated) needs
+
+default_consumes:
+  # --- Tier 0: orientation (always) ---
+  - DOMAIN.md
+  - PROJECT.md
+
+  # --- Tier 1: the task itself ---
+  # EDIT ME: if your PRDs are not named PRD-NN-{context}.md, adjust the glob.
+  - docs/prds/PRD-*-{task.bounded_context}.md
+  - docs/sources/research/R*-{task.bounded_context}*.md
+
+  # --- Tier 2: invariants filtered by bounded context ---
+  # The runtime reads each file under docs/invariants/, parses the frontmatter,
+  # and returns only invariants whose `affects_contexts` list contains
+  # {task.bounded_context} or equals ["*"]. Files without frontmatter are
+  # treated as universal (affects_contexts == ["*"]).
+  - docs/invariants/**/*.md
+
+  # --- Tier 2: ADRs filtered by bounded context ---
+  # Same filter convention as invariants — ADRs carry `affects_contexts`
+  # frontmatter. Until ADRs are filled in, the agent may request specific ADRs
+  # via discovery (see allowed_requests.adr_unfiltered below).
+  - docs/adrs/*.md
+
+  # --- Engineering standards (always) ---
+  # EDIT ME: if you keep backend standards in a subdirectory (e.g.
+  # docs/standards/backend/), narrow this glob.
+  - docs/standards/**/*.md
+
+discovery:
+  # When the agent determines mid-task that its default projection is
+  # insufficient, it emits a structured request. The parent agent (or a
+  # discovery policy) grants or denies. Granted requests are logged to
+  # .etc_sdlc/discovery.log as telemetry for manifest evolution.
+  allowed_requests:
+    - kind: additional_prd
+      pattern: "docs/prds/PRD-*.md"
+      auto_grant: false
+      requires: justification
+
+    - kind: cross_context_research
+      pattern: "docs/sources/research/**/*"
+      auto_grant: false
+      requires: justification
+
+    - kind: adr_unfiltered
+      pattern: "docs/adrs/*.md"
+      auto_grant: true       # ADRs are always grantable, just logged
+      requires: reference_id
+
+    - kind: plan_reference
+      pattern: "docs/plans/*.md"
+      auto_grant: false
+      requires: justification
+
+  request_schema:
+    # Shape of a discovery request the agent emits
+    kind: string              # one of allowed_requests.kind above
+    target: string            # file path or glob matching the pattern
+    justification: string     # why the default projection is insufficient
+    blocking: boolean         # whether the task cannot proceed without this
+
+required_outputs:
+  # Every task execution must produce these or escalate.
+  code_changes_with_tests: true
+  tests_must_fail_before_passing: true   # TDD red/green enforced
+  invariants_preserved: true              # ran invariant check against projected slice
+  cited_sources_listed: true              # every factual claim references a file under docs/sources/ or DOMAIN.md
+
+escalation_triggers:
+  # When the agent MUST escalate instead of making a decision.
+  - kind: technical
+    when: "a required context file is missing, empty, or unparseable"
+    to: parent
+
+  - kind: scope
+    when: "task requires changes in a different bounded context"
+    to: sem
+
+  - kind: architectural
+    when: "task requires a new invariant, a new ADR, or violates an existing one"
+    to: architect
+
+  - kind: discovery_denied
+    when: "a discovery request was denied and the task cannot proceed"
+    to: parent

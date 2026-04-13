@@ -1,0 +1,71 @@
+# {{PROJECT_NAME}} — Project Orientation
+
+**What this is:** {{PROJECT_ONE_LINER}}
+
+**Read order for new agents:**
+1. `DOMAIN.md` — what {{PROJECT_NAME}} does and why (business context, constraints, design implications)
+2. This file — where to find things in the repo
+3. The PRD for your task's bounded context (see `docs/prds/`)
+4. `docs/sources/` — ground truth research that informed the PRDs
+
+---
+
+## Current Phase
+
+<!-- State the current build phase and what is actively in progress.
+     Example: "MVP build — bounded contexts are being implemented against the PRDs below.
+     Plans tracked under docs/plans/. Completion reports under docs/builds/." -->
+
+**{{CURRENT_PHASE}}**
+
+---
+
+## Where Things Live
+
+| What you need | Where to find it |
+|---|---|
+| Business domain and constraints | `DOMAIN.md` |
+| Per-bounded-context requirements | `docs/prds/PRD-NN-{context}.md` |
+| Architectural decisions | `docs/adrs/NNN-{slug}.md` |
+| Ground truth research | `docs/sources/` |
+| Implementation plans (dated) | `docs/plans/YYYY-MM-DD-{slug}.md` |
+| Phase completion reports | `docs/builds/` |
+| Engineering standards | `docs/standards/` |
+| Operational runbooks | `docs/guides/` |
+| {{ADDITIONAL_LOCATION_1}} | `{{ADDITIONAL_PATH_1}}` |
+
+<!-- Add or remove rows to match the actual structure of this repository.
+     Remove placeholder rows if they do not apply. The goal is a complete
+     map — an agent should be able to find any artifact by consulting this table. -->
+
+**Anti-fabrication rule:** If an agent needs to make a factual claim about the
+business or the system, that claim must cite `DOMAIN.md` or a file in
+`docs/sources/`. No invented facts.
+
+---
+
+## Tech Stack Anchors
+
+<!-- List the primary technologies with a pointer to where they appear in the repo.
+     Keep each entry to one line. Agents use this to orient before reading code. -->
+
+- **{{TECH_LAYER_1}}:** {{TECH_DESCRIPTION_1}}
+- **{{TECH_LAYER_2}}:** {{TECH_DESCRIPTION_2}}
+- **{{TECH_LAYER_3}}:** {{TECH_DESCRIPTION_3}}
+- **Local dev:** {{LOCAL_DEV_SETUP}}
+- **Testing:** {{TESTING_APPROACH}}
+
+<!-- Add or remove entries to match the actual stack.
+     Key ADRs that govern cross-cutting tech choices: -->
+
+**Key ADRs to read before touching architecture:**
+- {{KEY_ADR_1}}
+- {{KEY_ADR_2}}
+
+---
+
+## Role Manifests
+
+Agents working in this repo should load context through their role manifest in
+`roles/`. Manifests declare which slices of this tree a role consumes.
+See `roles/` for the available manifests.

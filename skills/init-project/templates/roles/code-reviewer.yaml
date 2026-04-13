@@ -1,0 +1,75 @@
+# Code Reviewer role manifest
+# Independent review agent — reads across contexts to verify code against
+# invariants, standards, and domain rules. Produces review findings only;
+# never modifies source code.
+#
+# READ-ONLY SEMANTICS:
+# This role is unique in the harness: it has broad read access but writes
+# nothing to the codebase. The required_outputs below therefore track the
+# production of a structured review report — NOT code changes or file
+# modifications. A reviewer that wrote code would no longer be an
+# independent reviewer; separation of duties is the whole point.
+
+role: code-reviewer
+description: >
+  Independent review of changes against invariants, standards, and domain
+  rules. Read-only — produces findings, never code changes.
+
+tier_access:
+  tier_0: full
+  tier_1: full         # reviewer sees broader context than a leaf dev
+  tier_2: full         # sees all ADRs and invariants
+  tier_3: none
+
+default_consumes:
+  - DOMAIN.md
+  - PROJECT.md
+  - docs/prds/**/*.md           # EDIT ME — reviewer often needs cross-PRD context
+  - docs/invariants/**/*.md     # all invariants, no filter
+  - docs/adrs/**/*.md           # all ADRs
+  - docs/standards/**/*.md
+  # The actual diff being reviewed is provided as task input, not via default projection
+
+discovery:
+  allowed_requests:
+    - kind: review_target       # a specific file or diff to review
+      pattern: "src/**/*"
+      auto_grant: true
+      requires: reference_id
+    - kind: historical_context  # prior decisions/discussions on the changed area
+      pattern: "docs/plans/**/*"
+      auto_grant: true
+      requires: reference_id
+    - kind: external_source     # reference material the author cited
+      pattern: "docs/sources/**/*"
+      auto_grant: true
+      requires: reference_id
+  request_schema:
+    kind: string
+    target: string
+    justification: string
+    blocking: boolean
+
+# Required outputs are findings, not artifacts in src/.
+# A reviewer's "done" state is a structured report — not a green test suite,
+# not a set of modified files. Do NOT add code_changes_with_tests or
+# files_modified here; doing so would collapse the review role into a
+# developer role and destroy the independence that makes review valuable.
+required_outputs:
+  - review_findings_produced: true    # a structured report of findings
+  - invariants_checked: true           # ran the relevant invariants against the diff
+  - citations_verified: true           # every factual claim cites a source
+  # NOT in required_outputs:
+  # - code_changes_with_tests (reviewer does not write code)
+  # - files_modified (reviewer never modifies files)
+
+escalation_triggers:
+  - kind: technical
+    when: "reviewer needs clarification about the diff's intent"
+    to: parent
+  - kind: scope
+    when: "diff exceeds the scope the reviewer was assigned"
+    to: sem
+  - kind: architectural
+    when: "diff violates an invariant or an ADR"
+    to: architect

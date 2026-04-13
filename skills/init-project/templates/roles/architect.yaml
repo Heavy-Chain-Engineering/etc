@@ -1,0 +1,92 @@
+# Role manifest: architect
+#
+# The architect role owns structural decisions: ADRs, invariants, and the
+# bounded-context map. It is consulted by SEM when a task surfaces an
+# architectural question, and it authors or updates Tier 2 artifacts
+# (ADRs, invariants, context boundaries) in response.
+#
+# Default projection is focused on Tier 2 — ADRs, invariants, and bounded
+# context descriptions — with Tier 0 orientation always available. Tier 1
+# (PRDs, plans) is requested on demand via discovery, because architects
+# should be pulled into specific questions, not drowned in the full spec
+# surface.
+#
+# Uses the soft-POLA pattern: default_consumes + discovery.allowed_requests.
+# No `forbids` — widening is logged, not blocked.
+
+role: architect
+description: >
+  Structural decision-maker and invariant steward. Authors ADRs, defines
+  and maintains cross-cutting invariants, and adjudicates bounded-context
+  conflicts. Consulted by SEM for architectural escalations. Reads PRDs
+  on demand via discovery rather than consuming the full spec surface
+  by default.
+
+tier_access:
+  tier_0: full        # DOMAIN.md, PROJECT.md always
+  tier_1: scoped      # PRDs and plans only when a decision requires them
+  tier_2: full        # ADRs, invariants, contexts — the architect's home tier
+  tier_3: none        # regulated-domain escalates to compliance role (future)
+
+default_consumes:
+  # --- Tier 0: orientation (always) ---
+  - DOMAIN.md
+  - PROJECT.md
+
+  # --- Tier 2: the architect's home tier ---
+  # ADRs record past decisions; invariants express the rules those decisions
+  # must preserve; contexts define where each rule applies. These three files
+  # together are the architectural substrate.
+  - docs/adrs/**/*
+  - docs/invariants/**/*
+  - docs/contexts/**/*       # EDIT ME: populated once bounded contexts are defined
+
+discovery:
+  # Architects are consulted for specific questions. When a question arrives,
+  # they pull the relevant PRD, plan, or source document via discovery —
+  # rather than scanning the whole spec set up front.
+  allowed_requests:
+    - kind: prd_reference
+      pattern: "docs/prds/PRD-*.md"
+      auto_grant: true         # architects routinely read PRDs on demand
+      requires: reference_id
+
+    - kind: plan_reference
+      pattern: "docs/plans/*.md"
+      auto_grant: true
+      requires: reference_id
+
+    - kind: source_citation
+      pattern: "docs/sources/**/*"
+      auto_grant: true         # citing a source is low-risk and must be logged
+      requires: justification
+
+    - kind: standards_reference
+      pattern: "docs/standards/**/*"
+      auto_grant: true
+      requires: reference_id
+
+  request_schema:
+    kind: string
+    target: string
+    justification: string
+    blocking: boolean
+
+required_outputs:
+  # Architects produce decisions and preserve invariants. Code changes are
+  # not in their required-output set — they hand decisions back to SEM,
+  # which dispatches implementation to a dev role.
+  - decision_recorded: true       # new ADR or amendment to an existing one
+  - invariants_preserved: true    # no proposed change violates a Tier 2 invariant
+
+escalation_triggers:
+  - kind: scope
+    when: "the question is really about task scope, not architecture"
+    to: sem
+
+  - kind: business_decision
+    when: "a decision requires product, business, or regulatory judgment"
+    to: human
+
+  # EDIT ME: add project-specific escalation triggers here
+  # (e.g., "when touching the regulatory boundary, escalate to compliance-lead")

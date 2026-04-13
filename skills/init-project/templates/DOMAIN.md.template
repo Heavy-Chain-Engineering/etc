@@ -1,0 +1,123 @@
+# {{PROJECT_NAME}} — Domain Briefing
+
+<!-- This file is the most important file in the repository. It answers every
+     question an agent or engineer should ask before touching code. All
+     architecture, implementation, and prioritization decisions trace back here.
+     Write every section as prose a new hire could read in 10 minutes and leave
+     knowing what the company does, why it exists, and what must not be broken. -->
+
+---
+
+## Domain
+
+<!-- One or two sentences. State the industry vertical and the business category.
+     Example shape: "[Company] operates in [industry] as a [category of business]."
+     Avoid jargon. This is the orientation sentence a newspaper journalist
+     would use to introduce the product to a general audience. -->
+
+{{DOMAIN_STATEMENT}}
+
+---
+
+## Core Problem
+
+<!-- What is the specific, painful, real-world problem this product solves?
+     Describe the situation before this product existed. Name the friction,
+     the inefficiency, or the gap. Be concrete — cite the broken workflow,
+     the manual process, or the risk that goes unmanaged without this product.
+     One paragraph, three to five sentences maximum. -->
+
+{{CORE_PROBLEM}}
+
+---
+
+## How {{PROJECT_NAME}} Makes Money
+
+<!-- Explain the revenue model plainly. Subscription? Transaction fee?
+     Usage-based? Professional services? Who pays? Who benefits but does not pay?
+     If there is a marketplace dynamic (buyer side vs. seller side), name both
+     sides and which one is the revenue source. Keep this to two to four sentences.
+     Agents use this section to understand what "value" means for prioritization. -->
+
+{{REVENUE_MODEL}}
+
+---
+
+## What {{PROJECT_NAME}} Does
+
+<!-- Describe what the product actually does in operational terms. Not marketing
+     language — describe the data flows, the decisions it makes, and the actions
+     it takes on behalf of users. If there is a core calculation, engine, or
+     workflow that is the heart of the product, describe it here. Name the key
+     actors (user roles, external systems) and what each one contributes.
+     Two to four paragraphs. Use a diagram or list if it clarifies a complex flow. -->
+
+{{WHAT_IT_DOES}}
+
+---
+
+## Operational & Regulatory Constraints
+
+<!-- What rules does the product operate under that are non-negotiable? This
+     includes regulations (HIPAA, SOC 2, GDPR, FINRA, etc.), industry standards,
+     contractual obligations to customers, and hard SLAs. For each constraint,
+     state: the constraint, who it comes from, and what it means architecturally.
+     If the product has no regulatory constraints, state that explicitly —
+     silence here is ambiguous and dangerous. -->
+
+{{OPERATIONAL_AND_REGULATORY_CONSTRAINTS}}
+
+---
+
+## Product Core
+
+<!-- List the canonical domain entities and concepts. These are the nouns the
+     engineering team will argue about in code review, the terms that must be
+     consistent across every service, schema, and API response. For each entity,
+     one sentence describing what it is and what it is not. Include a canonical
+     terminology table if there are terms that are frequently confused or
+     overloaded. This section is the invariant registry at the semantic level. -->
+
+{{PRODUCT_CORE_ENTITIES}}
+
+---
+
+## What {{PROJECT_NAME}} Is Not
+
+<!-- Explicit scope boundaries. Name things the product could plausibly do but
+     deliberately does not do. Name the adjacent markets or use cases that are
+     out of scope. Name the user types the product is not designed for. This
+     section prevents scope creep during design and prevents agents from inventing
+     features that contradict strategic intent. Three to six bullet points. -->
+
+{{WHAT_IT_IS_NOT}}
+
+---
+
+## Risk Posture
+
+<!-- What are the failure modes that would be catastrophic for the business?
+     What data must never be lost? What invariant must never be violated?
+     What outage scenario would trigger customer churn or regulatory action?
+     Rank risks by severity. Include both technical risks (data integrity,
+     availability) and business risks (trust, compliance, liability).
+     This section tells agents which paths they must not optimize away. -->
+
+{{RISK_POSTURE}}
+
+---
+
+## Design Implications
+
+<!-- Translate everything above into architectural mandates. Each implication
+     should be a directive that a developer could apply immediately to a design
+     decision. Format: "Because [fact from above], the system must [architectural
+     requirement]." Four to eight implications. These become the first ADRs and
+     the lens through which all PRDs are evaluated. -->
+
+{{DESIGN_IMPLICATIONS}}
+
+---
+
+*This document is the source of truth for domain understanding. Any implementation
+decision that contradicts this document must be flagged and resolved before proceeding.*
