@@ -70,13 +70,24 @@ fi
 info "Installed $AGENT_COUNT agents"
 
 # ── 3. Install skills ───────────────────────────────────────────────────
+# Copy entire skill directory trees, not just top-level files, so skills
+# with templates/ subdirectories (e.g. init-project) install their
+# supporting files alongside SKILL.md. Uses rsync if available (clean
+# tree sync); otherwise falls back to cp -R.
 SKILL_COUNT=0
 if [ -d "$DIST_DIR/skills" ]; then
     for skill_dir in "$DIST_DIR"/skills/*/; do
         [ -d "$skill_dir" ] || continue
         skill_name=$(basename "$skill_dir")
-        mkdir -p "$TARGET_DIR/skills/$skill_name"
-        cp "$skill_dir"/* "$TARGET_DIR/skills/$skill_name/" 2>/dev/null || true
+        target_skill_dir="$TARGET_DIR/skills/$skill_name"
+        mkdir -p "$target_skill_dir"
+        if command -v rsync &> /dev/null; then
+            rsync -a --delete "$skill_dir" "$target_skill_dir/"
+        else
+            # Portable fallback: clear target then copy tree contents
+            find "$target_skill_dir" -mindepth 1 -delete 2>/dev/null || true
+            cp -R "$skill_dir." "$target_skill_dir/"
+        fi
         SKILL_COUNT=$((SKILL_COUNT + 1))
     done
 fi
