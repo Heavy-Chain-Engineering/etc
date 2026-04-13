@@ -25,25 +25,88 @@ root cause -- you ask the user.
 ### Step 1: Gather Information
 
 Ask the user these questions, one at a time. Wait for each answer before
-proceeding. If the user provided a description with the command, use it as the
-answer to the first question and proceed to the second.
+proceeding. If the user provided a description with the command, use it as
+the answer to the first question and proceed to the second. Follow
+`standards/process/interactive-user-input.md` — Pattern B (visual marker)
+for open-ended questions, Pattern A (`AskUserQuestion`) for multi-choice.
 
-1. **"What was the bug? Describe the symptoms."**
-   Get a concrete description: what happened, what was expected, what users saw.
+**Question 1 (Pattern B — open-ended):**
 
-2. **"Where was it found?"**
-   Determine the discovery context:
-   - Production (user-facing impact)
-   - QA / staging (caught before release)
-   - Code review (caught by a reviewer)
-   - User report (external feedback)
-   - Automated monitoring / alerting
+Render with the visual marker so the user cannot miss it:
 
-3. **"What was the root cause?"**
-   Get the technical explanation. Do NOT hypothesize -- the user knows their
-   codebase. Ask follow-up questions if the answer is vague:
-   - "Can you point to the specific file or function?"
-   - "Was it a logic error, a missing check, a race condition, or something else?"
+```
+
+---
+
+**▶ Your answer needed:** What was the bug? Describe the symptoms — what happened, what was expected, what users saw.
+
+```
+
+Wait for the answer before moving to Question 2.
+
+**Question 2 (Pattern A — enumerable options):**
+
+Where was the bug found? Use `AskUserQuestion` since the discovery
+context is a fixed set of 5 categories:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Where was the bug found?",
+    header: "Found in",
+    multiSelect: false,
+    options: [
+      {
+        label: "Production — user-facing impact",
+        description: "The bug escaped all pre-release gates and hit real users. Highest severity for postmortem."
+      },
+      {
+        label: "QA / staging — caught before release",
+        description: "Caught in a pre-release environment. Still worth tracing — what gate should have caught it earlier?"
+      },
+      {
+        label: "Code review — caught by a reviewer",
+        description: "Caught by a human reviewer after the code was written. Trace to the CI check that missed it."
+      },
+      {
+        label: "User report — external feedback",
+        description: "A user reported the bug after release. Similar to production but often lower impact."
+      },
+      {
+        label: "Monitoring / alerting — automated",
+        description: "Caught by automated observability tooling. Usually means it escaped other gates but was detected fast."
+      }
+    ]
+  }]
+)
+```
+
+Note: `AskUserQuestion` enforces 2–4 options per question. If you need
+all 5 categories, split into two questions ("Was it user-facing or
+internal?" → follow-up), OR use Pattern B with an enumerated list. The
+5-option list above is shown for illustration — pick 4 of the most
+relevant buckets for your project and put the rest under "Other".
+
+**Question 3 (Pattern B — open-ended with follow-ups):**
+
+```
+
+---
+
+**▶ Your answer needed:** What was the root cause? Point to the specific file or function if you can — do not hypothesize; the user knows their codebase better than you do.
+
+```
+
+If the answer is vague, ask follow-ups one at a time using the same
+visual marker format:
+
+```
+
+---
+
+**▶ Your answer needed:** Was it a logic error, a missing check, a race condition, or something else?
+
+```
 
 ### Step 2: Trace to SDLC Phase
 
@@ -135,30 +198,94 @@ After writing, confirm: **"Appended AP-NNN to .etc_sdlc/antipatterns.md."**
 ### Step 6: Suggest Prevention Improvements
 
 Based on the gate failure identified in Step 3, suggest one or more concrete
-improvements. Present these as options -- the user decides what to act on:
+improvements. For each suggestion, use `AskUserQuestion` (Pattern A — see
+standards/process/interactive-user-input.md) so the user can approve,
+defer, or reject cleanly instead of having to parse a prose prompt.
 
-1. **New INVARIANTS.md entry** -- If the bug violated a constraint that should
-   be declared as a project invariant, draft the invariant rule:
-   ```
-   "Suggested invariant: [rule]. Want me to add it to INVARIANTS.md?"
-   ```
+**1. INVARIANTS.md entry** — if the bug violated a constraint that should
+be declared as a project invariant, draft the rule and ask:
 
-2. **New test case pattern** -- If the tests were insufficient, describe the
-   specific test that would have caught this:
-   ```
-   "Suggested test: [description of test scenario and assertions].
-    Want me to create a test file or add it to the backlog?"
-   ```
+```
+AskUserQuestion(
+  questions: [{
+    question: "Add this as a new invariant in INVARIANTS.md?",
+    header: "Add invariant",
+    multiSelect: false,
+    options: [
+      {
+        label: "Yes, add it now (Recommended)",
+        description: "Append the drafted invariant to INVARIANTS.md. I'll draft the verify command and enforcement test."
+      },
+      {
+        label: "Save for later",
+        description: "Add the invariant draft to the backlog. You'll review it before committing."
+      },
+      {
+        label: "Skip",
+        description: "Don't add this invariant. The antipattern entry alone is enough for this case."
+      }
+    ]
+  }]
+)
+```
 
-3. **Hook modification** -- If a hook should be updated to catch this class of
-   bug, describe the change:
-   ```
-   "Suggested hook change: [what to modify in which hook].
-    This would need to go through the harness evolution process."
-   ```
+Before asking, show the drafted invariant text so the user has something
+concrete to react to.
 
-These suggestions are optional. The antipattern entry (Step 5) is the mandatory
-output. Prevention improvements are offered but only acted on with user approval.
+**2. Test case pattern** — if the tests were insufficient, describe the
+specific test that would have caught this, then ask:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Create this test case?",
+    header: "Add test",
+    multiSelect: false,
+    options: [
+      {
+        label: "Create test file now",
+        description: "Write the test file immediately. It will fail (red) until the fix lands."
+      },
+      {
+        label: "Add to backlog (Recommended)",
+        description: "Record the test scenario in the backlog so it can be written alongside the fix. Avoids red tests sitting in the tree."
+      },
+      {
+        label: "Skip",
+        description: "Don't add a test for this class of bug. Only pick this if the test would be disproportionately expensive."
+      }
+    ]
+  }]
+)
+```
+
+**3. Hook modification** — if a hook should be updated to catch this class
+of bug, describe the change, then ask:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Propose this hook change as a harness evolution item?",
+    header: "Hook fix",
+    multiSelect: false,
+    options: [
+      {
+        label: "Yes, open a harness-evolution issue (Recommended)",
+        description: "Hook changes must go through the harness evolution process. I'll draft the issue description with the bug context and the proposed change."
+      },
+      {
+        label: "Skip",
+        description: "Don't propose a hook change. The bug class will still be caught by the invariant or test suggestions above."
+      }
+    ]
+  }]
+)
+```
+
+These suggestions are optional. The antipattern entry (Step 5) is the
+mandatory output. Prevention improvements are offered but only acted on
+with user approval — and the approval comes through `AskUserQuestion`,
+never through a prose prompt the user might miss.
 
 ## Step 7: Governance Journal Entry
 

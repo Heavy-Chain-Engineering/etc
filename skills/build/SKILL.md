@@ -86,7 +86,29 @@ Read the spec. Break it into tasks following `/decompose` conventions:
 6. Every file in Module Structure maps to exactly one task
 
 Run: `python3 scripts/tasks.py list --tree` to confirm the breakdown.
-Present the task list to the user for confirmation before proceeding.
+Print the tree so the user can see it, then ask for confirmation using
+`AskUserQuestion` (see standards/process/interactive-user-input.md,
+Pattern A):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Task breakdown looks right?",
+    header: "Breakdown",
+    multiSelect: false,
+    options: [
+      {
+        label: "Yes, proceed to scoring (Recommended)",
+        description: "The breakdown covers every acceptance criterion and every file from the Module Structure. Move to Step 4."
+      },
+      {
+        label: "Re-decompose",
+        description: "Something is missing, overlapping, or miscategorised. Revise the tasks and re-run this step."
+      }
+    ]
+  }]
+)
+```
 
 **On success:** Update `state.yaml`: `current_step: 3`
 
@@ -138,7 +160,8 @@ Verify:
 
 Update `state.yaml`: `current_step: 5`, `total_waves: {N}`
 
-Report to user:
+Print the wave plan so the user can see it:
+
 ```
 Wave plan:
   Wave 0: {N} tasks (parallel)
@@ -146,11 +169,35 @@ Wave plan:
   Wave 2: {K} tasks (parallel, after wave 1)
   ...
   Total waves: {W}
-
-Proceed with execution?
 ```
 
-Wait for user confirmation before executing.
+Then ask for confirmation via `AskUserQuestion`:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Proceed with wave execution?",
+    header: "Execute?",
+    multiSelect: false,
+    options: [
+      {
+        label: "Execute all waves (Recommended)",
+        description: "Run every wave in order. I'll stop on any failing test or escalated task."
+      },
+      {
+        label: "Dry run — first wave only",
+        description: "Run Wave 0 only, then stop and report. Use this for debugging or unfamiliar features."
+      },
+      {
+        label: "Cancel — review the plan first",
+        description: "Don't execute yet. I'll pause so you can review tasks/ and state.yaml before proceeding."
+      }
+    ]
+  }]
+)
+```
+
+Wait for the user's selection before executing.
 
 ### Step 6: EXECUTE (Wave by Wave)
 

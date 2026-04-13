@@ -177,6 +177,26 @@ Decomposition complete.
 Ready to execute?
   /build {spec_path}
     → Picks up from the decomposition (skips Steps 1-4, goes straight to wave planning)
+```
 
-Shall I start the build?
+Then ask via `AskUserQuestion` (see standards/process/interactive-user-input.md):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Decomposition complete. Start the build now?",
+    header: "Start build?",
+    multiSelect: false,
+    options: [
+      {
+        label: "Yes, start /build (Recommended)",
+        description: "Hand the decomposition to /build. It will skip Steps 1-4 and go straight to wave planning and execution."
+      },
+      {
+        label: "Not yet — review first",
+        description: "Leave the tasks where they are. You can inspect them with /tasks list or /tasks board before invoking /build manually."
+      }
+    ]
+  }]
+)
 ```
