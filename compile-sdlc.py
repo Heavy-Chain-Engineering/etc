@@ -50,7 +50,7 @@ def compile_gates(spec: dict, dist_dir: Path, repo_root: Path) -> dict:
     # Intermediate: { event: { matcher_key: [handler, ...] } }
     events: dict[str, dict[str, list[dict[str, Any]]]] = {}
 
-    for _gate_name, gate in gates.items():
+    for gate in gates.values():
         event = gate["event"]
         gate_type = gate["type"]
         matcher = gate.get("matcher", "")
@@ -180,14 +180,13 @@ tools: [{', '.join(tools)}]
     out_path.write_text(content)
 
 
-def compile_skills(spec: dict, dist_dir: Path, repo_root: Path) -> None:
+def compile_skills(dist_dir: Path, repo_root: Path) -> None:
     """Compile skill definitions to dist/skills/.
 
-    Two sources:
-    1. DSL-declared skills (spec.skills) — generated from the YAML definition
-    2. Hand-authored skills (repo_root/skills/**/SKILL.md) — passed through as-is
+    All skills are hand-authored under repo_root/skills/<name>/. Each skill
+    directory is copied to dist/skills/<name>/ recursively, so templates and
+    other support files ride along with SKILL.md.
     """
-    skills = spec.get("skills", {})
     skills_dir = dist_dir / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
 
@@ -199,8 +198,7 @@ def compile_skills(spec: dict, dist_dir: Path, repo_root: Path) -> None:
         for skill_path in hand_authored_dir.iterdir():
             if skill_path.is_dir() and (skill_path / "SKILL.md").exists():
                 dst = skills_dir / skill_path.name
-                dst.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(skill_path / "SKILL.md", dst / "SKILL.md")
+                shutil.copytree(skill_path, dst, dirs_exist_ok=True)
 
 
 def generate_implement_skill(skill_def: dict, skills_dir: Path, spec: dict) -> None:
@@ -484,7 +482,7 @@ def main() -> None:
     print(f"    {agent_count} agent definitions")
 
     print("  Compiling skills ��� dist/skills/...")
-    compile_skills(spec, dist_dir, repo_root)
+    compile_skills(dist_dir, repo_root)
     skill_count = len([d for d in (dist_dir / "skills").iterdir() if d.is_dir() and (d / "SKILL.md").exists()])
     print(f"    {skill_count} skill definitions")
 
