@@ -332,6 +332,47 @@ class TestHarnessFeedbackHook:
             "shape so the LLM has a concrete template for the 95% case"
         )
 
+    def test_should_forbid_prose_in_silent_response(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """Regression test for a v1.5.1 dogfood finding: the first two
+        live runs of the hook returned multi-paragraph reasoning alongside
+        the JSON response. That reasoning got streamed to the user on
+        every Stop event, which is exactly the "noise that mutes the
+        hook" failure mode the prompt was supposed to prevent.
+
+        The fix is to make the silent-case instruction maximally strict:
+        the ENTIRE response must be the JSON object and nothing else.
+        This test enforces the strictness language so a future softening
+        pass cannot quietly reintroduce the bug.
+        """
+        prompt = self._get_feedback_prompt(hooks_json)
+        # Must contain the strictness marker that forbids prose.
+        assert "ENTIRE response" in prompt, (
+            "harness-feedback silent-case instruction must declare the "
+            "LLM's ENTIRE response to be the JSON object — weaker "
+            "language ('respond with', 'return') lets the LLM emit "
+            "reasoning alongside the JSON and every Stop event floods "
+            "the user with evaluator prose"
+        )
+        # Must name the specific failure mode (prose prefix/suffix) so the
+        # LLM has a concrete picture of what NOT to do.
+        assert "preamble" in prompt.lower() or "prose" in prompt.lower(), (
+            "harness-feedback silent-case must explicitly forbid preamble "
+            "or prose around the JSON; abstract 'be silent' instructions "
+            "drift past LLMs that want to explain themselves"
+        )
+        # Must explain WHY silence is strict, so the LLM respects the
+        # rule instead of helpfully narrating its reasoning.
+        assert (
+            "worse than a missed trigger" in prompt.lower()
+            or "floods" in prompt.lower()
+        ), (
+            "harness-feedback silent-case must explain the cost of "
+            "verbosity — without a concrete stakes statement the LLM "
+            "defaults to helpful reasoning and breaks the silent contract"
+        )
+
     def test_should_enumerate_six_named_triggers(
         self, hooks_json: dict[str, Any]
     ) -> None:

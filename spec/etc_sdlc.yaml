@@ -444,11 +444,34 @@ gates:
          of a narrow rule gap. The near-miss is the signal.
 
       ════════════════════════════════════════════════════════════════
-      Silence is the default
+      Silence is the default — and silence means SILENT
       ════════════════════════════════════════════════════════════════
 
-      If NONE of the above fired in this turn, respond with:
+      If NONE of the above fired in this turn, your ENTIRE response
+      must be exactly this and nothing else:
+
       {"continue": true}
+
+      Not a preamble. Not a paragraph explaining which rubric items you
+      considered. Not a sentence confirming the session was routine.
+      Not "No trigger condition met. The session showed..." The harness
+      parses your response literally and streams any prose you emit
+      back to the user on every Stop event in every project. A verbose
+      silent response is WORSE than a missed trigger — it floods the
+      user's session output with evaluator reasoning they did not ask
+      for, and the feedback loop breaks the first time they mute the
+      hook to stop the noise.
+
+      When silent, be *absolutely* silent. The only acceptable silent
+      response is the 20-character JSON object above. If you find
+      yourself about to write any text before or after that object,
+      stop and emit only the object.
+
+      The same discipline applies when you DO fire: your response is
+      the JSON wrapper `{"continue": true, "systemMessage": "..."}`
+      with the 📬 block inside `systemMessage` and nothing outside the
+      JSON. No preamble. No reasoning. The block itself is the entire
+      payload.
 
       Do not emit a block for:
       - Successful routine work (most turns)
