@@ -20,7 +20,8 @@ DIST_DIR = REPO_ROOT / "dist"
 SETTINGS_HOOKS_PATH = DIST_DIR / "settings-hooks.json"
 
 EXPECTED_GATE_EVENTS = frozenset({
-    "UserPromptSubmit",
+    # UserPromptSubmit removed in v1.5 — conversation is no longer gated.
+    # DoR now lives at /build Step 1 as an artifact preflight, not a prompt gate.
     "PreToolUse",
     "PostToolUse",
     "TaskCreated",
@@ -97,77 +98,28 @@ def test_should_produce_valid_json(hooks_json: dict[str, Any]) -> None:
 # -- Test 2: All gate events present ------------------------------------------
 
 
-def test_should_exempt_slash_commands_from_definition_of_ready(
+def test_should_not_register_userpromptsubmit_gate(
     hooks_json: dict[str, Any],
 ) -> None:
-    """The definition-of-ready UserPromptSubmit hook must exempt slash
-    commands, continuation messages, and information queries from DoR.
+    """v1.5: the DoR gate moved from UserPromptSubmit to /build Step 1.
 
-    Regression test: without this exemption, every slash command (/init-project,
-    /spec, /build, /postmortem, etc.) hits DoR and gets rejected because
-    structured invocations are not free-form feature requests. The skill
-    itself is responsible for refinement via its interactive prompt.
+    Conversation is no longer gated at the thread boundary — only the
+    spec artifact is gated, and only at /build invocation. If someone
+    re-adds a UserPromptSubmit hook to the DSL, this test fails loudly
+    to preserve the architectural decision: rigor lives at lane
+    boundaries, not on every keystroke.
 
-    This test reads the compiled settings-hooks.json and verifies the
-    early-exit language is present. If someone rewrites the DoR prompt
-    without preserving the exemption, this test fails loudly instead of
-    users being blocked at the slash command prompt.
+    See RELEASE_NOTES.md v1.5 and spec/hotfix-skill-brief.md for the
+    rationale behind the three-lane model (conversation / spec→build /
+    hotfix) that this assertion enforces.
     """
     user_prompt_hooks = hooks_json.get("hooks", {}).get("UserPromptSubmit", [])
-    assert user_prompt_hooks, "No UserPromptSubmit hooks registered"
-
-    dor_prompts: list[str] = []
-    for matcher_group in user_prompt_hooks:
-        for handler in matcher_group.get("hooks", []):
-            prompt_text = handler.get("prompt", "")
-            if "Definition of Ready" in prompt_text:
-                dor_prompts.append(prompt_text)
-
-    assert dor_prompts, "definition-of-ready hook not found on UserPromptSubmit"
-
-    for prompt_text in dor_prompts:
-        assert "EARLY EXIT" in prompt_text, (
-            "DoR prompt missing EARLY EXIT section — slash commands will be blocked"
-        )
-        assert "Slash commands" in prompt_text, (
-            "DoR prompt missing slash command exemption — /init-project, "
-            "/spec, /build etc. will be rejected by DoR"
-        )
-        # Short-prompt length exemption is the STRONGEST continuation signal.
-        # Terse replies like "Now", "yes please", "create it" must bypass DoR
-        # because they are responses to interactive skill questions, not
-        # vague feature requests. The evaluator cannot see prior conversation
-        # turns, so length is the only discriminator.
-        assert "Short prompts" in prompt_text, (
-            "DoR prompt missing short-prompt length exemption — terse "
-            "replies to interactive skill questions ('Now', 'yes', 'create it') "
-            "will be rejected as vague work requests"
-        )
-        assert "15 words" in prompt_text, (
-            "DoR prompt short-prompt exemption must name a concrete word "
-            "threshold so the AI evaluator has a deterministic rule"
-        )
-        assert "FAIL OPEN" in prompt_text, (
-            "DoR prompt must include the fail-open directive — when in doubt, "
-            "allow. The hook is a coarse filter, not a strict gate."
-        )
-        # The exemption must appear BEFORE the checklist, otherwise the AI
-        # evaluator may apply the checklist before recognising the exemption.
-        idx_exit = prompt_text.find("EARLY EXIT")
-        idx_checklist = prompt_text.find("Definition of Ready checklist")
-        assert idx_exit < idx_checklist, (
-            "EARLY EXIT section must appear BEFORE the DoR checklist so the "
-            "AI evaluator short-circuits on structured invocations"
-        )
-        # Short-prompt exemption must be LISTED FIRST so the AI evaluator
-        # checks it before any keyword lookup. Length is a stronger, cheaper
-        # signal than keyword matching.
-        idx_short = prompt_text.find("Short prompts")
-        idx_slash = prompt_text.find("Slash commands")
-        assert idx_short < idx_slash, (
-            "Short-prompt exemption must appear BEFORE the slash-command "
-            "exemption so length is the first filter the evaluator applies"
-        )
+    assert not user_prompt_hooks, (
+        "UserPromptSubmit gate should be absent in v1.5+. DoR lives in "
+        "/build Step 1 as an artifact preflight. If you need to re-add a "
+        "conversation-level gate, update RELEASE_NOTES and this test "
+        "intentionally."
+    )
 
 
 def test_should_exempt_builtin_todos_from_task_readiness(
@@ -284,23 +236,6 @@ def test_should_include_all_gate_events(hooks_json: dict[str, Any]) -> None:
 
 class TestShouldIncludeRoleInPromptHooks:
     """Prompt-type hooks must have their prompt field prefixed with role text."""
-
-    def test_should_start_with_role_when_user_prompt_submit(
-        self, hooks_json: dict[str, Any]
-    ) -> None:
-        """UserPromptSubmit prompt must start with 'You are the VP of Engineering'."""
-        # Arrange
-        hook_entries = hooks_json["hooks"]["UserPromptSubmit"]
-        prompt_hooks = _extract_hooks_by_type(hook_entries, "prompt")
-
-        # Act
-        first_prompt = prompt_hooks[0]["prompt"]
-
-        # Assert
-        assert first_prompt.startswith("You are the VP of Engineering"), (
-            f"UserPromptSubmit prompt does not start with expected role. "
-            f"Got: {first_prompt[:80]!r}"
-        )
 
     def test_should_start_with_role_when_task_created(
         self, hooks_json: dict[str, Any]

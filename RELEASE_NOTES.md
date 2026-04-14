@@ -1,5 +1,217 @@
 # Release Notes
 
+## 2026-04-14 — etc v1.5: lanes, not gates
+
+The theme of this release is **architectural honesty about how humans
+actually interact with an engineering harness**. The top-level thread is
+not a single lane — it's a dispatcher across several, each with its own
+quality bar. Pretending otherwise produces hooks that block conversation
+about how to unblock themselves.
+
+Three landed features, one deferred brief, and one load-bearing
+refactor that moves the Definition of Ready gate out of the
+conversational layer entirely.
+
+### New: `tasks.py create` and `bulk-create`
+
+Task YAML files are now authored via a schema-validating CLI instead of
+hand-written through the Write tool during decomposition.
+
+- **`python3 scripts/tasks.py create --feature {slug} ...`** — single
+  task via repeated `--file`, `--ac`, `--dep`, `--read` flags. The
+  debugging path.
+- **`python3 scripts/tasks.py bulk-create --feature {slug} < tasks.json`**
+  — the normal path. Accepts a JSON array via stdin, `--json`, or
+  `--json-file`. Validates every task, refuses to write if any target
+  already exists (unless `--allow-existing`), and rolls back the entire
+  batch on any error. No half-decomposed state ever lands on disk.
+
+**Measured impact.** A 10-task decomposition used to burn ~12,000 tokens
+on YAML syntax (indentation, quoting, field ordering). The CLI version
+uses ~3,000. That's ~75% of decomposition-phase cost recovered, and it
+eliminates a whole class of transcription errors: YAML indentation
+drift, field name typos, dependency reference typos, and missing
+required fields only discovered three steps later when `tasks.py score`
+fails.
+
+**Byte-identical output.** The CLI's YAML emitter is hand-rolled to
+match the existing `_create_task` test helper exactly — not `yaml.safe_dump`
+— because safe_dump is not deterministic across pyyaml versions on
+string quoting and would have broken every existing task file comparison
+in the test suite. See `tests/test_tasks.py` for the byte-equality
+regression test.
+
+**Agent skill updates.** `/decompose`, `/build`, `/implement`, and `/tasks`
+all now direct agents to the new CLI and explicitly forbid hand-writing
+task YAML with the Write tool. This is the change that actually realizes
+the token savings — the CLI on its own is useless if agents don't know
+to use it.
+
+### New: `/spec` three-state PRD classification
+
+`/spec` now classifies every incoming PRD into one of three states
+before writing anything:
+
+1. **Well-specified** — every requirement has a concrete answer. Proceed
+   directly to section-by-section writing.
+2. **Under-specified with research-fillable gaps** — some requirements
+   are missing, but codebase grep, existing docs (DOMAIN.md, ADRs,
+   INVARIANTS.md, adjacent PRDs), or web research can resolve them. The
+   skill auto-fills these during Phase 2, records each resolution with
+   its citation in `gray-areas.md` (new `decided_by: research` field),
+   and proceeds.
+3. **Under-specified with unfillable gaps** — requirements depend on
+   business intent, product scope, roadmap decisions, or stakeholder
+   policy that cannot be inferred from citable evidence. The skill
+   either surfaces only the unfillable gaps for user resolution, or
+   rejects the PRD entirely to `rejected.md` with specific questions the
+   human must answer before resubmitting.
+
+**The rejection threshold** (tunable via constants at the top of the
+skill):
+
+- ≤ 20% of requirements need filling → research-assisted, proceed with
+  citations.
+- 20%–50% → gray-area session with user, surface only unfillable gaps.
+- \> 50% OR > 3 unfillable gaps → reject to `rejected.md`, no `spec.md`
+  is written.
+
+`spec.md` and `rejected.md` are **mutually exclusive** in any feature
+directory — a contract test sweeps every existing feature dir to enforce
+this invariant, so a future refactor can't accidentally produce both.
+
+**`gray-areas.md` schema is backward compatible.** Existing entries
+without `decided_by` are still valid. New entries gain three additive
+fields: `decided_by` (research | user | rejected), `citation` (source
+file or URL), and `resolution rationale` (why this answer, when research
+was the decider).
+
+### Refactor: DoR moved from `UserPromptSubmit` to `/build` Step 1
+
+**This is the architectural change the v1.5 title refers to.**
+
+The v1.4 harness had a Sonnet-powered Definition of Ready gate on every
+`UserPromptSubmit` event. In theory it was a coarse filter that would
+fail open on slash commands, short prompts, and continuation keywords.
+In practice it kept mis-classifying conversational follow-ups — any
+imperative message of more than 15 words referencing prior
+conversation was at risk of being rejected as a "vague work request."
+The failure mode was catastrophic: the hook blocked conversation about
+how to fix the hook.
+
+The root cause: the hook only sees the user's current prompt, not the
+conversation history. It was trying to guess the lane from free text and
+kept adding early-exit rules to patch each new failure. Adding more
+rules is a losing strategy — natural language has infinite ways to say
+"continuation of our conversation."
+
+**The fix is to invert the default.** Rigor now lives at lane
+boundaries, not at the thread boundary:
+
+| Lane | Entry | Gate |
+|---|---|---|
+| Conversation / ideation / meta | Any free text | **None** |
+| Spec authoring | `/spec` | Three-state classifier (internal) |
+| Build execution | `/build {spec}` | DoR preflight on the spec artifact |
+| Hotfix (deferred to v1.6) | `/hotfix` | Lightweight — file, change, rollback |
+
+The top-level thread is now a free-form conversation. You can ideate,
+discuss the framework, follow up on agent work, and reply casually
+without any gate interpreting you as a spec submission. Rigor kicks in
+only when you explicitly cross a lane boundary with a slash command.
+
+Concretely this release:
+
+- **Removes** the `definition-of-ready` gate from `spec/etc_sdlc.yaml`
+  entirely. Recompilation produces 14 gates, not 15. The
+  `UserPromptSubmit` event is no longer in the compiled
+  `dist/settings-hooks.json` at all.
+- **Adds** a formal DoR preflight to `skills/build/SKILL.md` Step 1. The
+  preflight first checks for `.etc_sdlc/features/{slug}/rejected.md`
+  (from `/spec`'s three-state classifier) and stops immediately if
+  found. If the spec passed through `/spec` cleanly, it rubber-stamps.
+  If the spec was hand-written and placed outside `/spec`'s flow, it
+  runs the DoR checklist inline and rejects with specific gaps the user
+  can act on.
+- **Replaces** two obsolete compiler tests that asserted the existence
+  of the UserPromptSubmit gate with a single regression test
+  (`test_should_not_register_userpromptsubmit_gate`) that enforces the
+  architectural decision: if anyone re-adds a conversation-level gate,
+  this test fails loudly so the decision must be re-justified.
+
+**Prompt hooks that remain untouched.** `TaskCreated`, `TaskCompleted`,
+`SubagentStop`, `Stop`, and `ConfigChange` are all still prompt or agent
+hooks, because they gate *artifacts* (task files, completed work,
+configuration changes) — not conversation. Same DoR machinery, applied
+where it actually fits.
+
+### Deferred: `/hotfix` lane brief
+
+Filed as `spec/hotfix-skill-brief.md`. This is a brief, not a buildable
+spec — promote via `/spec` when ready to implement.
+
+The motivation: production incidents need a third lane that trades
+upfront ceremony for speed. Three questions max (what's broken, what's
+the fix, what's the rollback plan), then execute immediately. No DoR,
+no decomposition, no wave planning. After the fire is out, auto-prompt
+`/postmortem` to reclaim accountability. The hotfix lane sacrifices
+ceremony upfront and makes up for it afterward — the spec-build lane is
+the inverse tradeoff.
+
+### Bug fixes surfaced by the refactor
+
+- **`_validate_task_dict` type signature** (`scripts/tasks.py`) — the
+  parameter was typed as `dict`, which made the runtime `isinstance`
+  check unreachable from Pyright's perspective. Fixed to `object` so
+  the defensive check for non-dict JSON input is typed meaningfully.
+- **Stale `json` import diagnostics** — transient during the build; not
+  a real bug, but noted as a reminder that harness diagnostics are
+  snapshots from the session, not fresh scans.
+
+### By the numbers
+
+| | v1.4 | v1.5 | delta |
+|---|---|---|---|
+| Gates | 15 | 14 | -1 (DoR moved to /build Step 1) |
+| Skills | 9 | 9 | 0 |
+| Tests passing | 228 | 257 | +29 |
+| `test_tasks.py` | 28 | 50 | +22 (create + bulk-create) |
+| `test_spec_three_state.py` | 0 | 8 | +8 (new contract) |
+| `test_compiler.py` | — | — | -1 test, +1 replacement |
+| Hook events | 10 | 9 | -1 (UserPromptSubmit removed) |
+
+### Upgrade notes
+
+1. **Recompile.** `python3 compile-sdlc.py spec/etc_sdlc.yaml`
+2. **Reinstall** if you want the DSL change reflected in your global
+   settings: `./install.sh`.
+3. **Remove the old hook from `~/.claude/settings.json`** if you
+   installed v1.4 previously. The `UserPromptSubmit` hook entry will
+   not be regenerated, but an existing installation may still have it.
+   Delete the `hooks.UserPromptSubmit` array to match the new shape.
+4. **Agents will start using the CLI automatically.** The updated
+   `/decompose`, `/build`, `/implement`, and `/tasks` skills reference
+   `tasks.py bulk-create` as the canonical path; reinstalling the
+   harness propagates these changes.
+
+### Philosophy note
+
+This release is the first one where we deliberately *removed* a gate
+rather than adding one. Every v1.x release through v1.4 added
+enforcement. v1.5 acknowledges that enforcement at the wrong place is
+worse than no enforcement — it blocks legitimate work while doing
+nothing to catch actual problems.
+
+The right mental model: **an engineering harness is a set of lanes
+with explicit entry points, not a single checkpoint at the door**.
+Conversation is a lane. Ideation is a lane. Spec authoring is a lane.
+Build execution is a lane. Hotfix is a lane. Each lane has its own
+quality bar, and the user declares the lane by how they address the
+system. The harness's job is to enforce rigor *within* a lane, not to
+guess which lane the user intended from the shape of their prose.
+
+---
+
 ## 2026-04-13 — etc v1.4: /init-project and the rigor pass
 
 Small but meaningful release. One new skill, a UX pattern rolled out to

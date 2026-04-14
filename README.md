@@ -23,7 +23,7 @@ python3 compile-sdlc.py spec/etc_sdlc.yaml
 
 ```bash
 uv sync            # Install test dependencies
-uv run pytest      # 228 tests, ~5 seconds
+uv run pytest      # 258 tests, ~6 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file without writing a test first. The TDD hook will block you.
@@ -40,11 +40,10 @@ Then in Claude Code, try editing a `src/` file without writing a test first. The
 
 Command hooks fire on every Edit/Write (hundreds of times per session). Prompt hooks fire on task boundaries (a few times). Agent hooks fire on Stop (once per turn). The cost profile is intentional — cheap gates run often, expensive verification runs once.
 
-### The 15 Gates
+### The 14 Gates
 
 ```yaml
 # Preconditions — before work begins
-definition-of-ready:     UserPromptSubmit  → prompt   "Is this request clear enough?" (fails open on slash commands and short replies)
 safety-guardrails:       PreToolUse (Bash) → command  Block rm -rf, force push, DROP TABLE
 tier-0-preflight:        PreToolUse (Edit) → command  DOMAIN.md and PROJECT.md must exist at repo root
 tdd-gate:                PreToolUse (Edit) → command  Test file must exist before source
@@ -90,14 +89,14 @@ citations. Idempotent — re-runs on an initialized repo produce no changes.
 
 **`/spec`** — Socratic specification loop:
 1. Asks clarifying questions (never starts writing immediately)
-2. Researches the codebase and web for patterns, pitfalls, security
-3. Surfaces gray areas — ambiguous decisions resolved before writing
-4. Builds the PRD section by section, each approved by the user
-5. Validates against Definition of Ready before finalizing
+2. Researches the codebase and web for patterns, pitfalls, security, and **auto-fills citable gaps** with decided_by: research entries in gray-areas.md
+3. **Three-state classification** (v1.5): well-specified → write PRD; under-specified with research-fillable gaps → auto-fill with citations and proceed; under-specified with too many unfillable gaps → reject to `rejected.md` with specific questions the human must answer before resubmitting
+4. Surfaces only unfillable gray areas to the user — no busywork resolving what the codebase already answers
+5. Builds the PRD section by section, each approved by the user
 
 **`/build`** — The conductor. Orchestrates the full pipeline:
-1. **Validate** — spec passes Definition of Ready
-2. **Decompose** — break PRD into tasks with hierarchical IDs
+1. **Validate** — DoR preflight on the spec artifact (rubber-stamps specs that came through `/spec`; rejects hand-written specs with specific gaps). This is the single quality gate at the pipeline entry — conversation is never gated at the thread boundary.
+2. **Decompose** — break PRD into tasks via `tasks.py bulk-create` (atomic JSON batch, ~75% fewer tokens than hand-writing YAML)
 3. **Score & Recurse** — any task scoring > 7 gets decomposed further (arbitrary depth)
 4. **Plan Waves** — group by dependency, verify no file overlaps
 5. **Execute** — dispatch wave by wave, verify after each wave
@@ -177,14 +176,15 @@ gates:
     type: command
     script: check-test-exists.sh
 
-  definition-of-ready:
-    event: UserPromptSubmit
+  task-readiness:
+    event: TaskCreated
     type: prompt
     model: sonnet
     role: |
-      You are the VP of Engineering...
+      You are a senior engineering manager reviewing a task
+      file before it's assigned to an agent...
     prompt: |
-      Review this request: $ARGUMENTS
+      $ARGUMENTS
       ...
 
 agents:
@@ -237,7 +237,7 @@ skills/                    9 skills
   decompose/SKILL.md         /decompose — recursive hierarchical task breakdown
   implement/SKILL.md         /implement — scale-adaptive dispatch (QUICK/STANDARD/DEEP)
   pull-tickets/SKILL.md      /pull-tickets — closed-loop ticket pipeline (Linear → PRD → build → PR)
-  tasks/SKILL.md             /tasks — native task tracker (list, next, board, tree, waves)
+  tasks/SKILL.md             /tasks — native task tracker (list, next, board, tree, waves, create, bulk-create)
   postmortem/SKILL.md        /postmortem — trace escaped bugs, build antipatterns knowledge
   checkpoint/SKILL.md        /checkpoint — save session state before compaction
 
@@ -263,7 +263,7 @@ standards/                 19 engineering standards across 6 categories
   security/                  Data handling, OWASP checklist
   quality/                   Metrics, guardrail rules
 
-tests/                     228 tests (pytest, ~5 seconds, sandbox-clean)
+tests/                     258 tests (pytest, ~6 seconds, sandbox-clean)
   test_block_dangerous.py    30 tests — dangerous command blocking (incl. git-add regex regression)
   test_tdd_gate.py           6 tests — TDD enforcement
   test_invariants.py         15 tests — invariant checking
@@ -276,7 +276,8 @@ tests/                     228 tests (pytest, ~5 seconds, sandbox-clean)
   test_compiler.py           17 tests — DSL compiler + hook shape-check contracts
   test_pull_tickets.py       13 tests — ticket pipeline skill validation
   test_init_project.py       48 tests — /init-project templates, phases, preflight, SKILL contracts
-  test_tasks.py              28 tests — task tracker, waves scoping, feature filter
+  test_tasks.py              50 tests — task tracker, waves scoping, feature filter, create/bulk-create
+  test_spec_three_state.py    8 tests — /spec three-state classification contract + mutual-exclusion sweep
   conftest.py                Shared fixtures (run_hook, tmp_project, etc.)
 ```
 
