@@ -276,6 +276,165 @@ class TestShouldIncludeRoleInPromptHooks:
         )
 
 
+# -- Test 3.5: Harness feedback Stop hook -------------------------------------
+
+
+class TestHarnessFeedbackHook:
+    """The harness-feedback hook is a prompt-type Stop evaluator that watches
+    for cross-project lessons and emits a copy-pasteable block when it finds
+    one. Silent by default. These tests assert the compiled hook has the
+    right shape — we cannot execute a Stop hook in a unit test, so we assert
+    the prompt contains the rubric contracts that its signal-to-noise
+    depends on.
+    """
+
+    def test_should_register_harness_feedback_as_second_stop_hook(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """Stop event must host both ci-pipeline and harness-feedback."""
+        stop_entries = hooks_json["hooks"]["Stop"]
+        assert stop_entries, "Stop event has no hooks at all"
+        prompt_hooks = [
+            h for h in stop_entries[0].get("hooks", [])
+            if h.get("type") == "prompt"
+        ]
+        assert prompt_hooks, (
+            "Stop event has no prompt-type hook. The harness-feedback loop "
+            "runs as a prompt hook alongside the ci-pipeline agent hook."
+        )
+
+    def _get_feedback_prompt(self, hooks_json: dict[str, Any]) -> str:
+        for entry in hooks_json["hooks"]["Stop"]:
+            for handler in entry.get("hooks", []):
+                if handler.get("type") != "prompt":
+                    continue
+                prompt = handler.get("prompt", "")
+                if "harness-improvement" in prompt or "Harness feedback" in prompt:
+                    return prompt
+        raise AssertionError("harness-feedback hook not found on Stop event")
+
+    def test_should_declare_silence_as_the_default(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """Signal-to-noise is the whole game. The prompt must instruct the
+        LLM to emit silence when no trigger fired — if it emits on every
+        turn, users will mute the hook and the feedback loop breaks.
+        """
+        prompt = self._get_feedback_prompt(hooks_json)
+        assert "Silence is the default" in prompt, (
+            "harness-feedback prompt must explicitly declare silence as "
+            "the default behavior. Without this, the LLM tends toward "
+            "eager reflection and floods the user with generic 'be more "
+            "careful' suggestions."
+        )
+        assert '{"continue": true}' in prompt, (
+            "harness-feedback prompt must name the exact silent-response "
+            "shape so the LLM has a concrete template for the 95% case"
+        )
+
+    def test_should_enumerate_six_named_triggers(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """The rubric refuses to emit unless one of six specific triggers
+        fired. Without named triggers, the LLM will invent its own criteria
+        and the signal-to-noise ratio collapses.
+        """
+        prompt = self._get_feedback_prompt(hooks_json)
+        required_triggers = [
+            "Research inversion",
+            "Repeated mistake",
+            "Manual workaround",
+            "Time-wasted pattern",
+            "Framework/tool surprise",
+            "Gate that almost-fired-but-didn't",
+        ]
+        for trigger in required_triggers:
+            assert trigger in prompt, (
+                f"harness-feedback rubric missing required trigger '{trigger}'. "
+                f"Each trigger is load-bearing — removing one lets a whole "
+                f"class of harness lessons escape unnoticed."
+            )
+
+    def test_should_require_specific_named_fix_location(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """Vague suggestions are refused at the rubric level. The prompt
+        must require the LLM to name a specific file, hook, or standards
+        doc where the fix would live — otherwise it produces 'be more
+        careful' noise that nobody can act on.
+        """
+        prompt = self._get_feedback_prompt(hooks_json)
+        assert "name a specific file" in prompt.lower() or "name a specific" in prompt.lower() or (
+            "standards doc" in prompt and "hook script" in prompt
+        ), (
+            "harness-feedback prompt must require a specific named fix "
+            "location (file path, hook script, standards doc, or skill "
+            "instruction). Without this, the LLM emits abstract lessons "
+            "that cannot be implemented without re-deriving context."
+        )
+
+    def test_should_emit_distinctive_copy_paste_marker(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """The output format is load-bearing. The user must recognise the
+        block at a glance and a future etc-repo agent must be able to parse
+        its fields deterministically. The mail emoji and rule lines are
+        structural, not decorative — they're the parser anchors.
+        """
+        prompt = self._get_feedback_prompt(hooks_json)
+        assert "📬" in prompt, (
+            "harness-feedback output format missing the 📬 marker. "
+            "The emoji is the visual anchor that makes the block stand "
+            "out from routine session output — without it, users miss "
+            "the feedback and the loop breaks."
+        )
+        assert "Harness feedback" in prompt, (
+            "harness-feedback output must contain the literal phrase "
+            "'Harness feedback' so a future etc-repo agent can grep for "
+            "it and recognise a pasted block without heuristics"
+        )
+
+    def test_should_route_differently_when_inside_etc_repo(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """Context-aware routing lets the harness eat its own dog food:
+        when a lesson surfaces inside the etc repo, the hook offers to
+        implement it immediately instead of asking for copy-paste.
+        """
+        prompt = self._get_feedback_prompt(hooks_json)
+        assert "etc-system-engineering" in prompt or "etc repo" in prompt, (
+            "harness-feedback prompt must include context-aware routing "
+            "that detects when the session is running inside the etc repo "
+            "itself. Without it, in-repo users get a useless "
+            "'paste this back' prompt instead of 'implement now?'"
+        )
+
+    def test_should_not_block_session_on_failure(
+        self, hooks_json: dict[str, Any]
+    ) -> None:
+        """This is an advisory hook, not an enforcement gate. The
+        ci-pipeline hook on the same Stop event is the one that gates
+        code quality. If the feedback hook fails or times out, the
+        session must proceed normally — missing a lesson is a smaller
+        cost than blocking a session.
+        """
+        for entry in hooks_json["hooks"]["Stop"]:
+            for handler in entry.get("hooks", []):
+                if handler.get("type") != "prompt":
+                    continue
+                timeout = handler.get("timeout", 0)
+                assert timeout > 0, (
+                    "harness-feedback hook has no timeout — a hung "
+                    "advisory hook would block every session stop"
+                )
+                assert timeout <= 60, (
+                    f"harness-feedback timeout is {timeout}s, which is "
+                    f"too long for an advisory Stop hook. Users will "
+                    f"notice the delay and resent the hook. Keep it "
+                    f"under 60s — 30s is the target."
+                )
+
+
 # -- Test 4: Correct script references ----------------------------------------
 
 

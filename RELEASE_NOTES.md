@@ -1,5 +1,161 @@
 # Release Notes
 
+## 2026-04-14 — etc v1.5.1: research discipline + harness feedback loop
+
+A same-day patch release following v1.5, adding two related learning
+mechanisms that address a gap v1.5 left open: **how do cross-project
+lessons flow back into the harness in the first place?**
+
+### New: research discipline rule
+
+Adds `standards/process/research-discipline.md` and a matching section
+in `hooks/inject-standards.sh` that briefs every subagent at spawn
+time on the "consult current docs before disassembling bundles" rule.
+
+The rule is specific enough to fire in the moment: if an agent finds
+itself grepping `dist/**/*.js` or tracing transpiled output before
+querying `context7`, it stops and re-queries docs. The standards doc
+documents the ordering heuristic with time budgets (context7 30s →
+official docs 2min → repo grep 5min → test suite 5min → source last
+resort).
+
+Origin: a 2026-04-14 session spent ~40 minutes disassembling a built
+Worker bundle to trace cache-header plumbing when the canonical API
+was one `context7` query away.
+
+Three regression tests (`tests/test_inject_standards.py`) guard the
+three qualities that make the rule fire in practice: the section
+exists in onboarding, it names `context7` concretely, and it calls
+out the `dist/`/bundles failure mode by name. Abstract rules drift
+past agents in the heat of debugging — specific failure-mode names
+don't.
+
+### New: harness feedback loop (the Stop-hook scout)
+
+Adds a `harness-feedback` gate to the Stop event. It runs a Sonnet
+prompt hook at the end of every turn, in every project, under every
+installation of etc. Its job is one question: *"Did anything happen
+in this turn where a harness rule could have prevented wasted time, a
+mistake, or a workaround?"*
+
+**Silent by default.** The 95% case is "nothing happened" and the
+hook returns `{"continue": true}` with no output. When it does fire,
+it emits a distinctive `📬 Harness feedback` block sized for
+copy-paste into a new conversation with the etc repo.
+
+**The six triggers** the hook looks for, any one of which is
+sufficient to emit:
+
+1. **Research inversion** — read source before docs, grepped dist
+   bundles, disassembled transpiled output before `context7`.
+2. **Repeated mistake** — same class of bug fixed twice in one turn.
+3. **Manual workaround** — invented a sed/copy-paste hack where a
+   CLI flag, skill step, or hook would have been cleaner.
+4. **Time-wasted pattern** — >10 minutes on something with a one-shot
+   documented answer elsewhere.
+5. **Framework/tool surprise** — "obvious in hindsight" behavior that
+   a one-line onboarding addition would have preempted.
+6. **Near-miss gate** — an existing gate almost caught something but
+   missed because of a narrow rule gap.
+
+**Output format is load-bearing.** The block's emoji, rule lines, and
+field names are structural, not decorative — they're the parser
+anchors a future etc-repo agent uses to recognise and implement the
+proposed rule without re-deriving context:
+
+```
+📬 Harness feedback — paste this into etc:
+─────────────────────────────────────────────
+**Observed in:** {project}
+**Date:** YYYY-MM-DD
+**Trigger:** {one of the six}
+
+**What happened**
+**Why the harness could have prevented it**
+**Proposed rule**
+**Origin trace**
+─────────────────────────────────────────────
+```
+
+**Context-aware routing.** If the Stop hook detects it's running
+*inside* the etc repo itself (cwd matches `etc-system-engineering`),
+the marker line becomes "implement this now?" instead of "paste this
+into etc" — so the harness can eat its own dog food without copy-
+paste overhead.
+
+**Signal-to-noise is the whole game.** The prompt refuses to emit
+unless the proposed rule names a specific file, hook, or standards
+doc. Vague "be more careful" suggestions are rejected at the rubric
+level. Seven contract tests in `tests/test_compiler.py` assert this:
+the six triggers are enumerated by name, silence is the default, the
+📬 marker is present, context-aware routing is wired in, and the
+advisory timeout is ≤60s so a hung hook cannot block a session.
+
+**Why it's advisory, not enforcing.** This hook runs alongside the
+existing `ci-pipeline` agent hook on the same Stop event. The CI hook
+gates code quality and can block the stop if tests fail. The feedback
+hook is advisory: `on_failure: allow`, `timeout: 30`, silent by
+default. Missing a lesson is a smaller cost than blocking a session.
+
+### The two loops together
+
+The harness now has two learning loops, catching different things:
+
+| Loop | Trigger | Catches | Lives in |
+|---|---|---|---|
+| `/postmortem` | Human-invoked after a bug escapes | Per-project escaped bugs with known root cause | `.etc_sdlc/antipatterns.md` (per project, gitignored) |
+| `harness-feedback` | Automatic, every Stop | Cross-project process lessons, time-wasted patterns, near-misses | `📬` block → paste back to etc → standards/hooks/skills |
+
+`/postmortem` is reactive and project-local. `harness-feedback` is
+proactive and cross-project. Together they close the gap between "a
+bug shipped broken in this project" and "a process mistake wasted
+time in every project, including ones where no bug ever shipped."
+
+`standards/process/harness-feedback-loop.md` documents both loops,
+the six triggers, the parsing contract for the 📬 block, and the
+close-the-loop workflow (copy block → paste into etc → agent
+implements → `./install.sh` deploys globally).
+
+### By the numbers
+
+| | v1.5 | v1.5.1 | delta |
+|---|---|---|---|
+| Gates | 14 | 15 | +1 (harness-feedback) |
+| Standards docs | 28 | 30 | +2 (research-discipline, harness-feedback-loop) |
+| Tests passing | 257 | 267 | +10 |
+| `test_inject_standards.py` | 7 | 10 | +3 |
+| `test_compiler.py::TestHarnessFeedbackHook` | 0 | 7 | +7 |
+| Onboarding sections in `inject-standards.sh` | 4 | 5 | +1 |
+| Stop-event hooks | 1 | 2 | +1 |
+
+### Upgrade notes
+
+1. **Recompile**: `python3 compile-sdlc.py spec/etc_sdlc.yaml`
+2. **Reinstall**: `./install.sh` — this propagates the new Stop hook
+   to `~/.claude/settings.json` so every project under the harness
+   starts getting feedback evaluation at end-of-turn.
+3. **No opt-out flag** in this release — the hook is silent by
+   default and advisory when it fires, so there's nothing to mute.
+   If you find it noisy in practice, raise the rubric bar in the
+   prompt rather than disabling the hook.
+
+### Philosophy note
+
+v1.5 landed the principle "rigor lives at lane boundaries, not at the
+thread boundary." v1.5.1 adds the complementary principle: **the
+harness watches itself for lessons it should have taught**. Every
+session is a chance for the harness to learn, and the cost of watching
+is one Sonnet call per turn. If one lesson a week flows through this
+loop into a real rule change, the cost is repaid a hundredfold by the
+compounding effect of every future session under the improved rule.
+
+An engineering harness that does not learn from its consumers is a
+fossil. This release makes "noticing" automatic and "writing it down"
+frictionless — the only two friction points that matter for a
+learning loop to close.
+
+---
+
 ## 2026-04-14 — etc v1.5: lanes, not gates
 
 The theme of this release is **architectural honesty about how humans

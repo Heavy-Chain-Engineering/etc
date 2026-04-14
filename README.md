@@ -23,7 +23,7 @@ python3 compile-sdlc.py spec/etc_sdlc.yaml
 
 ```bash
 uv sync            # Install test dependencies
-uv run pytest      # 258 tests, ~6 seconds
+uv run pytest      # 267 tests, ~7 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file without writing a test first. The TDD hook will block you.
@@ -40,7 +40,7 @@ Then in Claude Code, try editing a `src/` file without writing a test first. The
 
 Command hooks fire on every Edit/Write (hundreds of times per session). Prompt hooks fire on task boundaries (a few times). Agent hooks fire on Stop (once per turn). The cost profile is intentional — cheap gates run often, expensive verification runs once.
 
-### The 14 Gates
+### The 15 Gates
 
 ```yaml
 # Preconditions — before work begins
@@ -64,6 +64,7 @@ adversarial-review:      SubagentStop       → agent   Fresh hostile reviewer �
 
 # Session lifecycle
 ci-pipeline:             Stop               → agent   Full CI: tests + types + lint + invariants
+harness-feedback:        Stop               → prompt  Watch for cross-project lessons; emit copy-pasteable note
 change-control:          ConfigChange       → command  Agent cannot loosen its own governance
 compaction-recovery:     SessionStart       → command  Re-inject context after compaction
 ```
@@ -263,7 +264,7 @@ standards/                 19 engineering standards across 6 categories
   security/                  Data handling, OWASP checklist
   quality/                   Metrics, guardrail rules
 
-tests/                     258 tests (pytest, ~6 seconds, sandbox-clean)
+tests/                     267 tests (pytest, ~7 seconds, sandbox-clean)
   test_block_dangerous.py    30 tests — dangerous command blocking (incl. git-add regex regression)
   test_tdd_gate.py           6 tests — TDD enforcement
   test_invariants.py         15 tests — invariant checking
