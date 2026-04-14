@@ -37,8 +37,17 @@ Covered by the brief (no /spec routing, no /build routing, no DoR).
 Extend in Phase 3 with: no alerting integration, no PagerDuty hooks,
 no automatic rollback detection — hotfix is manual-trigger only.
 
-### Q5: Constraints
-To be elicited in Phase 3 from the gray areas below.
+### Q5: Constraints (answered 2026-04-14 fresh session)
+- **Time budgets:** none
+- **Audit trail:** git-tracked markdown file is sufficient (no immutable /
+  signed / tamper-evident requirement)
+- **Reversion boundary:** no extra permissions needed — `/hotfix` is a way
+  to fix something outside the normal highly-constrained /spec and /build
+  process, not an escalated-privilege lane
+- **Subagent identity:** dedicated new agent type — `hotfix-responder` —
+  designed to good practices (not reusing `backend-developer` with a flag)
+- **Anything else:** nothing additional — inherits stdlib / pytest /
+  compile-sdlc.py defaults from the rest of the harness
 
 ## Gray Areas Answered Mid-Session
 

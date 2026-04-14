@@ -276,203 +276,54 @@ class TestShouldIncludeRoleInPromptHooks:
         )
 
 
-# -- Test 3.5: Harness feedback Stop hook -------------------------------------
+# -- Test 3.5: Harness feedback Stop hook was removed in v1.5.2 ------------
 
 
-class TestHarnessFeedbackHook:
-    """The harness-feedback hook is a prompt-type Stop evaluator that watches
-    for cross-project lessons and emits a copy-pasteable block when it finds
-    one. Silent by default. These tests assert the compiled hook has the
-    right shape — we cannot execute a Stop hook in a unit test, so we assert
-    the prompt contains the rubric contracts that its signal-to-noise
-    depends on.
+class TestHarnessFeedbackHookRemoved:
+    """Regression test for the v1.5.2 emergency removal.
+
+    The v1.5.1 harness-feedback prompt hook on Stop shipped with a latent
+    bug where Sonnet evaluators returned prose reasoning alongside (or
+    instead of) the bare silent-case JSON. Every attempt to tighten the
+    prompt — strict silence language, explicit stakes statement, rubric
+    restructuring — failed to produce compliant output in practice.
+
+    The core architectural problem: prompt-type Stop hooks fire on every
+    turn across every project, so any deviation from the silent contract
+    floods session output and gets the hook muted. And because Claude
+    Code caches hook configuration at session start, iterating on the
+    prompt in the session that authored it is impossible. The debugging
+    feedback loop is broken for prompt Stop hooks in general.
+
+    The v1.5.2 decision: remove the hook entirely. Cross-project lesson
+    capture will return in a future release, but only once
+    scripts/test-hook-prompt.py (or equivalent local fixture runner)
+    exists so prompt changes can be verified without a Claude Code
+    restart, AND once we have a design that does not rely on a prompt
+    hook for silent-by-default behavior (candidate: agent-type hook
+    with tool calls that enforce response shape mechanically).
+
+    This test enforces the removal: no prompt-type hook may register
+    on the Stop event until the two blockers above are resolved.
     """
 
-    def test_should_register_harness_feedback_as_second_stop_hook(
+    def test_should_not_register_prompt_hook_on_stop(
         self, hooks_json: dict[str, Any]
     ) -> None:
-        """Stop event must host both ci-pipeline and harness-feedback."""
-        stop_entries = hooks_json["hooks"]["Stop"]
-        assert stop_entries, "Stop event has no hooks at all"
-        prompt_hooks = [
-            h for h in stop_entries[0].get("hooks", [])
-            if h.get("type") == "prompt"
-        ]
-        assert prompt_hooks, (
-            "Stop event has no prompt-type hook. The harness-feedback loop "
-            "runs as a prompt hook alongside the ci-pipeline agent hook."
-        )
-
-    def _get_feedback_prompt(self, hooks_json: dict[str, Any]) -> str:
-        for entry in hooks_json["hooks"]["Stop"]:
+        stop_entries = hooks_json["hooks"].get("Stop", [])
+        for entry in stop_entries:
             for handler in entry.get("hooks", []):
-                if handler.get("type") != "prompt":
-                    continue
-                prompt = handler.get("prompt", "")
-                if "harness-improvement" in prompt or "Harness feedback" in prompt:
-                    return prompt
-        raise AssertionError("harness-feedback hook not found on Stop event")
-
-    def test_should_declare_silence_as_the_default(
-        self, hooks_json: dict[str, Any]
-    ) -> None:
-        """Signal-to-noise is the whole game. The prompt must instruct the
-        LLM to emit silence when no trigger fired — if it emits on every
-        turn, users will mute the hook and the feedback loop breaks.
-        """
-        prompt = self._get_feedback_prompt(hooks_json)
-        assert "Silence is the default" in prompt, (
-            "harness-feedback prompt must explicitly declare silence as "
-            "the default behavior. Without this, the LLM tends toward "
-            "eager reflection and floods the user with generic 'be more "
-            "careful' suggestions."
-        )
-        assert '{"continue": true}' in prompt, (
-            "harness-feedback prompt must name the exact silent-response "
-            "shape so the LLM has a concrete template for the 95% case"
-        )
-
-    def test_should_forbid_prose_in_silent_response(
-        self, hooks_json: dict[str, Any]
-    ) -> None:
-        """Regression test for a v1.5.1 dogfood finding: the first two
-        live runs of the hook returned multi-paragraph reasoning alongside
-        the JSON response. That reasoning got streamed to the user on
-        every Stop event, which is exactly the "noise that mutes the
-        hook" failure mode the prompt was supposed to prevent.
-
-        The fix is to make the silent-case instruction maximally strict:
-        the ENTIRE response must be the JSON object and nothing else.
-        This test enforces the strictness language so a future softening
-        pass cannot quietly reintroduce the bug.
-        """
-        prompt = self._get_feedback_prompt(hooks_json)
-        # Must contain the strictness marker that forbids prose.
-        assert "ENTIRE response" in prompt, (
-            "harness-feedback silent-case instruction must declare the "
-            "LLM's ENTIRE response to be the JSON object — weaker "
-            "language ('respond with', 'return') lets the LLM emit "
-            "reasoning alongside the JSON and every Stop event floods "
-            "the user with evaluator prose"
-        )
-        # Must name the specific failure mode (prose prefix/suffix) so the
-        # LLM has a concrete picture of what NOT to do.
-        assert "preamble" in prompt.lower() or "prose" in prompt.lower(), (
-            "harness-feedback silent-case must explicitly forbid preamble "
-            "or prose around the JSON; abstract 'be silent' instructions "
-            "drift past LLMs that want to explain themselves"
-        )
-        # Must explain WHY silence is strict, so the LLM respects the
-        # rule instead of helpfully narrating its reasoning.
-        assert (
-            "worse than a missed trigger" in prompt.lower()
-            or "floods" in prompt.lower()
-        ), (
-            "harness-feedback silent-case must explain the cost of "
-            "verbosity — without a concrete stakes statement the LLM "
-            "defaults to helpful reasoning and breaks the silent contract"
-        )
-
-    def test_should_enumerate_six_named_triggers(
-        self, hooks_json: dict[str, Any]
-    ) -> None:
-        """The rubric refuses to emit unless one of six specific triggers
-        fired. Without named triggers, the LLM will invent its own criteria
-        and the signal-to-noise ratio collapses.
-        """
-        prompt = self._get_feedback_prompt(hooks_json)
-        required_triggers = [
-            "Research inversion",
-            "Repeated mistake",
-            "Manual workaround",
-            "Time-wasted pattern",
-            "Framework/tool surprise",
-            "Gate that almost-fired-but-didn't",
-        ]
-        for trigger in required_triggers:
-            assert trigger in prompt, (
-                f"harness-feedback rubric missing required trigger '{trigger}'. "
-                f"Each trigger is load-bearing — removing one lets a whole "
-                f"class of harness lessons escape unnoticed."
-            )
-
-    def test_should_require_specific_named_fix_location(
-        self, hooks_json: dict[str, Any]
-    ) -> None:
-        """Vague suggestions are refused at the rubric level. The prompt
-        must require the LLM to name a specific file, hook, or standards
-        doc where the fix would live — otherwise it produces 'be more
-        careful' noise that nobody can act on.
-        """
-        prompt = self._get_feedback_prompt(hooks_json)
-        assert "name a specific file" in prompt.lower() or "name a specific" in prompt.lower() or (
-            "standards doc" in prompt and "hook script" in prompt
-        ), (
-            "harness-feedback prompt must require a specific named fix "
-            "location (file path, hook script, standards doc, or skill "
-            "instruction). Without this, the LLM emits abstract lessons "
-            "that cannot be implemented without re-deriving context."
-        )
-
-    def test_should_emit_distinctive_copy_paste_marker(
-        self, hooks_json: dict[str, Any]
-    ) -> None:
-        """The output format is load-bearing. The user must recognise the
-        block at a glance and a future etc-repo agent must be able to parse
-        its fields deterministically. The mail emoji and rule lines are
-        structural, not decorative — they're the parser anchors.
-        """
-        prompt = self._get_feedback_prompt(hooks_json)
-        assert "📬" in prompt, (
-            "harness-feedback output format missing the 📬 marker. "
-            "The emoji is the visual anchor that makes the block stand "
-            "out from routine session output — without it, users miss "
-            "the feedback and the loop breaks."
-        )
-        assert "Harness feedback" in prompt, (
-            "harness-feedback output must contain the literal phrase "
-            "'Harness feedback' so a future etc-repo agent can grep for "
-            "it and recognise a pasted block without heuristics"
-        )
-
-    def test_should_route_differently_when_inside_etc_repo(
-        self, hooks_json: dict[str, Any]
-    ) -> None:
-        """Context-aware routing lets the harness eat its own dog food:
-        when a lesson surfaces inside the etc repo, the hook offers to
-        implement it immediately instead of asking for copy-paste.
-        """
-        prompt = self._get_feedback_prompt(hooks_json)
-        assert "etc-system-engineering" in prompt or "etc repo" in prompt, (
-            "harness-feedback prompt must include context-aware routing "
-            "that detects when the session is running inside the etc repo "
-            "itself. Without it, in-repo users get a useless "
-            "'paste this back' prompt instead of 'implement now?'"
-        )
-
-    def test_should_not_block_session_on_failure(
-        self, hooks_json: dict[str, Any]
-    ) -> None:
-        """This is an advisory hook, not an enforcement gate. The
-        ci-pipeline hook on the same Stop event is the one that gates
-        code quality. If the feedback hook fails or times out, the
-        session must proceed normally — missing a lesson is a smaller
-        cost than blocking a session.
-        """
-        for entry in hooks_json["hooks"]["Stop"]:
-            for handler in entry.get("hooks", []):
-                if handler.get("type") != "prompt":
-                    continue
-                timeout = handler.get("timeout", 0)
-                assert timeout > 0, (
-                    "harness-feedback hook has no timeout — a hung "
-                    "advisory hook would block every session stop"
-                )
-                assert timeout <= 60, (
-                    f"harness-feedback timeout is {timeout}s, which is "
-                    f"too long for an advisory Stop hook. Users will "
-                    f"notice the delay and resent the hook. Keep it "
-                    f"under 60s — 30s is the target."
+                assert handler.get("type") != "prompt", (
+                    "v1.5.2 removed the harness-feedback prompt hook from "
+                    "Stop because its silent-case contract could not be "
+                    "enforced against Sonnet's tendency to narrate its "
+                    "reasoning, and because Claude Code's session-start "
+                    "cache makes in-session iteration impossible. Do not "
+                    "re-register a prompt hook on Stop until (a) a local "
+                    "fixture runner exists that verifies prompt behavior "
+                    "without a Claude Code restart, and (b) the silent "
+                    "contract is enforced mechanically (agent-type hook "
+                    "with tool calls) rather than by prose instruction."
                 )
 
 
