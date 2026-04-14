@@ -45,6 +45,72 @@ class TestCodeStandards:
         assert "type annotations" in result.stdout
 
 
+class TestResearchDiscipline:
+    """Verify the research-discipline section appears in onboarding context.
+
+    Added 2026-04-14 after a session wasted ~40 minutes disassembling a built
+    Worker bundle to trace framework internals when the canonical API was one
+    context7 query away. The rule is now injected into every subagent at
+    spawn so the discipline fires from working context instead of having to
+    be recalled from training.
+
+    Full rule: standards/process/research-discipline.md
+    """
+
+    def test_should_include_research_discipline_section_when_invoked(
+        self, run_hook: Any, tmp_project: Path
+    ) -> None:
+        # Arrange
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+
+        # Act
+        result = run_hook("inject-standards.sh", hook_input)
+
+        # Assert
+        assert result.exit_code == 0
+        assert "Research Discipline" in result.stdout, (
+            "Subagents must be briefed on the docs-before-source rule at "
+            "spawn time; the section is missing from inject-standards.sh"
+        )
+
+    def test_should_name_context7_as_the_first_research_tool(
+        self, run_hook: Any, tmp_project: Path
+    ) -> None:
+        """context7 must appear in the onboarding so subagents know the name
+        of the MCP server to query, not just the abstract concept of 'docs'."""
+        # Arrange
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+
+        # Act
+        result = run_hook("inject-standards.sh", hook_input)
+
+        # Assert
+        assert "context7" in result.stdout, (
+            "inject-standards.sh must name context7 explicitly so subagents "
+            "know which tool to reach for — 'consult current docs' is too "
+            "abstract to act on without the concrete tool name"
+        )
+
+    def test_should_warn_against_reading_built_artifacts_before_docs(
+        self, run_hook: Any, tmp_project: Path
+    ) -> None:
+        """The failure mode this rule prevents is disassembling dist/ bundles
+        before checking docs. The hook must name that failure mode explicitly
+        so a future agent recognises itself in it."""
+        # Arrange
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+
+        # Act
+        result = run_hook("inject-standards.sh", hook_input)
+
+        # Assert
+        assert "bundles" in result.stdout.lower() or "dist/" in result.stdout, (
+            "inject-standards.sh must call out bundle/dist disassembly as "
+            "the specific failure mode the rule prevents — the abstract "
+            "version ('read docs first') is too weak to fire in the moment"
+        )
+
+
 class TestActiveTaskInjection:
     """Verify active task content is injected when present."""
 

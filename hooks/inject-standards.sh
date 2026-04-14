@@ -39,6 +39,25 @@ The following rules are non-negotiable:
 - Read required files before coding (enforced by hook)
 - Mark tasks in_progress when starting, completed when done
 - If stuck: escalate to the orchestrator, don't guess
+
+### Research Discipline
+- When a third-party framework or library isn't behaving as expected,
+  consult current docs FIRST. Query the \`context7\` MCP server, check
+  the framework's official reference, and grep the public repo before
+  reading built artifacts or disassembling bundles.
+- Ordering: context7 (30s) → official docs (2min) → public repo grep
+  (5min) → framework test suite (5min) → source/bundles (last resort).
+- If you find yourself reverse-engineering framework internals through
+  \`dist/**/*.js\` or tracing transpiled output, STOP and re-query docs.
+  The supported API you're looking for is almost always two lines of
+  docs away. Reading source before docs inverts the cost gradient.
+- Escape hatch: if you have reason to believe the docs are wrong,
+  missing, or lagging the code, read source — but state the reason
+  first. "I'll just check the source real quick" is not a valid reason;
+  "the context7 docs for version X don't mention Y and the last commit
+  on that file was 3 months ago" is.
+- See standards/process/research-discipline.md for the full rule and
+  the origin story.
 CONTEXT
 
 # Inject active task context if available
