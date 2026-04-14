@@ -32,22 +32,69 @@ or is interrupted, `/build --resume` picks up from the last completed step.
 
 ---
 
-### Step 1: VALIDATE
+### Step 1: VALIDATE — Definition of Ready gate
 
-Read the spec file. Check Definition of Ready:
-- [ ] Specific, measurable acceptance criteria
-- [ ] Names concrete files, modules, endpoints
-- [ ] Scope boundaries (in/out) are clear
-- [ ] No unstated domain knowledge required
-- [ ] Detailed enough to implement without guessing
+This is the single quality gate at the entry to the build pipeline. You are
+the VP of Engineering reviewing a spec before committing agent-hours to
+implementing it. Be firm but constructive — when you reject, tell the user
+exactly what's missing so they can fix it.
 
-**If spec fails DoR:** Stop immediately. Tell the user what's missing.
-Suggest `/spec` to fix it.
+**Step 1a: Check for a prior /spec classification.**
 
-**On success:** Write to feature state file:
-```
-step_completed: 1_validate
-```
+If `.etc_sdlc/features/{slug}/rejected.md` exists, the spec has already
+been classified as too under-specified to build. STOP immediately. Do not
+run any further steps. Report:
+
+> This spec was rejected by /spec as under-specified. See
+> `.etc_sdlc/features/{slug}/rejected.md` for the specific gaps.
+> Resubmit via `/spec` after answering the questions listed there.
+
+If `.etc_sdlc/features/{slug}/spec.md` exists AND a sibling `state.yaml`
+shows the feature passed through /spec's three-state classifier with a
+research-assisted or well-specified result, pass Step 1 immediately —
+the DoR check already happened upstream. Write `step_completed: 1_validate`.
+
+**Step 1b: Inline DoR check (for hand-written specs).**
+
+If the spec did NOT come through /spec — e.g., the user ran
+`/build spec/some-file.md` on a hand-written PRD — evaluate the DoR
+checklist yourself against the spec file contents:
+
+- [ ] **Specific enough to implement without ambiguity.** No phrases like
+      "something like", "probably", "TBD", or "figure out later".
+- [ ] **Names concrete files, modules, endpoints, or components.** At
+      least one explicit file path or module name per major section.
+- [ ] **Has measurable acceptance criteria.** Every requirement is
+      phrased so a reviewer can say "this is met" or "this is not met"
+      without judgment calls.
+- [ ] **Does not require unstated domain knowledge.** A fresh agent
+      reading only this spec and the repo could implement it.
+- [ ] **Scope boundaries are clear.** Explicit "in scope" and "out of
+      scope" lists, or equivalent language.
+
+**If the spec passes:** Write `step_completed: 1_validate` and proceed
+to Step 2.
+
+**If the spec fails:** STOP immediately. Do not proceed to Step 2. Write
+a rejection message of the form:
+
+> Spec is not ready to build. Specific gaps:
+> (1) [gap with file/section reference]
+> (2) [gap with file/section reference]
+> ...
+>
+> Run `/spec {path}` to refine it, then re-run `/build`.
+
+Name every gap with a specific section or line reference from the spec
+file. Vague feedback ("add more detail") is not acceptable — the user
+must be able to act on each gap without asking you what you meant.
+
+**Scope of this gate.** This check runs ONLY on the spec artifact at
+`/build` invocation. It does not run on conversational prompts,
+ideation, or hotfixes — those are different lanes with different quality
+bars. If the user is in a conversation and asks you to build something
+casually, suggest they run `/spec` first to formalize the request before
+invoking `/build`.
 
 ### Step 2: SETUP
 
