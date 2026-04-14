@@ -84,26 +84,33 @@ If it's elsewhere (e.g., `spec/prd-auth.md`), copy it into the feature directory
 
 **Skip this step in QUICK mode** — create a single task and proceed to Step 4.
 
-Parse the spec into a task graph. For each task, create a YAML file
-in `.etc_sdlc/features/{slug}/tasks/`:
+Parse the spec into a task graph, then write every task in a single atomic
+batch by piping a JSON array to `bulk-create`:
 
-```yaml
-task_id: "NNN"
-title: "Clear, actionable title"
-assigned_agent: backend-developer
-status: pending
-requires_reading:
-  - .etc_sdlc/features/{slug}/spec.md
-  - path/to/existing/code.py
-files_in_scope:
-  - src/module/file.py
-  - tests/test_module_file.py
-acceptance_criteria:
-  - "Specific, measurable criterion"
-dependencies: []
-context: |
-  Additional context from the PRD.
+```bash
+python3 scripts/tasks.py bulk-create --feature {slug} <<'JSON'
+[
+  {
+    "task_id": "001",
+    "title": "Clear, actionable title",
+    "assigned_agent": "backend-developer",
+    "requires_reading": [".etc_sdlc/features/{slug}/spec.md", "path/to/existing/code.py"],
+    "files_in_scope": ["src/module/file.py", "tests/test_module_file.py"],
+    "acceptance_criteria": ["Specific, measurable criterion"],
+    "dependencies": [],
+    "context": "Additional context from the PRD."
+  }
+]
+JSON
 ```
+
+The CLI validates every task, refuses to write if any target already exists
+(unless you pass `--allow-existing`), and rolls back on any error so no
+half-decomposed state ever lands on disk. Required fields: `task_id`, `title`,
+`assigned_agent`, `files_in_scope`, `acceptance_criteria`.
+
+**Do NOT hand-write task YAML with the Write tool.** See `/decompose` for full
+CLI usage including the single-task `create` debugging path.
 
 **Rules for decomposition:**
 - Each task: implementable by a single agent in a single session
@@ -183,7 +190,8 @@ After all tasks complete:
 - You NEVER write code — you delegate to specialized agents (except QUICK mode)
 - You NEVER skip the spec validation step
 - You NEVER dispatch parallel tasks with overlapping file scopes
-- You ALWAYS create task files before dispatching work
+- You ALWAYS create task files via `tasks.py bulk-create` (never the Write
+  tool) before dispatching work
 - You ALWAYS write a verification report
 - You ALWAYS report results, including failures
 - If anything fails loudly (hook escalation), surface it immediately

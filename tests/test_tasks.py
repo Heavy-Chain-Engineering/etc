@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -364,3 +365,421 @@ class TestReadyToDecompose:
 
         result = _run_tasks(tmp_path, "ready-to-decompose")
         assert "No tasks exceed" in result.stdout
+
+
+# ── Create / bulk-create regression tests ───────────────────────────────
+
+
+def _run_tasks_stdin(
+    tmp_path: Path, stdin_text: str, *args: str
+) -> subprocess.CompletedProcess[str]:
+    """Run tasks.py with a string piped to stdin."""
+    return subprocess.run(
+        ["python3", str(TASKS_SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        input=stdin_text,
+        timeout=10,
+    )
+
+
+class TestCreate:
+    def test_should_create_feature_scoped_task(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "First task",
+            "--agent", "backend-developer",
+            "--file", "src/app.py",
+            "--ac", "Tests pass",
+            "--feature", "demo",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        path = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks" / "001-first-task.yaml"
+        assert path.exists()
+        body = path.read_text()
+        assert 'task_id: "001"' in body
+        assert 'title: "First task"' in body
+        assert "assigned_agent: backend-developer" in body
+        assert "status: pending" in body
+        assert "dependencies: []" in body
+
+    def test_should_create_legacy_global_task(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "Legacy task",
+            "--agent", "backend-developer",
+            "--file", "src/a.py",
+            "--ac", "Pass",
+        )
+        assert result.returncode == 0
+        path = tmp_path / ".etc_sdlc" / "tasks" / "001-legacy-task.yaml"
+        assert path.exists()
+
+    def test_should_reject_missing_required_field(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "Task",
+            "--agent", "backend-developer",
+            "--ac", "Pass",
+            # missing --file
+            "--feature", "demo",
+        )
+        assert result.returncode == 1
+        assert "files_in_scope" in result.stdout
+        # No file should have been written
+        tasks_dir = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks"
+        assert not tasks_dir.exists() or not any(tasks_dir.glob("*.yaml"))
+
+    def test_should_reject_invalid_status(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "T",
+            "--agent", "a",
+            "--file", "src/a.py",
+            "--ac", "pass",
+            "--status", "bogus",
+            "--feature", "demo",
+        )
+        assert result.returncode == 1
+        assert "bogus" in result.stdout
+
+    def test_should_accept_custom_filename(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "T",
+            "--agent", "a",
+            "--file", "src/a.py",
+            "--ac", "pass",
+            "--filename", "custom-name.yaml",
+            "--feature", "demo",
+        )
+        assert result.returncode == 0
+        path = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks" / "custom-name.yaml"
+        assert path.exists()
+
+    def test_should_emit_parent_task_and_context(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001.001",
+            "--title", "Child",
+            "--agent", "a",
+            "--file", "src/a.py",
+            "--ac", "pass",
+            "--parent", "001",
+            "--context", "Line one\nLine two",
+            "--feature", "demo",
+        )
+        assert result.returncode == 0
+        path = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks" / "001.001-child.yaml"
+        body = path.read_text()
+        assert 'parent_task: "001"' in body
+        assert "context: |" in body
+        assert "  Line one" in body
+        assert "  Line two" in body
+
+    def test_should_refuse_to_overwrite_existing(self, tmp_path: Path) -> None:
+        # Pre-create
+        _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "T",
+            "--agent", "a",
+            "--file", "src/a.py",
+            "--ac", "pass",
+            "--feature", "demo",
+        )
+        # Second attempt must fail
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "T",
+            "--agent", "a",
+            "--file", "src/a.py",
+            "--ac", "pass",
+            "--feature", "demo",
+        )
+        assert result.returncode == 1
+        assert "already exists" in result.stdout
+
+    def test_should_reject_path_traversal_in_feature(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "T",
+            "--agent", "a",
+            "--file", "src/a.py",
+            "--ac", "pass",
+            "--feature", "../../../etc",
+        )
+        assert result.returncode == 1
+        assert "path traversal" in result.stdout.lower() or "invalid" in result.stdout.lower()
+
+    def test_should_reject_path_traversal_in_filename(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "T",
+            "--agent", "a",
+            "--file", "src/a.py",
+            "--ac", "pass",
+            "--filename", "../escape.yaml",
+            "--feature", "demo",
+        )
+        assert result.returncode == 1
+
+    def test_should_fallback_slug_for_punctuation_title(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "!!!",
+            "--agent", "a",
+            "--file", "src/a.py",
+            "--ac", "pass",
+            "--feature", "demo",
+        )
+        assert result.returncode == 0
+        path = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks" / "001-task.yaml"
+        assert path.exists()
+
+    def test_should_produce_output_compatible_with_list(self, tmp_path: Path) -> None:
+        """Created tasks must be visible to the existing list command."""
+        _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "Visible",
+            "--agent", "backend-developer",
+            "--file", "src/a.py",
+            "--ac", "Pass",
+            "--feature", "demo",
+        )
+        result = _run_tasks(tmp_path, "list")
+        assert "001" in result.stdout
+        assert "Visible" in result.stdout
+
+
+class TestBulkCreate:
+    def _sample_batch(self) -> str:
+        return json.dumps([
+            {
+                "task_id": "001",
+                "title": "First",
+                "assigned_agent": "backend-developer",
+                "files_in_scope": ["src/a.py"],
+                "acceptance_criteria": ["Pass"],
+            },
+            {
+                "task_id": "002",
+                "title": "Second",
+                "assigned_agent": "backend-developer",
+                "files_in_scope": ["src/b.py"],
+                "acceptance_criteria": ["Pass"],
+                "dependencies": ["001"],
+            },
+        ])
+
+    def test_should_bulk_create_from_stdin(self, tmp_path: Path) -> None:
+        result = _run_tasks_stdin(
+            tmp_path, self._sample_batch(),
+            "bulk-create", "--feature", "demo",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        tasks_dir = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks"
+        assert (tasks_dir / "001-first.yaml").exists()
+        assert (tasks_dir / "002-second.yaml").exists()
+
+    def test_should_bulk_create_from_inline_json(self, tmp_path: Path) -> None:
+        result = _run_tasks(
+            tmp_path, "bulk-create",
+            "--feature", "demo",
+            "--json", self._sample_batch(),
+        )
+        assert result.returncode == 0
+        tasks_dir = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks"
+        assert (tasks_dir / "001-first.yaml").exists()
+
+    def test_should_bulk_create_from_json_file(self, tmp_path: Path) -> None:
+        json_path = tmp_path / "batch.json"
+        json_path.write_text(self._sample_batch())
+        result = _run_tasks(
+            tmp_path, "bulk-create",
+            "--feature", "demo",
+            "--json-file", str(json_path),
+        )
+        assert result.returncode == 0
+        tasks_dir = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks"
+        assert (tasks_dir / "002-second.yaml").exists()
+
+    def test_validation_failure_aborts_whole_batch(self, tmp_path: Path) -> None:
+        """If task 2 of 3 is invalid, zero files must be written."""
+        batch = json.dumps([
+            {
+                "task_id": "001",
+                "title": "OK",
+                "assigned_agent": "a",
+                "files_in_scope": ["src/a.py"],
+                "acceptance_criteria": ["Pass"],
+            },
+            {
+                # missing files_in_scope
+                "task_id": "002",
+                "title": "Bad",
+                "assigned_agent": "a",
+                "acceptance_criteria": ["Pass"],
+            },
+            {
+                "task_id": "003",
+                "title": "OK",
+                "assigned_agent": "a",
+                "files_in_scope": ["src/c.py"],
+                "acceptance_criteria": ["Pass"],
+            },
+        ])
+        result = _run_tasks_stdin(tmp_path, batch, "bulk-create", "--feature", "demo")
+        assert result.returncode == 1
+        assert "files_in_scope" in result.stdout
+        tasks_dir = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks"
+        assert not tasks_dir.exists() or not any(tasks_dir.glob("*.yaml"))
+
+    def test_pre_existence_aborts_whole_batch(self, tmp_path: Path) -> None:
+        # Create task 001 first
+        _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "First",
+            "--agent", "backend-developer",
+            "--file", "src/a.py",
+            "--ac", "Pass",
+            "--feature", "demo",
+        )
+        # Now bulk-create a batch containing 001 and 002
+        result = _run_tasks_stdin(
+            tmp_path, self._sample_batch(),
+            "bulk-create", "--feature", "demo",
+        )
+        assert result.returncode == 1
+        assert "already exist" in result.stdout
+        # 002 must NOT have been written
+        tasks_dir = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks"
+        assert not (tasks_dir / "002-second.yaml").exists()
+
+    def test_allow_existing_skips_and_reports(self, tmp_path: Path) -> None:
+        # Pre-create 001
+        _run_tasks(
+            tmp_path, "create",
+            "--task-id", "001",
+            "--title", "First",
+            "--agent", "backend-developer",
+            "--file", "src/a.py",
+            "--ac", "Pass",
+            "--feature", "demo",
+        )
+        result = _run_tasks_stdin(
+            tmp_path, self._sample_batch(),
+            "bulk-create", "--feature", "demo", "--allow-existing",
+        )
+        assert result.returncode == 0, result.stdout
+        assert "skipped" in result.stdout.lower()
+        tasks_dir = tmp_path / ".etc_sdlc" / "features" / "demo" / "tasks"
+        assert (tasks_dir / "002-second.yaml").exists()
+
+    def test_should_reject_duplicate_task_id(self, tmp_path: Path) -> None:
+        batch = json.dumps([
+            {
+                "task_id": "001",
+                "title": "A",
+                "assigned_agent": "a",
+                "files_in_scope": ["src/a.py"],
+                "acceptance_criteria": ["Pass"],
+            },
+            {
+                "task_id": "001",
+                "title": "B",
+                "assigned_agent": "a",
+                "files_in_scope": ["src/b.py"],
+                "acceptance_criteria": ["Pass"],
+            },
+        ])
+        result = _run_tasks_stdin(tmp_path, batch, "bulk-create", "--feature", "demo")
+        assert result.returncode == 1
+        assert "duplicate" in result.stdout.lower()
+
+    def test_should_reject_duplicate_target_path(self, tmp_path: Path) -> None:
+        batch = json.dumps([
+            {
+                "task_id": "001",
+                "title": "A",
+                "assigned_agent": "a",
+                "files_in_scope": ["src/a.py"],
+                "acceptance_criteria": ["Pass"],
+                "filename": "same.yaml",
+            },
+            {
+                "task_id": "002",
+                "title": "B",
+                "assigned_agent": "a",
+                "files_in_scope": ["src/b.py"],
+                "acceptance_criteria": ["Pass"],
+                "filename": "same.yaml",
+            },
+        ])
+        result = _run_tasks_stdin(tmp_path, batch, "bulk-create", "--feature", "demo")
+        assert result.returncode == 1
+        assert "duplicate" in result.stdout.lower()
+
+    def test_should_reject_non_array_json(self, tmp_path: Path) -> None:
+        result = _run_tasks_stdin(
+            tmp_path, '{"task_id": "001"}',
+            "bulk-create", "--feature", "demo",
+        )
+        assert result.returncode == 1
+        assert "array" in result.stdout.lower()
+
+    def test_should_reject_non_object_element(self, tmp_path: Path) -> None:
+        result = _run_tasks_stdin(
+            tmp_path, '["not an object"]',
+            "bulk-create", "--feature", "demo",
+        )
+        assert result.returncode == 1
+        assert "not an object" in result.stdout.lower()
+
+    def test_should_produce_byte_identical_output(self, tmp_path: Path) -> None:
+        """Output of bulk-create must be byte-identical to _create_task for
+        matching inputs."""
+        # Hand-written reference using the existing helper
+        ref_dir = tmp_path / "ref" / ".etc_sdlc" / "features" / "demo" / "tasks"
+        ref_path = _create_task(
+            ref_dir, "001", "First",
+            agent="backend-developer",
+            criteria=["Pass"],
+            files=["src/a.py"],
+        )
+        ref_body = ref_path.read_text()
+
+        # Bulk-create in a separate tmp subtree (not under ref/) so the
+        # cwd-based lookups don't collide.
+        cli_root = tmp_path / "cli"
+        cli_root.mkdir()
+        batch = json.dumps([{
+            "task_id": "001",
+            "title": "First",
+            "assigned_agent": "backend-developer",
+            "files_in_scope": ["src/a.py"],
+            "acceptance_criteria": ["Pass"],
+            # Match _create_task's requires_reading default
+            "requires_reading": ["spec/prd.md"],
+        }])
+        result = _run_tasks_stdin(
+            cli_root, batch, "bulk-create", "--feature", "demo",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        cli_path = cli_root / ".etc_sdlc" / "features" / "demo" / "tasks" / "001-first.yaml"
+        cli_body = cli_path.read_text()
+        assert cli_body == ref_body, (
+            f"\n--- reference ---\n{ref_body!r}\n--- cli ---\n{cli_body!r}"
+        )

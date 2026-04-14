@@ -42,6 +42,32 @@ Kanban-style view grouped by status column.
 
 Run: `python3 scripts/tasks.py board`
 
+### `/tasks create` and `/tasks bulk-create`
+Agents (`/decompose`, `/build`, `/implement`) write task YAML files through
+the CLI, not the Write tool. This enforces schema at write time and gives
+atomic all-or-nothing semantics for bulk writes.
+
+**Bulk (normal path):** JSON array on stdin.
+```bash
+python3 scripts/tasks.py bulk-create --feature {slug} < tasks.json
+python3 scripts/tasks.py bulk-create --feature {slug} --json '[...]'
+python3 scripts/tasks.py bulk-create --feature {slug} --json-file tasks.json
+```
+
+**Single (debugging):** repeated flags.
+```bash
+python3 scripts/tasks.py create --feature {slug} \
+  --task-id 001 --title "..." --agent backend-developer \
+  --file src/foo.py --ac "criterion" [--dep 000] [--read path]
+```
+
+Required fields: `task_id`, `title`, `assigned_agent`, `files_in_scope`,
+`acceptance_criteria`. Invalid input is rejected at write time. The whole
+batch rolls back on any failure. Pass `--allow-existing` for idempotent
+re-runs. There is no `--force`; overwrites are never allowed.
+
+See `skills/decompose/SKILL.md` for the full JSON schema and examples.
+
 ## Task File Locations
 
 The tracker searches two locations:

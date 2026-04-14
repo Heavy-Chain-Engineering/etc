@@ -19,6 +19,32 @@ marker `---` + `**▶ Your answer needed:**`). Multi-choice decisions
 (accept / refine / research, gray-area resolution, section approvals)
 use Pattern A (`AskUserQuestion` tool). Never bury a question in prose.
 
+## Tunable Constants
+
+These constants govern the three-state PRD classification in Phase 2.75.
+They are **tunable** — a future benchmark suite will adjust them
+empirically. Edit the values here, not inline in the workflow prose.
+Every reference in the workflow below names the constant, not the number.
+
+```
+FILL_RATIO_RESEARCH_ASSIST_MAX = 0.20   # ≤ this ratio → proceed with research fills, no user gray-area session
+FILL_RATIO_REJECT_MIN          = 0.50   # > this ratio → reject the PRD
+UNFILLABLE_GAP_REJECT_CAP      = 3      # > this many unfillable gaps → reject regardless of ratio
+```
+
+- `FILL_RATIO_RESEARCH_ASSIST_MAX` — if the proportion of requirements
+  that needed filling (whether by research or by user) is at or below
+  this, the PRD is research-assisted and proceeds straight to section
+  writing with no user gray-area session. The research fills still
+  surface during Phase 3 section review.
+- `FILL_RATIO_REJECT_MIN` — if the proportion is above this, the PRD is
+  too under-specified to rescue through research plus a small
+  gray-area session. Reject.
+- `UNFILLABLE_GAP_REJECT_CAP` — if the number of unfillable gaps
+  exceeds this, reject regardless of the ratio. A small PRD with four
+  unfillable gaps is still a rejection candidate even if the ratio is
+  favorable.
+
 ## Usage
 
 ```
@@ -150,6 +176,42 @@ a research summary to the user before proceeding to spec writing.
    - Are any past antipatterns relevant to this feature?
    - Incorporate prevention rules from relevant AP entries into the spec
 
+4. **Research-Fill of Identified Gaps (the fillable test)** — after the
+   three research tasks above complete, walk the list of requirements
+   identified so far and, for each requirement that is missing an
+   answer, apply the **fillable test**:
+
+   > Can I ground my answer in citable evidence, or do I need to ask?
+
+   A gap is **research-fillable** if at least one of the following
+   yields a citable answer:
+
+   - A codebase grep finds a canonical pattern.
+   - An existing doc cites the answer (`DOMAIN.md`, an ADR,
+     `INVARIANTS.md`, an adjacent PRD, a tier-1 standard).
+   - Web research finds a universally-accepted best practice with no
+     competing alternatives in this codebase's context.
+   - An adjacent test file shows the expected shape.
+
+   A gap is **unfillable** if any of the following hold:
+
+   - Multiple plausible answers exist and the codebase does not pick
+     between them.
+   - The answer depends on business intent or product scope.
+   - The answer depends on roadmap ordering.
+   - The answer is a policy decision.
+
+   For each research-fillable gap, record a gray-area entry with
+   `decided_by: research` plus a `citation` (file path or URL) and a
+   one-line resolution rationale. These entries are written to
+   `.etc_sdlc/features/{slug}/gray-areas.md` during Phase 2.5 using the
+   extended schema. For each unfillable gap, record a gray-area entry
+   with `decided_by: user` and leave it for Phase 2.5 to surface to the
+   user (or for Phase 2.75 to fold into a rejection).
+
+   The user sees every research fill during Phase 3 section review and
+   may override any of them through the normal section-refinement flow.
+
 **Present the research summary to the user** (as prose — this is status
 output, not a question), followed by an `AskUserQuestion` prompt for the
 next action:
@@ -249,7 +311,10 @@ provide a custom answer, record it verbatim and continue.
 
 Wait for ALL gray areas to be resolved before proceeding.
 
-Save resolutions to `.etc_sdlc/features/{slug}/gray-areas.md`:
+Save resolutions to `.etc_sdlc/features/{slug}/gray-areas.md` using the
+**extended schema** (the previous schema is the first four lines; the
+bottom two lines are required for `decided_by: research` entries and
+optional for `decided_by: user` entries):
 
 ```markdown
 # Gray Areas — Resolved Decisions
@@ -258,8 +323,24 @@ Save resolutions to `.etc_sdlc/features/{slug}/gray-areas.md`:
 - **Options:** [A] vs [B]
 - **Decision:** [chosen option]
 - **Rationale:** [why]
-- **Decided by:** [user], {date}
+- **Decided by:** research | user | rejected
+- **Citation:** [file path, URL, or adjacent PRD]   # required when Decided by = research
+- **Resolution rationale:** [one-line evidence summary]   # required when Decided by = research
 ```
+
+The `Decided by` field is a controlled enum taking one of `research`,
+`user`, or `rejected`. Research fills (recorded during Phase 2) use
+`research` and MUST include the `Citation` and `Resolution rationale`
+fields. User-resolved gaps (recorded during Phase 2.5) use `user`.
+Gaps that triggered rejection (recorded during Phase 2.75) use
+`rejected` and are copied into `rejected.md` alongside the gray-area
+file.
+
+**Backward compatibility:** Readers MUST tolerate legacy entries that
+omit `Citation` and `Resolution rationale`, and MUST tolerate legacy
+`Decided by` values written as free-form text (e.g. `Decided by: user,
+2026-03-01`). Only newly-written entries are guaranteed to use the
+controlled enum.
 
 These resolutions will be:
 - Incorporated into the PRD's Technical Constraints section
@@ -268,6 +349,102 @@ These resolutions will be:
 
 If no gray areas are found, state explicitly: "No gray areas identified —
 research findings are unambiguous." and proceed.
+
+### Phase 2.75: Threshold Check and Classification
+
+Before entering Phase 3, classify the PRD into one of three states:
+
+1. **Well-specified** — every requirement has a concrete answer. No user
+   intervention is needed beyond the existing section approvals.
+2. **Research-fillable (research-assisted)** — some requirements were
+   missing, but codebase evidence or web research resolved them during
+   Phase 2. Proceed to Phase 3; the fills surface during section review.
+3. **Rejected** — too many requirements are missing, or too many gaps
+   are unfillable, to proceed without human refinement of the input.
+
+Count the following from the Phase 2 research-fill pass and the
+Phase 2.5 gray-area resolution:
+
+- `total_requirements` — the number of requirements identified during
+  Phase 1 and Phase 2.
+- `filled_by_research` — gaps closed with `decided_by: research`.
+- `unfillable_gaps` — gaps marked `decided_by: user` that are still
+  pending (i.e., surfaced to the user but not yet resolved).
+
+Let `fill_ratio = (filled_by_research + unfillable_gaps) / total_requirements`.
+
+Apply the classification rules:
+
+- If `total_requirements == 0`: **reject** with reason "no requirements
+  identified; the input is not a PRD candidate." (avoids divide-by-zero
+  and catches nonsense inputs).
+- Else if `unfillable_gaps == 0` and `fill_ratio <= FILL_RATIO_RESEARCH_ASSIST_MAX`:
+  **well-specified / research-assisted**. Skip the user gray-area session
+  and proceed directly to Phase 3.
+- Else if `fill_ratio <= FILL_RATIO_REJECT_MIN` and `unfillable_gaps <= UNFILLABLE_GAP_REJECT_CAP`:
+  **research-assisted with user gray areas**. Run the existing Phase 2.5
+  user-facing gray-area flow, but **only on the unfillable gaps**. The
+  research fills are already recorded and are not re-asked.
+- Else (`fill_ratio > FILL_RATIO_REJECT_MIN` OR `unfillable_gaps > UNFILLABLE_GAP_REJECT_CAP`):
+  **rejected**. Transition to the Rejection Flow below instead of
+  Phase 3. Do NOT write `spec.md`.
+
+Note: the numeric literals `0.20`, `0.50`, and `3` never appear inline
+in the workflow prose above — only the constant names do. Tuning the
+thresholds is a one-line diff at the top of this skill file.
+
+### Rejection Flow
+
+Triggered only when Phase 2.75 classifies the PRD as rejected.
+
+1. Do NOT write `spec.md`. Under no circumstances does the rejection
+   path produce a spec file.
+2. Write `.etc_sdlc/features/{slug}/rejected.md` with this layout:
+
+   ```markdown
+   # PRD Rejected: {feature slug}
+
+   **Reason:** {which threshold was exceeded, by the numbers}
+   - total_requirements: {N}
+   - filled_by_research: {M}
+   - unfillable_gaps:    {K}
+   - fill_ratio:         {fill_ratio:.2f}
+   - Threshold exceeded: {FILL_RATIO_REJECT_MIN | UNFILLABLE_GAP_REJECT_CAP | zero-requirements}
+
+   ## Unanswered questions (answer these before resubmitting)
+   1. {specific question derived from unfillable gap #1}
+   2. {specific question derived from unfillable gap #2}
+   ...
+
+   ## Research fills already performed (preserved so you don't redo work)
+   - {gap} → {resolution} — source: {citation}
+   - ...
+
+   ## Next action
+   Refine the input to answer the questions above, then re-run:
+
+       /spec {slug}
+   ```
+
+3. Mirror any `decided_by: research` fills into the rejection report so
+   the human does not have to redo research when resubmitting the
+   refined PRD.
+4. Surface the rejection to the user using Pattern B (the visual
+   marker), because the message is a status/error announcement, not a
+   question. Name the rejected file path and the next action:
+
+   ```
+
+   ---
+
+   **▶ Action required:** PRD rejected. Answer the questions in
+   `.etc_sdlc/features/{slug}/rejected.md` and re-run `/spec {slug}`.
+
+   ```
+
+5. Exit the skill. Do not proceed to Phase 3, Phase 4, or Phase 5. The
+   feature directory will contain `rejected.md` but NOT `spec.md`; the
+   two files are mutually exclusive.
 
 ### Phase 3: Iterative Spec Writing
 

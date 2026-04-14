@@ -13,17 +13,39 @@ Usage:
     python3 tasks.py deps TASK_ID
     python3 tasks.py score [TASK_ID]
     python3 tasks.py tree
-    python3 tasks.py waves
+    python3 tasks.py waves [--feature NAME]
     python3 tasks.py ready-to-decompose
+    python3 tasks.py create --task-id ID --title T --agent A --file F --ac C [...]
+    python3 tasks.py bulk-create [--feature NAME] [--json JSON | --json-file PATH] [--allow-existing]
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
 
 import yaml
+
+# ── Shared constants ────────────────────────────────────────────────────
+
+VALID_STATUSES = {
+    "pending",
+    "in_progress",
+    "completed",
+    "escalated",
+    "blocked",
+    "decomposed",
+}
+
+REQUIRED_FIELDS = (
+    "task_id",
+    "title",
+    "assigned_agent",
+    "files_in_scope",
+    "acceptance_criteria",
+)
 
 # ── Complexity scoring thresholds (from DSL changeset_budget) ────────────
 COMPLEXITY_THRESHOLDS = {
@@ -294,9 +316,11 @@ def cmd_board(root: Path) -> None:
 
 def cmd_set_status(root: Path, task_id: str, new_status: str) -> None:
     """Update a task's status in its YAML file."""
-    valid = {"pending", "in_progress", "completed", "escalated", "blocked", "decomposed"}
-    if new_status not in valid:
-        print(f"  Error: invalid status '{new_status}'. Valid: {', '.join(sorted(valid))}")
+    if new_status not in VALID_STATUSES:
+        print(
+            f"  Error: invalid status '{new_status}'. "
+            f"Valid: {', '.join(sorted(VALID_STATUSES))}"
+        )
         sys.exit(1)
 
     tasks = load_all_tasks(root)
@@ -440,6 +464,476 @@ def cmd_ready_to_decompose(root: Path) -> None:
         print()
 
 
+# ── Create / bulk-create helpers ────────────────────────────────────────
+
+
+class TaskValidationError(ValueError):
+    """Raised when a task dict fails schema validation."""
+
+
+def _slugify_title(title: str) -> str:
+    """Convert a title into a kebab-case filename slug.
+
+    Lowercases, replaces any run of non-alphanumeric characters with a
+    single hyphen, strips leading/trailing hyphens, truncates to 80 chars.
+    Falls back to 'task' if the result is empty (e.g. title was all
+    punctuation).
+    """
+    lowered = title.lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", lowered).strip("-")
+    if not slug:
+        slug = "task"
+    if len(slug) > 80:
+        slug = slug[:80].rstrip("-") or "task"
+    return slug
+
+
+def _path_token_safe(value: str) -> bool:
+    """True if ``value`` is safe to embed in a path token.
+
+    Rejects any of: empty, path separators, parent-dir sequences, or
+    leading dot. Used to guard --feature and --filename user inputs.
+    """
+    if not value:
+        return False
+    if "/" in value or "\\" in value:
+        return False
+    if ".." in value:
+        return False
+    if value.startswith("."):
+        return False
+    return True
+
+
+def _validate_task_dict(task: object, label: str) -> None:
+    """Validate a task dict in place. Raises TaskValidationError on failure.
+
+    ``label`` is a human-friendly identifier for the task used in error
+    messages — either the task_id or 'task at index N' for bulk input.
+    """
+    if not isinstance(task, dict):
+        raise TaskValidationError(f"{label} is not an object")
+
+    for field in REQUIRED_FIELDS:
+        if field not in task or task.get(field) in (None, "", []):
+            # Use task_id in message when we have it, else the provided label.
+            ident = task.get("task_id") or label
+            raise TaskValidationError(
+                f"task '{ident}' missing required field: {field}"
+            )
+
+    # Scalar string fields
+    for field in ("task_id", "title", "assigned_agent"):
+        value = task[field]
+        if not isinstance(value, str) or not value.strip():
+            ident = task.get("task_id") or label
+            raise TaskValidationError(
+                f"task '{ident}' field '{field}' must be a non-empty string"
+            )
+
+    # List-of-string fields (required)
+    for field in ("files_in_scope", "acceptance_criteria"):
+        value = task[field]
+        if not isinstance(value, list) or not value:
+            ident = task.get("task_id") or label
+            raise TaskValidationError(
+                f"task '{ident}' field '{field}' must be a non-empty list"
+            )
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                ident = task.get("task_id") or label
+                raise TaskValidationError(
+                    f"task '{ident}' field '{field}' contains a non-string or empty item"
+                )
+
+    # List-of-string fields (optional)
+    for field in ("dependencies", "requires_reading"):
+        if field in task and task[field] is not None:
+            value = task[field]
+            if not isinstance(value, list):
+                ident = task.get("task_id") or label
+                raise TaskValidationError(
+                    f"task '{ident}' field '{field}' must be a list"
+                )
+            for item in value:
+                if not isinstance(item, str) or not item.strip():
+                    ident = task.get("task_id") or label
+                    raise TaskValidationError(
+                        f"task '{ident}' field '{field}' contains a non-string or empty item"
+                    )
+
+    # Optional scalar strings
+    for field in ("parent_task", "context", "filename"):
+        if field in task and task[field] is not None:
+            if not isinstance(task[field], str) or not task[field]:
+                ident = task.get("task_id") or label
+                raise TaskValidationError(
+                    f"task '{ident}' field '{field}' must be a non-empty string"
+                )
+
+    # Status enum
+    status = task.get("status")
+    if status is not None and status not in VALID_STATUSES:
+        ident = task.get("task_id") or label
+        raise TaskValidationError(
+            f"task '{ident}' has invalid status '{status}'. "
+            f"Valid: {', '.join(sorted(VALID_STATUSES))}"
+        )
+
+
+def _resolve_task_path(root: Path, task: dict, feature: str | None) -> Path:
+    """Compute the final on-disk path for a task, with traversal guards."""
+    if feature is not None:
+        if not _path_token_safe(feature):
+            raise TaskValidationError(
+                f"invalid --feature value '{feature}' (path traversal guard)"
+            )
+        tasks_dir = root / ".etc_sdlc" / "features" / feature / "tasks"
+    else:
+        tasks_dir = root / ".etc_sdlc" / "tasks"
+
+    filename = task.get("filename")
+    if filename:
+        if not _path_token_safe(filename):
+            raise TaskValidationError(
+                f"invalid filename '{filename}' (path traversal guard)"
+            )
+        name = filename if filename.endswith(".yaml") else filename + ".yaml"
+    else:
+        slug = _slugify_title(task["title"])
+        name = f"{task['task_id']}-{slug}.yaml"
+
+    path = tasks_dir / name
+
+    # Resolve and confine to .etc_sdlc tree.
+    try:
+        resolved = path.resolve()
+        etc_root = (root / ".etc_sdlc").resolve()
+    except OSError as exc:
+        raise TaskValidationError(f"failed to resolve path {path}: {exc}") from exc
+    # Use parent check that tolerates non-existence.
+    try:
+        resolved.relative_to(etc_root)
+    except ValueError as exc:
+        raise TaskValidationError(
+            f"resolved path {resolved} escapes .etc_sdlc"
+        ) from exc
+
+    return path
+
+
+def _emit_task_yaml(task: dict) -> str:
+    """Hand-rolled YAML emitter — produces byte-identical output to the
+    style used by tests/test_tasks.py::_create_task and existing task
+    files under .etc_sdlc/features/*/tasks/.
+
+    Field order is fixed:
+      task_id, title, assigned_agent, status, parent_task (if set),
+      requires_reading, files_in_scope, acceptance_criteria,
+      dependencies, context (if set).
+    """
+    lines: list[str] = []
+    lines.append(f'task_id: "{task["task_id"]}"')
+    lines.append(f'title: "{task["title"]}"')
+    lines.append(f"assigned_agent: {task['assigned_agent']}")
+    lines.append(f"status: {task.get('status', 'pending')}")
+
+    parent = task.get("parent_task")
+    if parent:
+        lines.append(f'parent_task: "{parent}"')
+
+    reading = task.get("requires_reading") or []
+    if reading:
+        lines.append("requires_reading:")
+        for item in reading:
+            lines.append(f"  - {item}")
+    else:
+        lines.append("requires_reading: []")
+
+    lines.append("files_in_scope:")
+    for item in task["files_in_scope"]:
+        lines.append(f"  - {item}")
+
+    lines.append("acceptance_criteria:")
+    for item in task["acceptance_criteria"]:
+        lines.append(f'  - "{item}"')
+
+    deps = task.get("dependencies") or []
+    if deps:
+        lines.append("dependencies:")
+        for item in deps:
+            lines.append(f'  - "{item}"')
+    else:
+        lines.append("dependencies: []")
+
+    context = task.get("context")
+    if context:
+        lines.append("context: |")
+        # Strip a single trailing newline to avoid double blank line at EOF,
+        # but preserve internal structure.
+        body = context.rstrip("\n")
+        for cline in body.split("\n"):
+            lines.append(f"  {cline}" if cline else "  ")
+
+    return "\n".join(lines) + "\n"
+
+
+def _parse_create_argv(argv: list[str]) -> tuple[dict, str | None]:
+    """Parse create-command flags from argv (sys.argv[2:] slice).
+
+    Returns (task_dict, feature) where feature is the --feature value or
+    None. Unknown or malformed flags raise TaskValidationError.
+    """
+    task: dict = {
+        "files_in_scope": [],
+        "acceptance_criteria": [],
+        "dependencies": [],
+        "requires_reading": [],
+    }
+    feature: str | None = None
+
+    i = 0
+    while i < len(argv):
+        flag = argv[i]
+        if flag in ("--task-id", "--title", "--agent", "--status",
+                    "--parent", "--context", "--feature", "--filename"):
+            if i + 1 >= len(argv):
+                raise TaskValidationError(f"flag {flag} requires a value")
+            value = argv[i + 1]
+            i += 2
+            if flag == "--task-id":
+                task["task_id"] = value
+            elif flag == "--title":
+                task["title"] = value
+            elif flag == "--agent":
+                task["assigned_agent"] = value
+            elif flag == "--status":
+                task["status"] = value
+            elif flag == "--parent":
+                task["parent_task"] = value
+            elif flag == "--context":
+                task["context"] = value
+            elif flag == "--feature":
+                feature = value
+            elif flag == "--filename":
+                task["filename"] = value
+        elif flag in ("--file", "--ac", "--dep", "--read"):
+            if i + 1 >= len(argv):
+                raise TaskValidationError(f"flag {flag} requires a value")
+            value = argv[i + 1]
+            i += 2
+            if flag == "--file":
+                task["files_in_scope"].append(value)
+            elif flag == "--ac":
+                task["acceptance_criteria"].append(value)
+            elif flag == "--dep":
+                task["dependencies"].append(value)
+            elif flag == "--read":
+                task["requires_reading"].append(value)
+        else:
+            raise TaskValidationError(f"unknown flag: {flag}")
+
+    # Normalize empties so downstream helpers see consistent structure.
+    if not task["dependencies"]:
+        task["dependencies"] = []
+    if not task["requires_reading"]:
+        task["requires_reading"] = []
+    return task, feature
+
+
+def cmd_create(root: Path) -> None:
+    """Create a single task YAML file from CLI flags."""
+    try:
+        task, feature = _parse_create_argv(sys.argv[2:])
+        _validate_task_dict(task, label=task.get("task_id") or "task")
+        path = _resolve_task_path(root, task, feature)
+    except TaskValidationError as exc:
+        print(f"  Error: {exc}")
+        sys.exit(1)
+
+    if path.exists():
+        print(f"  Error: target file already exists: {path}")
+        sys.exit(1)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.write_text(_emit_task_yaml(task))
+    except OSError as exc:
+        print(f"  Error: failed to write {path}: {exc}")
+        sys.exit(1)
+
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        rel = path
+    print(f"  Created: {rel}")
+
+
+def _parse_bulk_argv(argv: list[str]) -> tuple[str | None, str | None, str | None, bool]:
+    """Parse bulk-create flags. Returns (feature, json_inline, json_file, allow_existing)."""
+    feature: str | None = None
+    json_inline: str | None = None
+    json_file: str | None = None
+    allow_existing = False
+
+    i = 0
+    while i < len(argv):
+        flag = argv[i]
+        if flag == "--feature":
+            if i + 1 >= len(argv):
+                raise TaskValidationError("flag --feature requires a value")
+            feature = argv[i + 1]
+            i += 2
+        elif flag == "--json":
+            if i + 1 >= len(argv):
+                raise TaskValidationError("flag --json requires a value")
+            json_inline = argv[i + 1]
+            i += 2
+        elif flag == "--json-file":
+            if i + 1 >= len(argv):
+                raise TaskValidationError("flag --json-file requires a value")
+            json_file = argv[i + 1]
+            i += 2
+        elif flag == "--allow-existing":
+            allow_existing = True
+            i += 1
+        else:
+            raise TaskValidationError(f"unknown flag: {flag}")
+
+    if json_inline is not None and json_file is not None:
+        raise TaskValidationError(
+            "specify at most one of --json, --json-file, or stdin"
+        )
+    return feature, json_inline, json_file, allow_existing
+
+
+def cmd_bulk_create(root: Path) -> None:
+    """Bulk-create task YAML files from a JSON array with atomic writes."""
+    try:
+        feature, json_inline, json_file, allow_existing = _parse_bulk_argv(sys.argv[2:])
+    except TaskValidationError as exc:
+        print(f"  Error: {exc}")
+        sys.exit(1)
+
+    # Load JSON from exactly one source.
+    try:
+        if json_inline is not None:
+            raw = json_inline
+        elif json_file is not None:
+            raw = Path(json_file).read_text()
+        else:
+            if sys.stdin.isatty():
+                print("  Error: no JSON input provided on stdin")
+                sys.exit(1)
+            raw = sys.stdin.read()
+            if not raw.strip():
+                print("  Error: no JSON input provided on stdin")
+                sys.exit(1)
+    except OSError as exc:
+        print(f"  Error: failed to read JSON input: {exc}")
+        sys.exit(1)
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"  Error: invalid JSON: {exc}")
+        sys.exit(1)
+
+    if not isinstance(parsed, list):
+        print(f"  Error: expected JSON array, got {type(parsed).__name__}")
+        sys.exit(1)
+
+    # Validate every task first, then resolve paths, then detect duplicates.
+    try:
+        for idx, entry in enumerate(parsed):
+            if not isinstance(entry, dict):
+                raise TaskValidationError(
+                    f"task at index {idx} is not an object"
+                )
+            _validate_task_dict(entry, label=f"task at index {idx}")
+
+        # Duplicate task_id check within batch
+        seen_ids: set[str] = set()
+        for entry in parsed:
+            tid = entry["task_id"]
+            if tid in seen_ids:
+                raise TaskValidationError(f"duplicate task_id '{tid}' in batch")
+            seen_ids.add(tid)
+
+        # Resolve all paths
+        plan: list[tuple[Path, str, dict]] = []
+        seen_paths: set[Path] = set()
+        for entry in parsed:
+            path = _resolve_task_path(root, entry, feature)
+            if path in seen_paths:
+                raise TaskValidationError(
+                    f"duplicate target path '{path}' in batch"
+                )
+            seen_paths.add(path)
+            plan.append((path, _emit_task_yaml(entry), entry))
+    except TaskValidationError as exc:
+        print(f"  Error: {exc}")
+        sys.exit(1)
+
+    # Pre-existence check
+    existing = [path for (path, _, _) in plan if path.exists()]
+    if existing and not allow_existing:
+        print("  Error: target files already exist:")
+        for path in existing:
+            try:
+                rel = path.relative_to(root)
+            except ValueError:
+                rel = path
+            print(f"    {rel}")
+        sys.exit(1)
+
+    # Filter out skipped paths when --allow-existing
+    skipped: list[Path] = []
+    to_write: list[tuple[Path, str]] = []
+    for path, content, _ in plan:
+        if path.exists() and allow_existing:
+            skipped.append(path)
+        else:
+            to_write.append((path, content))
+
+    # Atomic write with rollback
+    written: list[Path] = []
+    try:
+        for path, content in to_write:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+            written.append(path)
+    except OSError as exc:
+        # Rollback
+        for path in written:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        print(f"  Error: write failed ({exc}); rolled back {len(written)} file(s)")
+        sys.exit(1)
+
+    # Report
+    if skipped:
+        print(f"  Created {len(written)} tasks, skipped {len(skipped)} existing:")
+    else:
+        print(f"  Created {len(written)} tasks:")
+    for path in written:
+        try:
+            rel = path.relative_to(root)
+        except ValueError:
+            rel = path
+        print(f"    {rel}")
+    if skipped:
+        print("  Skipped (already exist):")
+        for path in skipped:
+            try:
+                rel = path.relative_to(root)
+            except ValueError:
+                rel = path
+            print(f"    {rel}")
+
+
 def main() -> None:
     root = Path.cwd()
 
@@ -487,9 +981,16 @@ def main() -> None:
         cmd_waves(root, feature=feature)
     elif command == "ready-to-decompose":
         cmd_ready_to_decompose(root)
+    elif command == "create":
+        cmd_create(root)
+    elif command == "bulk-create":
+        cmd_bulk_create(root)
     else:
         print(f"Unknown command: {command}")
-        print("Commands: list, next, status, board, set-status, deps, score, tree, waves, ready-to-decompose")
+        print(
+            "Commands: list, next, status, board, set-status, deps, score, "
+            "tree, waves, ready-to-decompose, create, bulk-create"
+        )
         sys.exit(1)
 
 

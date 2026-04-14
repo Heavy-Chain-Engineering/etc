@@ -27,10 +27,11 @@ the task YAML files that `/implement` dispatches.
 
 1. **Read the PRD** — understand requirements, acceptance criteria, module structure
 2. **Identify natural boundaries** — modules, layers, components, interfaces
-3. **Generate tasks** with hierarchical IDs:
-   - `001` — First top-level task
-   - `002` — Second top-level task
-   - etc.
+3. **Generate tasks** with hierarchical IDs (`001`, `002`, ...) by piping a JSON
+   array to `python3 scripts/tasks.py bulk-create --feature {slug}`. Do NOT
+   hand-write task YAML files with the Write tool — the CLI is ~75% cheaper in
+   tokens, enforces schema at write time, and writes atomically (all tasks or
+   none). See "Creating Tasks" below for the invocation format.
 4. **Score each task** — run `python3 scripts/tasks.py score`
 5. **Flag complex tasks** — anything scoring > 7 needs further decomposition
 6. **Auto-decompose flagged tasks** — recurse into them immediately
@@ -56,31 +57,79 @@ the task YAML files that `/implement` dispatches.
 2. For each flagged task, apply the subtask expansion workflow
 3. Continue until no tasks exceed the threshold
 
-## Task YAML Format
+## Creating Tasks
 
-```yaml
-task_id: "002.001"
-title: "Implement auth data models"
-assigned_agent: backend-developer
-status: pending
-parent_task: "002"           # ← Links to parent
-complexity: 4                # ← Auto-scored
-wave: 0                      # ← Execution ordering
-requires_reading:
-  - .etc_sdlc/features/auth/spec.md
-  - src/models/base.py
-files_in_scope:
-  - src/auth/models.py
-  - tests/test_auth_models.py
-acceptance_criteria:
-  - "User model has id, email, password_hash, created_at fields"
-  - "Password hashing uses argon2id"
-dependencies: []
-context: |
-  Subtask of 002 (Implement authentication system).
-  This task handles only the data models — handlers and middleware
-  are in sibling tasks 002.002 and 002.003.
+**Always use the `tasks.py` CLI. Never hand-write task YAML with the Write tool.**
+
+The CLI enforces schema at write time, produces byte-identical YAML, and writes
+atomically — either every task in a batch hits disk or none does, so no
+half-decomposed state ever leaks through.
+
+### Bulk create (the normal path)
+
+Pipe a JSON array of task objects to `bulk-create`:
+
+```bash
+python3 scripts/tasks.py bulk-create --feature {slug} <<'JSON'
+[
+  {
+    "task_id": "002.001",
+    "title": "Implement auth data models",
+    "assigned_agent": "backend-developer",
+    "parent_task": "002",
+    "requires_reading": [
+      ".etc_sdlc/features/auth/spec.md",
+      "src/models/base.py"
+    ],
+    "files_in_scope": [
+      "src/auth/models.py",
+      "tests/test_auth_models.py"
+    ],
+    "acceptance_criteria": [
+      "User model has id, email, password_hash, created_at fields",
+      "Password hashing uses argon2id"
+    ],
+    "dependencies": [],
+    "context": "Subtask of 002 (Implement authentication system). Handles only the data models — handlers and middleware are in sibling tasks 002.002 and 002.003."
+  },
+  { "task_id": "002.002", "...": "..." }
+]
+JSON
 ```
+
+Alternate inputs: `--json '[...]'` for inline, `--json-file path.json` for a file.
+
+### Single create (debugging path)
+
+For one-off tasks during debugging, flags are more discoverable than JSON:
+
+```bash
+python3 scripts/tasks.py create --feature {slug} \
+  --task-id 002.001 \
+  --title "Implement auth data models" \
+  --agent backend-developer \
+  --parent 002 \
+  --read .etc_sdlc/features/auth/spec.md --read src/models/base.py \
+  --file src/auth/models.py --file tests/test_auth_models.py \
+  --ac "User model has id, email, password_hash, created_at fields" \
+  --ac "Password hashing uses argon2id" \
+  --context "Subtask of 002..."
+```
+
+### Required vs optional fields
+
+Required (rejected at write time if missing): `task_id`, `title`,
+`assigned_agent`, `files_in_scope`, `acceptance_criteria`.
+
+Optional with defaults: `status` → `pending`, `dependencies` → `[]`,
+`requires_reading` → `[]`, `parent_task` → null, `context` → null.
+
+### Atomicity and idempotency
+
+- Default: if ANY task in the batch is invalid OR any target file already
+  exists, the whole batch is rejected and nothing is written.
+- Pass `--allow-existing` for idempotent re-runs (skips existing files,
+  reports which were skipped). Never use `--force`; there is no overwrite.
 
 ## Hierarchical ID Convention
 
@@ -155,6 +204,10 @@ what's ready for dispatch.
 
 ## Constraints
 
+- NEVER hand-write task YAML with the Write tool. Always use
+  `tasks.py bulk-create` (batch) or `tasks.py create` (single). The CLI
+  exists to eliminate transcription errors and save tokens — bypassing it
+  reintroduces both.
 - NEVER create subtasks with overlapping `files_in_scope`
 - NEVER leave acceptance criteria unassigned to a subtask
 - ALWAYS set the parent task status to `decomposed` after creating subtasks

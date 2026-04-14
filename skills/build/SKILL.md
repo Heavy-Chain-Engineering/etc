@@ -79,7 +79,11 @@ total_waves: null
 Read the spec. Break it into tasks following `/decompose` conventions:
 
 1. Identify natural boundaries (modules, layers, components, interfaces)
-2. Generate task YAML files in `.etc_sdlc/features/{slug}/tasks/`
+2. Write task YAML files via a single atomic batch:
+   `python3 scripts/tasks.py bulk-create --feature {slug}` with a JSON array
+   on stdin. NEVER hand-write task YAML with the Write tool — the CLI
+   enforces schema, rolls back on any error, and saves ~75% of tokens.
+   See `/decompose` for the full JSON shape and field reference.
 3. Use hierarchical IDs: `001`, `002`, `003`, ...
 4. Each task gets: requires_reading, files_in_scope, acceptance_criteria, dependencies
 5. Every acceptance criterion from the spec maps to exactly one task
