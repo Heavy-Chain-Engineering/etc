@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from uuid import UUID
 
 import psycopg
-import pytest
 
 from etc_platform.graph_engine import GraphEngine, build_fanout_graph
 

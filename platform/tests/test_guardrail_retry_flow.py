@@ -11,13 +11,12 @@ from __future__ import annotations
 
 import json
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import UUID
 
 import psycopg
 import pytest
 
-from etc_platform.events import EventType
 from etc_platform.guardrails import (
     AntiPatternScanRule,
     GuardrailMiddleware,
@@ -25,7 +24,6 @@ from etc_platform.guardrails import (
     emit_guardrail_violation,
 )
 from etc_platform.orchestrator import DecisionType, SEMDecision, execute_decision
-
 
 # ---------------------------------------------------------------------------
 # Helpers

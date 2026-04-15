@@ -7,7 +7,6 @@ from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import psycopg
-import pytest
 from pydantic_ai.models.test import TestModel
 
 from etc_platform.agent_runtime import (
@@ -22,7 +21,6 @@ from etc_platform.agent_runtime import (
 )
 from etc_platform.config import EtcConfig
 from etc_platform.intake import add_source_material
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -650,7 +648,6 @@ class TestSearchFiles:
 class TestAgentDepsProjectId:
     def test_agent_deps_has_project_id(self, db: psycopg.Connection) -> None:
         """AgentDeps includes project_id field."""
-        from etc_platform.agent_runtime import AgentDeps
 
         pid, node_id = _setup_node(db)
         run_id = create_agent_run(db, node_id, "researcher", "test-model")
@@ -726,6 +723,8 @@ class TestKnowledgeToolIntegration:
         """Create a knowledge entry, then verify the tool returns it."""
         from etc_platform.knowledge import (
             contribute_knowledge as _contribute_knowledge,
+        )
+        from etc_platform.knowledge import (
             query_knowledge as _query_knowledge,
         )
 
@@ -766,13 +765,15 @@ class TestKnowledgeToolIntegration:
         assert result is None
 
         # Simulate the tool's behavior on None
-        msg = f"No knowledge entry found for key: nonexistent_key"
+        msg = "No knowledge entry found for key: nonexistent_key"
         assert "No knowledge entry found" in msg
 
     def test_contribute_knowledge_tool_creates_entry(self, db: psycopg.Connection) -> None:
         """Call the contribute function and verify entry created in DB."""
         from etc_platform.knowledge import (
             contribute_knowledge as _contribute_knowledge,
+        )
+        from etc_platform.knowledge import (
             query_knowledge as _query_knowledge,
         )
 
@@ -801,6 +802,8 @@ class TestKnowledgeToolIntegration:
 
         from etc_platform.knowledge import (
             contribute_knowledge as _contribute_knowledge,
+        )
+        from etc_platform.knowledge import (
             query_knowledge as _query_knowledge,
         )
 
@@ -833,6 +836,8 @@ class TestKnowledgeToolIntegration:
 
         from etc_platform.knowledge import (
             contribute_knowledge as _contribute_knowledge,
+        )
+        from etc_platform.knowledge import (
             query_knowledge as _query_knowledge,
         )
 

@@ -22,7 +22,6 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 
@@ -82,7 +81,7 @@ def cmd_list(root: Path, verbose: bool = False) -> int:
             print()
 
     if not verbose:
-        print(f"\nRun with --verbose for details, or invoke project-bootstrapper to regenerate.")
+        print("\nRun with --verbose for details, or invoke project-bootstrapper to regenerate.")
 
     return len(markers)
 

@@ -7,12 +7,10 @@ fixture) but never call the real Claude API.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import psycopg
-import pytest
 
 from etc_platform.config import EtcConfig
 from etc_platform.events import EventType, emit_event
@@ -27,7 +25,6 @@ from etc_platform.knowledge import (
 )
 from etc_platform.phases import PhaseEngine
 from etc_platform.run_engine import RunEngine
-
 
 # ---------------------------------------------------------------------------
 # Helpers

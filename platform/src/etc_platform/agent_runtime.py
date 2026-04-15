@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -214,7 +214,7 @@ def complete_agent_run(
     error: str | None = None,
 ) -> None:
     """Update the agent_run record with completion data."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute(
         """
         UPDATE agent_runs

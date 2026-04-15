@@ -11,8 +11,8 @@ from etc_platform.topology import (
     NodeSpec,
     TopologyPlan,
     assess_topology,
-    generate_graph,
     build_topology,
+    generate_graph,
 )
 
 

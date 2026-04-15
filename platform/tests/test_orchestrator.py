@@ -2,32 +2,27 @@
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
-from unittest.mock import patch
 from uuid import UUID
 
 import psycopg
-import pytest
 from pydantic_ai.models.test import TestModel
 
 from etc_platform.config import EtcConfig
 from etc_platform.events import EventType, emit_event
+from etc_platform.intake import add_source_material
+from etc_platform.knowledge import contribute_knowledge
 from etc_platform.orchestrator import (
+    SEM_SYSTEM_PROMPT,
     DecisionType,
     SEMDecision,
     SEMDeps,
     SEMOrchestrator,
-    SEM_SYSTEM_PROMPT,
     _build_user_prompt,
     execute_decision,
     load_scoped_state,
     sem_agent,
 )
-from etc_platform.intake import add_source_material
-from etc_platform.knowledge import contribute_knowledge
 from etc_platform.phases import PhaseEngine
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -526,8 +521,9 @@ class TestExecuteDecision:
             }
         )
 
-        from etc_platform.topology import assess_topology as real_assess
         from unittest.mock import patch as mock_patch
+
+        from etc_platform.topology import assess_topology as real_assess
 
         # Patch assess_topology at the topology module level so the local import picks it up
         def patched_assess(conn, project_id, **kwargs):

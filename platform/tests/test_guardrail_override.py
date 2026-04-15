@@ -6,7 +6,6 @@ import json
 from uuid import UUID, uuid4
 
 import psycopg
-import pytest
 
 
 def _create_chain(db: psycopg.Connection) -> dict[str, UUID]:

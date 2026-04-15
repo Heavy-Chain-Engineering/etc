@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 import psycopg
-
-from etc_platform.events import EventType, emit_event
 
 
 class GraphEngine:
@@ -150,7 +148,7 @@ class GraphEngine:
     @staticmethod
     def mark_node_running(conn: psycopg.Connection, node_id: UUID) -> None:
         """Mark a node as running with started_at timestamp."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         conn.execute(
             "UPDATE execution_nodes SET status = 'running', started_at = %s WHERE id = %s",
             (now, node_id),
@@ -163,7 +161,7 @@ class GraphEngine:
         output_path: str | None = None,
     ) -> None:
         """Mark a node as completed. Cascades completion to parent composites."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         conn.execute(
             "UPDATE execution_nodes SET status = 'completed', completed_at = %s, output_path = %s WHERE id = %s",
             (now, output_path, node_id),
@@ -199,7 +197,7 @@ class GraphEngine:
             assert row is not None
 
             if row["total"] > 0 and row["done"] == row["total"]:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 conn.execute(
                     "UPDATE execution_nodes SET status = 'completed', completed_at = %s WHERE id = %s",
                     (now, current),
@@ -251,7 +249,7 @@ class GraphEngine:
         ).fetchall()
 
         activated: list[UUID] = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for row in composites:
             cid = row["id"]
             conn.execute(
@@ -335,7 +333,7 @@ class GraphEngine:
             return False
 
         if row["done"] == row["total"]:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             conn.execute(
                 "UPDATE execution_graphs SET status = 'completed', completed_at = %s WHERE id = %s",
                 (now, graph_id),

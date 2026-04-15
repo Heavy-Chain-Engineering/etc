@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import UUID
 
 import psycopg
-import pytest
 
 from etc_platform.agent_runtime import AgentRunner
 from etc_platform.config import EtcConfig
@@ -19,7 +18,6 @@ from etc_platform.retry import (
     retry_all_eligible,
     should_retry,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

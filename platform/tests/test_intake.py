@@ -34,18 +34,18 @@ def _create_project(db: psycopg.Connection) -> UUID:
 
 class TestConstants:
     def test_valid_types(self) -> None:
-        assert VALID_TYPES == {"pdf", "code", "export", "spreadsheet", "document"}
+        assert {"pdf", "code", "export", "spreadsheet", "document"} == VALID_TYPES
 
     def test_valid_classifications(self) -> None:
-        assert VALID_CLASSIFICATIONS == {
+        assert {
             "business_operations",
             "requirements",
             "implementation_artifact",
             "domain_truth",
-        }
+        } == VALID_CLASSIFICATIONS
 
     def test_valid_priorities(self) -> None:
-        assert VALID_PRIORITIES == {"primary", "high", "medium", "context_only"}
+        assert {"primary", "high", "medium", "context_only"} == VALID_PRIORITIES
 
 
 class TestAddSourceMaterial:

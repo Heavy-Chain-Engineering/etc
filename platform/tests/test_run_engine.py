@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import psycopg
-import pytest
 from typer.testing import CliRunner
 
 from etc_platform.config import EtcConfig
 from etc_platform.graph_engine import GraphEngine
 from etc_platform.run_engine import RunEngine
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-import select
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 from uuid import UUID
 
 import psycopg

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING
 
-import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 

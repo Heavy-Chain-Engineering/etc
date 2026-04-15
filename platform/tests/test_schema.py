@@ -5,7 +5,6 @@ from __future__ import annotations
 import psycopg
 import pytest
 
-
 EXPECTED_TABLES = [
     "projects",
     "source_materials",

@@ -12,10 +12,9 @@ Each decision cycle:
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
@@ -302,7 +301,7 @@ def _execute_deploy_agent(
     """
     assert decision.node_id is not None, "DEPLOY_AGENT requires node_id"
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute(
         "UPDATE execution_nodes SET status = 'running', started_at = %s WHERE id = %s",
         (now, decision.node_id),
@@ -524,7 +523,7 @@ class SEMOrchestrator:
         2. Registers a handler for ALL event types
         3. Listens for NOTIFY events in a loop
         """
-        from etc_platform.db import get_conn, get_dsn
+        from etc_platform.db import get_dsn
 
         dsn = get_dsn()
         bus = EventBus(dsn)

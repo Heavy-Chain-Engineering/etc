@@ -71,7 +71,7 @@ def _create_two_agent_runs(db: psycopg.Connection, project_id: UUID) -> tuple[UU
 class TestValidScopes:
     def test_valid_scopes_set(self) -> None:
         """VALID_SCOPES contains the four allowed scope values."""
-        assert VALID_SCOPES == {"project", "phase", "graph", "node"}
+        assert {"project", "phase", "graph", "node"} == VALID_SCOPES
 
 
 class TestContributeKnowledge:

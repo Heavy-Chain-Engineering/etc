@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -58,7 +58,7 @@ class PhaseEngine:
     @staticmethod
     def activate_phase(conn: psycopg.Connection, project_id: UUID, phase_name: str) -> None:
         """Set a phase to 'active' status and record entered_at timestamp."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         conn.execute(
             "UPDATE phases SET status = 'active', entered_at = %s "
             "WHERE project_id = %s AND name = %s",
@@ -99,7 +99,7 @@ class PhaseEngine:
         checked_by: str,
     ) -> None:
         """Mark a specific DoD item as checked (by index)."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         # Update the specific item in the JSONB array using jsonb_set calls
         conn.execute(
@@ -191,7 +191,7 @@ class PhaseEngine:
         next_name = PhaseEngine.PHASE_ORDER[current_index + 1]
 
         # Complete current phase
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         conn.execute(
             "UPDATE phases SET status = 'completed', completed_at = %s "
             "WHERE project_id = %s AND name = %s",

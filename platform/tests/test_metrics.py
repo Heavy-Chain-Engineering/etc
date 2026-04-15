@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import psycopg
 import pytest
 
 from etc_platform.metrics import ProjectMetrics
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -118,7 +117,7 @@ class TestMetrics:
         pid = _create_project(db)
         phases = _create_all_phases(db, pid)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # 2 completed runs with duration
         _create_graph_node_run(
             db, pid, phases["Build"], status="completed",
@@ -155,7 +154,7 @@ class TestMetrics:
         pid = _create_project(db)
         phases = _create_all_phases(db, pid)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         earlier = now - timedelta(hours=2)
 
         # Mark Bootstrap as completed with timestamps

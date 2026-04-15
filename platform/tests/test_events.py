@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import threading
 import time
 from uuid import UUID
 
 import psycopg
-import pytest
 from psycopg.rows import dict_row
 
 from etc_platform.events import EventBus, EventType, emit_event
