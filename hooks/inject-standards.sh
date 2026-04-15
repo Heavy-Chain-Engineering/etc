@@ -40,6 +40,22 @@ The following rules are non-negotiable:
 - Mark tasks in_progress when starting, completed when done
 - If stuck: escalate to the orchestrator, don't guess
 
+### Git Commit Discipline (parallel-agent safety)
+- When dispatched by /build or any parallel-agent orchestrator, use
+  \`git commit -m "..." -- <your-paths>\` instead of \`git add && git commit\`.
+  The shared git index races otherwise — another agent's staged files
+  silently become yours.
+- NEVER run \`git add .\`, \`git add -u\`, or any glob pattern. The index
+  is shared across all parallel agents in the same worktree, so globs
+  sweep in everyone's work.
+- For deletes, use \`git rm --cached <path>\` then \`git commit <path>\`
+  — plain \`git rm\` also touches the shared index.
+- High-collision work (3+ files per agent across a wave): run each
+  agent in a git worktree via \`isolation: "worktree"\` on the Agent
+  call. Per-agent worktrees have their own index.
+- See standards/git/commit-discipline.md for the full rule and the
+  venlink-platform origin story.
+
 ### Research Discipline
 - When a third-party framework or library isn't behaving as expected,
   consult current docs FIRST. Query the \`context7\` MCP server, check
