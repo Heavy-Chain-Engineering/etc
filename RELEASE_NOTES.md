@@ -1,5 +1,176 @@
 # Release Notes
 
+## 2026-04-15 — etc v1.6: the hotfix lane
+
+This release completes the three-lane architecture that v1.5 introduced
+as a principle. v1.5 named conversation and spec-build as distinct
+lanes with their own quality bars; v1.6 ships the third lane the
+harness had been neglecting — incident response — as the `/hotfix`
+skill and its dedicated `hotfix-responder` subagent. The conversation
+/ spec-build / hotfix triad is now complete.
+
+### New: `/hotfix` — incident response lane
+
+`/hotfix` exists for the operating mode every engineering team needs
+but most harnesses neglect: production is on fire, and the full
+`/spec → /build` ceremony is too slow. The operator does not need a
+Definition-of-Ready interview, a three-state classifier, or a
+wave-by-wave decomposition. They need to file what's broken, what the
+fix is, and what the rollback plan is in under 30 seconds — then have
+an authorized subagent execute the fix while the harness's
+safety-critical gates (`safety-guardrails`, `tier-0-preflight`,
+`check-invariants`) still fire.
+
+The workflow is three `AskUserQuestion` pickers (Pattern A) in
+sequence: failure type (Q1), fix kind (Q2), rollback strategy (Q3).
+Each picker has 5 enumerated categories plus an automatic `Other`
+escape hatch. Selections that require specifics (a SHA, a file path,
+a flag name) trigger an immediate Pattern B follow-up that captures
+the detail into the corresponding `*_detail` field of the incident
+log. After the three pickers, `/hotfix` dispatches exactly one
+`hotfix-responder` subagent and, on its completion, automatically
+invokes `AskUserQuestion` to offer `/postmortem` as the recommended
+next step.
+
+The gate bypass is subagent-constrained, not hook-modified. The
+existing `check-test-exists.sh`, `check-required-reading.sh`, and
+`check-phase-gate.sh` hook scripts are untouched. Authorization to
+bypass `tdd-gate`, `enough-context`, and `phase-gate` lives in the
+`hotfix-responder`'s manifest layer — additive, reversible, and
+greppable. Any future gate added under `PreToolUse: Edit|Write` will
+automatically fire on the `hotfix-responder` unless that gate is
+explicitly added to the bypass list.
+
+Every invocation produces a structured incident log at
+`.etc_sdlc/incidents/{YYYY-MM-DD}-{slug}/incident.md` with YAML
+frontmatter (machine-readable audit fields) and a free-form prose
+body (human-readable context). The directory pattern leaves room for
+a sibling `postmortem.md` once the fire is out. Three anti-abuse
+defenses keep the lane from being used as a TDD backdoor: (1) the
+`gates_bypassed` audit field is git-tracked and greppable for
+retroactive audit; (2) the `hotfix-responder` manifest includes a
+description guardrail that refuses to proceed if the incident
+description doesn't name both a specific system and a specific
+failure mode; (3) a postmortem-debt banner surfaces at the next
+`/hotfix` invocation listing any incident completed more than 24
+hours ago without a sibling `postmortem.md`. None alone is
+sufficient; together they make abuse detectable and socially
+expensive without hard rate limits that would break real incidents
+during a bad week.
+
+### Architectural decisions
+
+- **GA-HF-001 — Execution model**: subagent dispatch (not direct
+  execution or advisory-only), so the `SubagentStop` adversarial-review
+  hook still fires on the way out and every hotfix gets a hostile
+  review before the session ends.
+- **GA-HF-002 — Gate bypass policy**: subagent-constrained, not
+  hook-modified — the existing `check-test-exists.sh`,
+  `check-required-reading.sh`, and `check-phase-gate.sh` are
+  untouched; bypass lives in the `hotfix-responder` manifest's
+  authorization layer.
+- **GA-HF-003 — Incident log format**: per-incident directory at
+  `.etc_sdlc/incidents/{YYYY-MM-DD}-{slug}/` with YAML frontmatter
+  plus prose body — matches the existing `.etc_sdlc/features/{slug}/`
+  pattern so `/postmortem` drops a sibling file with no migration.
+- **GA-HF-004 — Concurrency semantics**: single-incident lock plus
+  `/build` preempt — one `/hotfix` at a time, and a mid-wave `/build`
+  is checkpointed (`status: preempted_by_hotfix`) and resumed via
+  `/build --resume` after the fire is out.
+- **GA-HF-005 — Question UX**: all three pickers are Pattern A
+  (`AskUserQuestion`), not free-text, because structured categorical
+  fields are greppable and indexable where raw prose is not.
+- **GA-HF-006 — Anti-abuse defense level**: medium — three
+  complementary layers (audit field, subagent description guardrail,
+  postmortem-debt banner). No hard rate limits, because the lane has
+  to work during a bad week.
+
+### New files
+
+- `skills/hotfix/SKILL.md` — the workflow skill (538 lines, 6
+  workflow phases + 3 utility sections)
+- `agents/hotfix-responder.md` — the dedicated subagent manifest with
+  gate-bypass authorization, description guardrail, and audit-trail
+  recording instructions
+- `standards/process/incident-response.md` — the operator-facing
+  discipline guide (the secrets warning, the public-exposure warning,
+  recovery procedures)
+- `tests/test_hotfix.py` — contract tests (26 tests across 12
+  classes, string-asserting the source files encode the BRs)
+- `.etc_sdlc/incidents/.gitkeep` — placeholder so the directory
+  exists in fresh checkouts
+
+### Modified files
+
+- `spec/etc_sdlc.yaml` — new entries under `skills:` (`hotfix`) and
+  `agents:` (`hotfix-responder`). No changes to `gates:`.
+- `.gitignore` — exception for `.etc_sdlc/incidents/` so incident
+  logs are git-tracked. The obvious dual-bang pattern
+  (`!.etc_sdlc/incidents/` + `!.etc_sdlc/incidents/**`) does NOT work
+  because git's "re-include parent" rule requires the parent
+  directory to be un-ignored first. Working pattern: `.etc_sdlc/` +
+  `!.etc_sdlc/` + `.etc_sdlc/*` + `!.etc_sdlc/incidents/` +
+  `!.etc_sdlc/incidents/**`. The pattern is non-obvious — the
+  `/hotfix` spec itself initially had the wrong form.
+- `README.md` — skills count 9 → 10, test count 264 → 290, new
+  `/hotfix` pipeline narrative paragraph.
+
+### By the numbers
+
+| | v1.5.1 | v1.6 | delta |
+|---|---|---|---|
+| Gates | 14 | 14 | 0 |
+| Hooks | 10 | 10 | 0 |
+| Skills | 9 | 10 | +1 |
+| Agents | 19 | 20 | +1 |
+| Standards docs | 31 | 32 | +1 |
+| Tests passing | 264 | 290 | +26 |
+| `tests/test_hotfix.py` | — | 26 | +26 |
+| Workflow phases in /hotfix | — | 6 | +6 |
+| Anti-abuse defenses | — | 3 | +3 |
+
+### Upgrade notes
+
+1. **Recompile**: `python3 compile-sdlc.py spec/etc_sdlc.yaml` —
+   produces `dist/skills/hotfix/SKILL.md`,
+   `dist/agents/hotfix-responder.md`, and
+   `dist/standards/process/incident-response.md`. Skills go 9 → 10,
+   agents 19 → 20, standards 31 → 32. Gates stay at 14; hooks stay
+   at 10.
+2. **Reinstall**: `./install.sh` — propagates the new skill and
+   agent manifest into `~/.claude/`.
+3. **Read the standards doc before first use**: operators should
+   read `standards/process/incident-response.md` once before they
+   ever invoke `/hotfix` in anger. The "DO NOT include secrets"
+   warning is non-obvious — `incident.md` files are git-tracked, so
+   any credential pasted into a description or prose body lands in
+   commit history permanently.
+4. **No opt-out flag**. The lane does not fire unless the operator
+   explicitly types `/hotfix`. There is nothing to mute.
+
+### Philosophy note
+
+v1.5 introduced the principle that rigor should live at lane
+boundaries, not at the thread boundary. v1.6 completes that principle
+by adding the third lane the harness had been neglecting — incident
+response. Conversation, spec-to-build, and hotfix are now the three
+explicit lanes, and the operator declares the lane by the slash
+command they type. The harness's job is to enforce the right kind
+of rigor inside each lane, not to guess which lane the operator
+intended from the shape of their prose.
+
+The three-lane architecture is what makes it safe to trade upfront
+ceremony for speed in the hotfix case. You can afford to sacrifice
+`/spec`'s Definition-of-Ready interview only because `/postmortem`
+reclaims the accountability afterward, and you can afford to bypass
+`tdd-gate` only because the subagent's manifest-layer authorization
+is visible in every `incident.md`'s `gates_bypassed` field. The
+lane's trustworthiness depends on the other two lanes' rigor —
+remove either one and `/hotfix` becomes a TDD backdoor instead of an
+incident response tool.
+
+---
+
 ## 2026-04-14 — etc v1.5.1: research discipline + harness feedback loop
 
 A same-day patch release following v1.5, adding two related learning

@@ -209,6 +209,52 @@ class TestSetStatus:
         assert result.returncode == 0
         assert "status: decomposed" in path.read_text()
 
+    def test_should_honor_feature_flag_when_task_ids_collide(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression for the v1.6 /hotfix build finding.
+
+        When two features have tasks sharing the same task_id (e.g., both
+        have a '001'), `set-status 001 completed` without --feature hits
+        the first match load_all_tasks returns and updates the WRONG
+        feature. This is the exact bug that required manual YAML
+        correction during the /hotfix build's Step 7 verification.
+
+        With --feature, the update MUST land in the named feature's
+        task file and leave the other feature's task untouched.
+        """
+        feat_a_tasks = tmp_path / ".etc_sdlc" / "features" / "alpha" / "tasks"
+        feat_b_tasks = tmp_path / ".etc_sdlc" / "features" / "beta" / "tasks"
+        path_a = _create_task(feat_a_tasks, "001", "Alpha task", "pending")
+        path_b = _create_task(feat_b_tasks, "001", "Beta task", "pending")
+
+        result = _run_tasks(
+            tmp_path, "set-status", "001", "completed", "--feature", "beta"
+        )
+        assert result.returncode == 0, result.stderr
+
+        # Beta's 001 is updated
+        assert "status: completed" in path_b.read_text()
+        # Alpha's 001 is untouched
+        assert "status: pending" in path_a.read_text()
+        assert "status: completed" not in path_a.read_text()
+
+    def test_should_reject_when_feature_flag_names_missing_feature(
+        self, tmp_path: Path
+    ) -> None:
+        """Guards against typos in the feature name silently becoming
+        no-ops. If --feature names a feature that doesn't exist or
+        doesn't contain the task_id, exit non-zero and leave nothing
+        updated."""
+        feat_dir = tmp_path / ".etc_sdlc" / "features" / "alpha" / "tasks"
+        path = _create_task(feat_dir, "001", "Task", "pending")
+
+        result = _run_tasks(
+            tmp_path, "set-status", "001", "completed", "--feature", "nonexistent"
+        )
+        assert result.returncode == 1
+        assert "status: pending" in path.read_text()
+
 
 class TestDeps:
     def test_should_show_dependency_tree(self, tmp_path: Path) -> None:

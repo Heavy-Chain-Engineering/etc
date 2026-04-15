@@ -15,6 +15,7 @@
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 
 # If no file path, nothing to gate
 if [[ -z "$FILE_PATH" ]]; then
@@ -26,6 +27,21 @@ STATE_FILE="${CWD}/.sdlc/state.json"
 if [[ ! -f "$STATE_FILE" ]]; then
   exit 0
 fi
+
+# --- per-subagent cache prologue ---
+if [[ -n "$TRANSCRIPT" ]]; then
+  CACHE_KEY=$(python3 -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])" "$TRANSCRIPT")
+  MARKER_DIR="${CWD}/.etc_sdlc/.hook-markers"
+  MARKER="${MARKER_DIR}/${CACHE_KEY}-phase-gate"
+
+  if [[ -L "$MARKER_DIR" ]]; then
+    echo "Warning: .hook-markers is a symlink; skipping cache" >&2
+    CACHE_KEY=""  # disable caching for this run
+  elif [[ -f "$MARKER" && "$STATE_FILE" -ot "$MARKER" ]]; then
+    exit 0  # cache hit — phase hasn't changed since last pass
+  fi
+fi
+# --- end cache prologue ---
 
 # Make path relative to project root
 REL_PATH="$FILE_PATH"
@@ -111,4 +127,18 @@ if [[ "$BLOCKED" == "true" ]]; then
   exit 2
 fi
 
+# Write marker on success — mtime must exceed state.json's so the next
+# cache-hit check (-ot) sees the marker as strictly newer.
+if [[ -n "${CACHE_KEY:-}" ]]; then
+  mkdir -p "$MARKER_DIR" 2>/dev/null
+  python3 -c "
+import os, sys, time
+marker, state = sys.argv[1], sys.argv[2]
+open(marker, 'a').close()
+now = time.time()
+dep_mt = os.path.getmtime(state) if os.path.exists(state) else 0
+ts = max(now, dep_mt) + 0.01
+os.utime(marker, (ts, ts))
+" "$MARKER" "$STATE_FILE" 2>/dev/null
+fi
 exit 0

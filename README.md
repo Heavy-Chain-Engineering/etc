@@ -23,7 +23,7 @@ python3 compile-sdlc.py spec/etc_sdlc.yaml
 
 ```bash
 uv sync            # Install test dependencies
-uv run pytest      # 267 tests, ~7 seconds
+uv run pytest      # 276+ tests, ~7 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file without writing a test first. The TDD hook will block you.
@@ -103,6 +103,23 @@ citations. Idempotent — re-runs on an initialized repo produce no changes.
 5. **Execute** — dispatch wave by wave, verify after each wave
 6. **Verify** — full CI + architectural review
 7. **Report** — verification.md + summary
+
+**`/hotfix`** — Incident response lane. When production is on fire and the
+normal `/spec` → `/build` ceremony is too slow, `/hotfix` lets an operator file
+an incident in under 30 seconds and dispatch a constrained `hotfix-responder`
+subagent to execute the fix. The lane sacrifices upfront ceremony for speed
+and reclaims accountability afterward through automatic `/postmortem`
+suggestion. The subagent is authorized to bypass `tdd-gate`, `enough-context`,
+and `phase-gate` at its own manifest layer (the hook scripts are untouched);
+`safety-guardrails`, `tier-0-preflight`, and `check-invariants` continue to
+fire. Every invocation produces a structured audit trail at
+`.etc_sdlc/incidents/{YYYY-MM-DD}-{slug}/incident.md` recording the failure
+type, the fix, the rollback plan, the gates that were bypassed, and the files
+the subagent touched. Three anti-abuse defenses (gates-bypassed audit,
+subagent description guardrail, postmortem-or-it-didn't-happen banner) keep
+the lane trustworthy as a fire-response tool rather than a TDD escape hatch.
+See `standards/process/incident-response.md` for the operator's discipline
+guide.
 
 **`/decompose`** — Recursive hierarchical breakdown. Tasks too complex
 for a single agent session get broken into subtasks, which get broken into
@@ -231,9 +248,10 @@ hooks/                     10 hook scripts
   reinject-context.sh        Restores context after compaction
   mark-dirty.sh              Tracks which files changed (breadcrumb for CI)
 
-skills/                    9 skills
+skills/                    10 skills
   init-project/SKILL.md      /init-project — tiered repo bootstrap (tooling, DOMAIN.md, docs, roles)
   build/SKILL.md             /build — the conductor: full pipeline from spec to verified code
+  hotfix/SKILL.md            /hotfix — incident response lane: file, dispatch constrained subagent, suggest postmortem
   spec/SKILL.md              /spec — Socratic loop to generate implementation-ready PRDs
   decompose/SKILL.md         /decompose — recursive hierarchical task breakdown
   implement/SKILL.md         /implement — scale-adaptive dispatch (QUICK/STANDARD/DEEP)
@@ -264,7 +282,7 @@ standards/                 19 engineering standards across 6 categories
   security/                  Data handling, OWASP checklist
   quality/                   Metrics, guardrail rules
 
-tests/                     267 tests (pytest, ~7 seconds, sandbox-clean)
+tests/                     276+ tests (pytest, ~7 seconds, sandbox-clean)
   test_block_dangerous.py    30 tests — dangerous command blocking (incl. git-add regex regression)
   test_tdd_gate.py           6 tests — TDD enforcement
   test_invariants.py         15 tests — invariant checking

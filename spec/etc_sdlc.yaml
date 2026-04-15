@@ -468,6 +468,11 @@ agents:
     description: "Component thinker and accessibility zealot. TDD."
     source: agents/frontend-developer.md
 
+  hotfix-responder:
+    name: "Hotfix Responder"
+    description: "Incident response subagent. Bypasses tdd-gate/enough-context/phase-gate for /hotfix execution; safety-guardrails, tier-0-preflight, and check-invariants still fire. Refuses vague incident descriptions."
+    source: agents/hotfix-responder.md
+
   devops-engineer:
     name: "DevOps Engineer"
     description: "Infrastructure-as-code. Docker, CI/CD, monitoring."
@@ -522,6 +527,17 @@ agents:
 # The /implement skill is the primary user-facing entry point.
 
 skills:
+  hotfix:
+    name: "hotfix"
+    description: >
+      Incident response lane — file an incident, dispatch a constrained
+      hotfix-responder subagent, suggest postmortem afterward. Sacrifices
+      upfront ceremony for speed; reclaims accountability through audit
+      trail, subagent description guardrail, and postmortem-debt banner.
+      Safety-guardrails, tier-0-preflight, and check-invariants still fire.
+    usage: "/hotfix \"<short description of incident>\""
+    source: skills/hotfix/SKILL.md
+
   implement:
     name: "implement"
     description: >

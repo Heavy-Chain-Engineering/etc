@@ -43,6 +43,10 @@ dist/
 
 # SDLC task files (ephemeral, per-implementation-run)
 .etc_sdlc/
+!.etc_sdlc/
+.etc_sdlc/*
+!.etc_sdlc/incidents/
+!.etc_sdlc/incidents/**
 
 # Internal docs (valuable ideas, not for public release)
 docs/.internal/

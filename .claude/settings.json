@@ -6,11 +6,16 @@
         "./.venv",
         "./dist",
         "./build",
+        "./node_modules",
         "./.pytest_cache",
         "./.mypy_cache",
         "./.ruff_cache",
-        "~/.cache/uv",
-        "~/.cache/pip"
+        "./.next",
+        "./.turbo",
+        "./.eslintcache",
+        "./.tsbuildinfo",
+        "./coverage",
+        "./storybook-static"
       ],
       "denyRead": [
         "./.env",
@@ -18,9 +23,10 @@
         "./.env.production"
       ]
     },
-    "excludedCommands": [
-      "docker *",
-      "docker compose *"
-    ]
+    "network": {
+      "allowedHosts": [
+        "*"
+      ]
+    }
   }
 }

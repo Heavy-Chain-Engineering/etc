@@ -23,6 +23,24 @@ if [[ -z "$TRANSCRIPT" || ! -f "$TRANSCRIPT" ]]; then
   exit 0
 fi
 
+# --- per-subagent cache prologue ---
+CACHE_KEY=$(python3 -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])" "$TRANSCRIPT")
+MARKER_DIR="${CWD}/.etc_sdlc/.hook-markers"
+MARKER="${MARKER_DIR}/${CACHE_KEY}-required-reading"
+
+if [[ -L "$MARKER_DIR" ]]; then
+  echo "Warning: .hook-markers is a symlink; skipping cache" >&2
+  CACHE_KEY=""  # disable caching for this run
+elif [[ -f "$MARKER" ]]; then
+  # Cache hit if no task file is newer than the marker
+  NEWER=$(find "${CWD}/.etc_sdlc/tasks" -name "*.yaml" -newer "$MARKER" 2>/dev/null | head -1)
+  if [[ -z "$NEWER" ]]; then
+    exit 0  # cache hit — this subagent already passed
+  fi
+  # A task file is newer — fall through to full check
+fi
+# --- end cache prologue ---
+
 # Find the active task file (status: in_progress)
 TASK_DIR="${CWD}/.etc_sdlc/tasks"
 if [[ ! -d "$TASK_DIR" ]]; then
@@ -104,4 +122,9 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
   exit 2
 fi
 
+# Write marker on success (cache-miss or invalidated-cache path)
+if [[ -n "${CACHE_KEY:-}" ]]; then
+  mkdir -p "$MARKER_DIR" 2>/dev/null
+  touch "$MARKER" 2>/dev/null
+fi
 exit 0

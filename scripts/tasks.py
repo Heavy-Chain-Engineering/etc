@@ -9,7 +9,7 @@ Usage:
     python3 tasks.py next
     python3 tasks.py status
     python3 tasks.py board
-    python3 tasks.py set-status TASK_ID STATUS
+    python3 tasks.py set-status [--feature NAME] TASK_ID STATUS
     python3 tasks.py deps TASK_ID
     python3 tasks.py score [TASK_ID]
     python3 tasks.py tree
@@ -314,8 +314,18 @@ def cmd_board(root: Path) -> None:
             print(f"    {tid}  {title}  [c={complexity}]")
 
 
-def cmd_set_status(root: Path, task_id: str, new_status: str) -> None:
-    """Update a task's status in its YAML file."""
+def cmd_set_status(
+    root: Path, task_id: str, new_status: str, feature: str | None = None
+) -> None:
+    """Update a task's status in its YAML file.
+
+    When ``feature`` is provided, the lookup is scoped to
+    ``.etc_sdlc/features/{feature}/tasks/`` only, so task_id collisions
+    across features are resolved deterministically. Without the flag,
+    the first match returned by ``load_all_tasks`` wins — which is the
+    bug the /hotfix v1.6 build surfaced when set-status 001 landed on
+    the wrong feature's task.
+    """
     if new_status not in VALID_STATUSES:
         print(
             f"  Error: invalid status '{new_status}'. "
@@ -323,7 +333,7 @@ def cmd_set_status(root: Path, task_id: str, new_status: str) -> None:
         )
         sys.exit(1)
 
-    tasks = load_all_tasks(root)
+    tasks = load_all_tasks(root, feature=feature)
     for t in tasks:
         if t.get("task_id") == task_id:
             path = t["_path"]
@@ -336,10 +346,12 @@ def cmd_set_status(root: Path, task_id: str, new_status: str) -> None:
                 flags=re.MULTILINE,
             )
             path.write_text(updated)
-            print(f"  {task_id}: status → {new_status}")
+            scope = f" in feature '{feature}'" if feature else ""
+            print(f"  {task_id}: status → {new_status}{scope}")
             return
 
-    print(f"  Error: task '{task_id}' not found.")
+    scope = f" in feature '{feature}'" if feature else ""
+    print(f"  Error: task '{task_id}' not found{scope}.")
     sys.exit(1)
 
 
@@ -958,10 +970,21 @@ def main() -> None:
     elif command == "board":
         cmd_board(root)
     elif command == "set-status":
-        if len(sys.argv) < 4:
-            print("Usage: tasks.py set-status TASK_ID STATUS")
+        # Extract optional --feature NAME before positional parsing so the
+        # flag can appear anywhere in the argv tail.
+        argv_tail = list(sys.argv[2:])
+        feature: str | None = None
+        if "--feature" in argv_tail:
+            idx = argv_tail.index("--feature")
+            if idx + 1 >= len(argv_tail):
+                print("Error: --feature requires a value")
+                sys.exit(1)
+            feature = argv_tail[idx + 1]
+            del argv_tail[idx : idx + 2]
+        if len(argv_tail) < 2:
+            print("Usage: tasks.py set-status [--feature NAME] TASK_ID STATUS")
             sys.exit(1)
-        cmd_set_status(root, sys.argv[2], sys.argv[3])
+        cmd_set_status(root, argv_tail[0], argv_tail[1], feature=feature)
     elif command == "deps":
         if len(sys.argv) < 3:
             print("Usage: tasks.py deps TASK_ID")
