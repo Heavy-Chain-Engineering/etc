@@ -137,6 +137,18 @@ gates:
 
   # ── Cross-Boundary Concepts: Verify Phase ───────────────────────────
 
+  seam-evidence-check:
+    description: >
+      Validates integration seam evidence from SEAMS.md. For each declared
+      seam, checks that the integration test exists, has the correct marker,
+      exercises both sides (L2+), and uses real dependencies (L3). Runs at
+      verify phase only -- not per-edit.
+    event: Stop
+    type: command
+    script: check-seam-evidence.sh
+    timeout: 30
+    on_failure: block
+
   concept-check:
     description: >
       Validates cross-boundary CONCEPT entries from INVARIANTS.md at verify
