@@ -13,7 +13,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HELPERS_DIR = REPO_ROOT / "hooks" / "helpers"
@@ -296,6 +295,7 @@ class TestCheckCodeQualityHook:
             capture_output=True,
             text=True,
             timeout=10,
+            cwd=cwd,
         )
 
     def test_should_pass_when_non_python_file(self, tmp_path: Path) -> None:

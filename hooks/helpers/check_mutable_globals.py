@@ -33,7 +33,7 @@ MUTABLE_CALLS = frozenset({
 MUTABLE_LITERALS = (ast.List, ast.Dict, ast.Set)
 
 
-def _is_final_annotation(target: ast.AST, node: ast.AST) -> bool:
+def _is_final_annotation(_target: ast.AST, node: ast.AST) -> bool:
     """Check if an assignment has a Final type annotation."""
     if isinstance(node, ast.AnnAssign) and node.annotation is not None:
         ann = node.annotation

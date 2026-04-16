@@ -25,6 +25,7 @@ Output format (one per line):
 
 import ast
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 
@@ -97,7 +98,7 @@ def _is_logger_call(node: ast.AST) -> bool:
     return False
 
 
-def _is_noop_body(body: list[ast.AST]) -> bool:
+def _is_noop_body(body: Sequence[ast.AST]) -> bool:
     """Check if a function body is a no-op (only docstring, pass, logger calls)."""
     if not body:
         return True
@@ -152,7 +153,7 @@ def check_file(filepath: str) -> list[str]:
     source_lines = source.splitlines()
     violations = []
 
-    def _check_functions(nodes: list[ast.AST], in_protocol: bool = False) -> None:
+    def _check_functions(nodes: Sequence[ast.AST], in_protocol: bool = False) -> None:
         for node in nodes:
             # Handle class definitions
             if isinstance(node, ast.ClassDef):
