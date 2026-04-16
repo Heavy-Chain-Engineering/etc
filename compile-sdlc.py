@@ -447,6 +447,60 @@ def compile_scripts(dist_dir: Path, repo_root: Path) -> None:
                 (scripts_dst / script.name).chmod(0o755)
 
 
+def validate_concepts(repo_root: Path) -> int:
+    """Validate CONCEPT entries in INVARIANTS.md files.
+
+    Checks that every CONCEPT-NNN entry has the required fields:
+    - Contexts (required for cross-boundary concepts)
+    - Precondition, Postcondition, Invariant (DbC fields)
+    - Verify (with a non-empty command)
+    - Fail action
+
+    Returns the number of validation errors found.
+    """
+    import re
+
+    errors = 0
+    invariant_files = list(repo_root.rglob("INVARIANTS.md"))
+
+    for inv_file in invariant_files:
+        text = inv_file.read_text()
+        # Find all CONCEPT entries
+        concept_pattern = re.compile(
+            r"^##\s+(CONCEPT-\d+):\s*(.+)$", re.MULTILINE
+        )
+
+        for match in concept_pattern.finditer(text):
+            concept_id = match.group(1)
+            # Extract the section text (from this heading to the next ## heading)
+            start = match.end()
+            next_heading = re.search(r"^##\s+", text[start:], re.MULTILINE)
+            section = text[start : start + next_heading.start()] if next_heading else text[start:]
+
+            rel_path = inv_file.relative_to(repo_root)
+
+            # Check required fields
+            required_fields = {
+                "Contexts": r"\*\*Contexts:\*\*",
+                "Precondition": r"\*\*Precondition:\*\*",
+                "Postcondition": r"\*\*Postcondition:\*\*",
+                "Invariant": r"\*\*Invariant:\*\*",
+                "Verify": r"\*\*Verify:\*\*\s*`[^`]+`",
+                "Fail action": r"\*\*Fail action:\*\*",
+            }
+
+            for field_name, pattern in required_fields.items():
+                if not re.search(pattern, section):
+                    print(
+                        f"ERROR: {rel_path}: {concept_id} missing required "
+                        f"field: {field_name}",
+                        file=sys.stderr,
+                    )
+                    errors += 1
+
+    return errors
+
+
 def main() -> None:
     # Determine paths
     spec_path = sys.argv[1] if len(sys.argv) > 1 else "spec/etc_sdlc.yaml"
@@ -506,6 +560,18 @@ def main() -> None:
 
     print("  Copying scripts → dist/scripts/...")
     compile_scripts(dist_dir, repo_root)
+
+    print("  Validating CONCEPT entries in INVARIANTS.md files...")
+    concept_errors = validate_concepts(repo_root)
+    if concept_errors > 0:
+        print(f"    {concept_errors} CONCEPT validation error(s) found", file=sys.stderr)
+        sys.exit(1)
+    else:
+        concept_count = 0
+        for inv_file in repo_root.rglob("INVARIANTS.md"):
+            import re
+            concept_count += len(re.findall(r"^##\s+CONCEPT-\d+:", inv_file.read_text(), re.MULTILINE))
+        print(f"    {concept_count} CONCEPT entries validated")
 
     # Summary
     print()

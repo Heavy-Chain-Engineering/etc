@@ -134,10 +134,84 @@ Coverage thresholds, required test types, test-to-code ratios.
 4. **Be specific.** Narrow the file glob to only the relevant directories.
 5. **Test your verify command.** Run it manually — it should produce output only when the invariant is actually violated.
 
+## Cross-Boundary Concepts (CONCEPT-NNN)
+
+In addition to single-context invariants (`INV-NNN`), `INVARIANTS.md` supports
+**cross-boundary concept entries** (`CONCEPT-NNN`). These enforce that the same
+concept means the same thing across bounded contexts.
+
+### When to Use CONCEPT vs INV
+
+| Property | INV-NNN | CONCEPT-NNN |
+|----------|---------|-------------|
+| Scope | Single file/directory | Cross-boundary (multiple contexts) |
+| Verify target | Files being edited | All files in listed contexts |
+| Trigger | PreToolUse (on every Edit) | Verify phase (not per-edit) |
+| Hook | `check-invariants.sh` | `check-concepts.sh` |
+| Exemption | `# invariant-exempt: INV-NNN` | `# concept-exempt: CONCEPT-NNN` |
+| Added by | Developer | Architect (requires multi-context knowledge) |
+
+### CONCEPT Entry Format
+
+```markdown
+## CONCEPT-001: Short description of the cross-boundary concept
+
+Prose explanation of what this concept means and why it must be
+consistent across boundaries.
+
+- **Contexts:** Comma-separated list of bounded contexts
+- **Precondition:** What the caller/consumer must provide
+- **Postcondition:** What the provider/producer guarantees
+- **Invariant:** The property that must always hold across all contexts
+- **Layers:** comma-separated enforcement layers
+- **Verify:** `shell command that returns non-empty output on VIOLATION`
+- **Fail action:** Block merge | Warn
+```
+
+### Design by Contract Fields
+
+Every CONCEPT entry includes three DbC fields (per Jim Snyder's recommendation):
+
+- **Precondition**: obligation of the caller — what must be true before the concept
+  is used. "What does the consumer provide?"
+- **Postcondition**: obligation of the provider — what is guaranteed after the concept
+  is used. "What does the producer deliver?"
+- **Invariant**: the property that holds at all times across all listed contexts.
+  "What must always be true regardless of caller?"
+
+The dependency direction principle applies: if context A depends on context B's
+concept, context B owns the contract.
+
+### Vocabulary Registry
+
+For concepts where the problem is synonym drift, add a vocabulary sub-section:
+
+```markdown
+### Vocabulary: canonical_name
+| Context | Term | Canonical |
+|---------|------|-----------|
+| Context A | "term_in_a" | canonical_term |
+| Context B | "term_in_b" | canonical_term |
+- **Verify:** `python3 scripts/check-vocabulary.py canonical_name`
+```
+
+The vocabulary table declares, per bounded context, what terms that context uses
+and what canonical term each maps to. The verify script (`scripts/check-vocabulary.py`)
+checks that each context's source code uses only the terms declared for that context.
+
+### Enforcement
+
+CONCEPT entries are enforced by `hooks/check-concepts.sh`, which runs at verify
+phase (not per-edit). This separation exists because CONCEPT verify commands scan
+multiple directories and are inherently slower than single-file INV checks.
+
+The compiler (`compile-sdlc.py`) validates CONCEPT entry syntax during compilation,
+checking for all required fields.
+
 ## Lifecycle
 
 1. **Propose** — Anyone can propose an invariant via PR
 2. **Review** — Team reviews the invariant, its verify command, and its enforcement layers
 3. **Activate** — Merge the invariant into `INVARIANTS.md`; it is now enforced
-4. **Exempt** — Individual lines can be exempted with `# invariant-exempt: INV-NNN`
+4. **Exempt** — Individual lines can be exempted with `# invariant-exempt: INV-NNN` or `# concept-exempt: CONCEPT-NNN`
 5. **Retire** — Remove the invariant from `INVARIANTS.md` when it is no longer relevant

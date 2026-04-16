@@ -135,7 +135,22 @@ gates:
     script: check-phase-gate.sh
     on_failure: block
 
-  # ── During Work: Tracking ───────���──────────────────────────────────────
+  # ── Cross-Boundary Concepts: Verify Phase ───────────────────────────
+
+  concept-check:
+    description: >
+      Validates cross-boundary CONCEPT entries from INVARIANTS.md at verify
+      phase. CONCEPT verify commands scan multiple directories for semantic
+      consistency across bounded contexts. Runs separately from the per-edit
+      check-invariants.sh to avoid degrading edit-time hook latency.
+    event: PostToolUse
+    matcher: "Task"
+    type: command
+    script: check-concepts.sh
+    timeout: 30
+    on_failure: block
+
+  # ── During Work: Tracking ───────────────────────────────────────────
 
   dirty-marker:
     description: >
