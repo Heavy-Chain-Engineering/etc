@@ -50,7 +50,11 @@ def test_should_behavior_when_condition():
 - Use `httpx.AsyncClient` with `ASGITransport` for API testing
 
 ## What NOT to Do
+- No print statements in tests
+  - **Enforce:** ruff(T201)
 - No logic in tests (no if/else, no loops, no try/except)
+  - **Enforce:** ruff(PT018) / **Fallback:** required-reading
 - No test interdependence (each test runs in isolation)
 - No testing implementation details (test behavior, not structure)
 - No flaky tests (if a test is flaky, quarantine and fix it — don't retry)
+  - **Enforce:** none / **Fallback:** required-reading

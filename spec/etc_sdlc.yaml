@@ -112,6 +112,17 @@ gates:
     timeout: 10
     on_failure: block
 
+  code-quality-check:
+    description: >
+      Detects non-lintable code quality violations via AST analysis:
+      module-level mutable state and no-op functions.
+    event: PreToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-code-quality.sh
+    timeout: 10
+    on_failure: block
+
   enough-context:
     description: >
       Checks whether the agent has read the files declared in the active task's
@@ -627,10 +638,15 @@ standards:
       - error-handling.md
       - typing-standards.md
       - python-conventions.md
+      - import-discipline.md
+      - ruff-reference.toml
+      - ruff-audit.md
     testing:
       - testing-standards.md
       - test-naming.md
       - llm-evaluation.md
+      - test-isolation.md
+      - fixture-fidelity.md
     architecture:
       - abstraction-rules.md
       - adr-process.md

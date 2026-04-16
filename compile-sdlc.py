@@ -501,10 +501,152 @@ def validate_concepts(repo_root: Path) -> int:
     return errors
 
 
+def audit_enforcement(repo_root: Path) -> int:
+    """Audit enforcement annotations against the ruff reference config.
+
+    Scans all .md files in standards/code/ and standards/testing/,
+    extracts Enforce: annotations, and cross-references ruff rule
+    codes against the reference config's select list.
+
+    Returns exit code: 0 = clean, 1 = errors found.
+    """
+    import re
+    import tomllib
+
+    standards_dirs = [
+        repo_root / "standards" / "code",
+        repo_root / "standards" / "testing",
+    ]
+
+    # Parse the ruff reference config
+    ruff_toml_path = repo_root / "standards" / "code" / "ruff-reference.toml"
+    if not ruff_toml_path.exists():
+        print("ERROR: standards/code/ruff-reference.toml not found", file=sys.stderr)
+        return 1
+
+    with open(ruff_toml_path, "rb") as f:
+        ruff_config = tomllib.load(f)
+
+    select_list = ruff_config.get("tool", {}).get("ruff", {}).get("lint", {}).get("select", [])
+    if not select_list:
+        print("ERROR: No select list found in ruff-reference.toml", file=sys.stderr)
+        return 1
+
+    # Expand rule set prefixes to a set for matching
+    # Each prefix (e.g., "N") matches any rule starting with that prefix
+    rule_prefixes = set(select_list)
+
+    def rule_is_covered(rule_code: str) -> bool:
+        """Check if a specific rule code is covered by the select list."""
+        for prefix in rule_prefixes:
+            if rule_code == prefix or rule_code.startswith(prefix):
+                return True
+        return False
+
+    # Scan standards docs for Enforce: annotations
+    enforce_pattern = re.compile(r"\*\*Enforce:\*\*\s*(.+?)$", re.MULTILINE)
+    ruff_rule_pattern = re.compile(r"ruff\(([^)]+)\)")
+
+    errors = 0
+    warnings = 0
+    ruff_count = 0
+    hook_count = 0
+    none_count = 0
+    total_rules = 0
+    referenced_rules: set[str] = set()
+    docs_with_annotations: set[str] = set()
+    all_md_files: list[Path] = []
+
+    for standards_dir in standards_dirs:
+        if not standards_dir.exists():
+            continue
+        for md_file in sorted(standards_dir.glob("*.md")):
+            all_md_files.append(md_file)
+            content = md_file.read_text()
+            file_has_annotation = False
+
+            for match in enforce_pattern.finditer(content):
+                annotation = match.group(1).strip()
+                total_rules += 1
+                file_has_annotation = True
+
+                # Extract ruff rules
+                ruff_match = ruff_rule_pattern.search(annotation)
+                if ruff_match:
+                    rules_str = ruff_match.group(1)
+                    rules = [r.strip() for r in rules_str.split(",")]
+                    for rule in rules:
+                        referenced_rules.add(rule)
+                        if not rule_is_covered(rule):
+                            print(
+                                f"ERROR: {md_file.relative_to(repo_root)}: "
+                                f"ruff({rule}) not in ruff-reference.toml select list",
+                                file=sys.stderr,
+                            )
+                            errors += 1
+                        else:
+                            ruff_count += 1
+
+                elif "hook(" in annotation:
+                    hook_count += 1
+                elif annotation.startswith("none"):
+                    none_count += 1
+
+            if file_has_annotation:
+                docs_with_annotations.add(str(md_file.relative_to(repo_root)))
+
+    # Warn about docs with no annotations (exclude ruff-audit.md itself)
+    for md_file in all_md_files:
+        rel = str(md_file.relative_to(repo_root))
+        if rel not in docs_with_annotations and "ruff-audit" not in rel:
+            print(f"WARNING: {rel} has no Enforce: annotations", file=sys.stderr)
+            warnings += 1
+
+    # Warn about rule prefixes in config not referenced by any standard
+    for prefix in rule_prefixes:
+        found = False
+        for rule in referenced_rules:
+            if rule == prefix or rule.startswith(prefix):
+                found = True
+                break
+        if not found:
+            print(
+                f"WARNING: Rule set '{prefix}' in ruff-reference.toml "
+                f"not referenced by any standard",
+                file=sys.stderr,
+            )
+            warnings += 1
+
+    # Summary
+    print()
+    print("Enforcement Audit Summary")
+    print("=" * 40)
+    print(f"  Rules enforced by ruff:  {ruff_count}")
+    print(f"  Rules enforced by hook:  {hook_count}")
+    print(f"  Rules guidance-only:     {none_count}")
+    print(f"  Total annotated rules:   {total_rules}")
+    print(f"  Errors:                  {errors}")
+    print(f"  Warnings:                {warnings}")
+    print()
+
+    if errors > 0:
+        print(f"FAILED: {errors} enforcement error(s) found.", file=sys.stderr)
+        return 1
+
+    print("PASSED: All ruff annotations reference rules in the reference config.")
+    return 0
+
+
 def main() -> None:
     # Determine paths
-    spec_path = sys.argv[1] if len(sys.argv) > 1 else "spec/etc_sdlc.yaml"
     repo_root = Path(__file__).parent.resolve()
+
+    # Handle --audit-enforcement flag
+    if "--audit-enforcement" in sys.argv:
+        exit_code = audit_enforcement(repo_root)
+        sys.exit(exit_code)
+
+    spec_path = sys.argv[1] if len(sys.argv) > 1 else "spec/etc_sdlc.yaml"
     dist_dir = repo_root / "dist"
 
     # Clean dist/

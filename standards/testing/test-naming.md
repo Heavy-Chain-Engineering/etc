@@ -25,6 +25,8 @@ Bad:
 
 ## Rules
 - Test name must describe the expected behavior AND the condition
+  - **Enforce:** none / **Fallback:** required-reading
 - Use domain language in test names (not implementation language)
 - One assertion per test (or closely related assertions on the same behavior)
+  - **Enforce:** none / **Fallback:** required-reading
 - Test file names mirror production file names: `test_<module>.py`

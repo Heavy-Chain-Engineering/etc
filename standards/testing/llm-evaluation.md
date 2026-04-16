@@ -35,5 +35,6 @@ Test fixtures should isolate each component to enable this diagnosis.
 
 ## What NOT to Do
 - Don't assert exact string matches on LLM output (use semantic comparison)
+  - **Enforce:** none / **Fallback:** required-reading
 - Don't skip LLM evals because they cost tokens — they catch real bugs
 - Don't mix retrieval and generation tests — isolate failure modes

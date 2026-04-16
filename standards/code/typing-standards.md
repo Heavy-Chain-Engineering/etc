@@ -11,9 +11,12 @@
 
 ## Type Annotation Rules
 - All function signatures fully annotated (parameters and return type)
+  - **Enforce:** ruff(ANN001, ANN002, ANN003, ANN201)
 - All class attributes annotated
 - Use `|` union syntax (not `Optional` or `Union`)
+  - **Enforce:** ruff(UP007)
 - Use `list[str]` lowercase generics (not `List[str]`)
+  - **Enforce:** ruff(UP006)
 - Use `type` aliases for complex types
 
 ## Pydantic Models
@@ -31,3 +34,6 @@
 - Third-party library stubs may use `type: ignore[import-untyped]` with comment
 - Test files may relax annotations (configured in ruff per-file-ignores)
 - `cast()` requires a comment explaining why it's necessary
+  - **Enforce:** none / **Fallback:** required-reading
+- No `Any` in production code
+  - **Enforce:** ruff(ANN401)
