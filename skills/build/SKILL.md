@@ -127,7 +127,7 @@ Read the spec. Break it into tasks following `/decompose` conventions:
 
 1. Identify natural boundaries (modules, layers, components, interfaces)
 2. Write task YAML files via a single atomic batch:
-   `python3 scripts/tasks.py bulk-create --feature {slug}` with a JSON array
+   `python3 ~/.claude/scripts/tasks.py bulk-create --feature {slug}` with a JSON array
    on stdin. NEVER hand-write task YAML with the Write tool — the CLI
    enforces schema, rolls back on any error, and saves ~75% of tokens.
    See `/decompose` for the full JSON shape and field reference.
@@ -136,7 +136,7 @@ Read the spec. Break it into tasks following `/decompose` conventions:
 5. Every acceptance criterion from the spec maps to exactly one task
 6. Every file in Module Structure maps to exactly one task
 
-Run: `python3 scripts/tasks.py list --tree` to confirm the breakdown.
+Run: `python3 ~/.claude/scripts/tasks.py list --tree` to confirm the breakdown.
 Print the tree so the user can see it, then ask for confirmation using
 `AskUserQuestion` (see standards/process/interactive-user-input.md,
 Pattern A):
@@ -169,8 +169,8 @@ This is the critical loop that enables arbitrary scale.
 
 ```
 REPEAT:
-  1. Run: python3 scripts/tasks.py score
-  2. Run: python3 scripts/tasks.py ready-to-decompose
+  1. Run: python3 ~/.claude/scripts/tasks.py score
+  2. Run: python3 ~/.claude/scripts/tasks.py ready-to-decompose
   3. IF any tasks score > 7:
        For each flagged task:
          a. Read the task's acceptance criteria and files_in_scope
@@ -203,7 +203,7 @@ Decomposition complete.
 
 ### Step 5: PLAN WAVES
 
-Run: `python3 scripts/tasks.py waves`
+Run: `python3 ~/.claude/scripts/tasks.py waves`
 
 Verify:
 - No file overlaps within any wave (if found, serialize the conflicting tasks)
@@ -286,7 +286,7 @@ For each wave, in order:
 
 The pipeline is paused. Options:
   1. Fix the issues and run: /build --resume
-  2. Investigate with: python3 scripts/tasks.py board
+  2. Investigate with: python3 ~/.claude/scripts/tasks.py board
 ```
 
 ### Step 7: VERIFY (Final)

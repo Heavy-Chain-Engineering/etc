@@ -88,7 +88,7 @@ Parse the spec into a task graph, then write every task in a single atomic
 batch by piping a JSON array to `bulk-create`:
 
 ```bash
-python3 scripts/tasks.py bulk-create --feature {slug} <<'JSON'
+python3 ~/.claude/scripts/tasks.py bulk-create --feature {slug} <<'JSON'
 [
   {
     "task_id": "001",

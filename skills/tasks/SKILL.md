@@ -22,25 +22,25 @@ No external dependencies — operates directly on your `.etc_sdlc/` task files.
 ### `/tasks` or `/tasks list`
 Show all tasks with ID, title, status, and assigned agent.
 
-Run: `python3 scripts/tasks.py list`
+Run: `python3 ~/.claude/scripts/tasks.py list`
 
-Filter by status: `python3 scripts/tasks.py list --status pending`
+Filter by status: `python3 ~/.claude/scripts/tasks.py list --status pending`
 
 ### `/tasks next`
 Find the next task that's ready for work — status is `pending` and all
 dependencies have status `completed`.
 
-Run: `python3 scripts/tasks.py next`
+Run: `python3 ~/.claude/scripts/tasks.py next`
 
 ### `/tasks status`
 Summary counts: total, pending, in_progress, completed, escalated.
 
-Run: `python3 scripts/tasks.py status`
+Run: `python3 ~/.claude/scripts/tasks.py status`
 
 ### `/tasks board`
 Kanban-style view grouped by status column.
 
-Run: `python3 scripts/tasks.py board`
+Run: `python3 ~/.claude/scripts/tasks.py board`
 
 ### `/tasks create` and `/tasks bulk-create`
 Agents (`/decompose`, `/build`, `/implement`) write task YAML files through
@@ -49,14 +49,14 @@ atomic all-or-nothing semantics for bulk writes.
 
 **Bulk (normal path):** JSON array on stdin.
 ```bash
-python3 scripts/tasks.py bulk-create --feature {slug} < tasks.json
-python3 scripts/tasks.py bulk-create --feature {slug} --json '[...]'
-python3 scripts/tasks.py bulk-create --feature {slug} --json-file tasks.json
+python3 ~/.claude/scripts/tasks.py bulk-create --feature {slug} < tasks.json
+python3 ~/.claude/scripts/tasks.py bulk-create --feature {slug} --json '[...]'
+python3 ~/.claude/scripts/tasks.py bulk-create --feature {slug} --json-file tasks.json
 ```
 
 **Single (debugging):** repeated flags.
 ```bash
-python3 scripts/tasks.py create --feature {slug} \
+python3 ~/.claude/scripts/tasks.py create --feature {slug} \
   --task-id 001 --title "..." --agent backend-developer \
   --file src/foo.py --ac "criterion" [--dep 000] [--read path]
 ```
@@ -82,7 +82,7 @@ pending → in_progress → completed
           blocked     (dependency not met)
 ```
 
-To update status: `python3 scripts/tasks.py set-status {task_id} {status}`
+To update status: `python3 ~/.claude/scripts/tasks.py set-status {task_id} {status}`
 
 ## Dependency Resolution
 

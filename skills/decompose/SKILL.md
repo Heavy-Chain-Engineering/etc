@@ -28,11 +28,11 @@ the task YAML files that `/implement` dispatches.
 1. **Read the PRD** — understand requirements, acceptance criteria, module structure
 2. **Identify natural boundaries** — modules, layers, components, interfaces
 3. **Generate tasks** with hierarchical IDs (`001`, `002`, ...) by piping a JSON
-   array to `python3 scripts/tasks.py bulk-create --feature {slug}`. Do NOT
+   array to `python3 ~/.claude/scripts/tasks.py bulk-create --feature {slug}`. Do NOT
    hand-write task YAML files with the Write tool — the CLI is ~75% cheaper in
    tokens, enforces schema at write time, and writes atomically (all tasks or
    none). See "Creating Tasks" below for the invocation format.
-4. **Score each task** — run `python3 scripts/tasks.py score`
+4. **Score each task** — run `python3 ~/.claude/scripts/tasks.py score`
 5. **Flag complex tasks** — anything scoring > 7 needs further decomposition
 6. **Auto-decompose flagged tasks** — recurse into them immediately
 
@@ -53,7 +53,7 @@ the task YAML files that `/implement` dispatches.
 
 ### When auto-decomposing (batch mode):
 
-1. Run `python3 scripts/tasks.py ready-to-decompose`
+1. Run `python3 ~/.claude/scripts/tasks.py ready-to-decompose`
 2. For each flagged task, apply the subtask expansion workflow
 3. Continue until no tasks exceed the threshold
 
@@ -70,7 +70,7 @@ half-decomposed state ever leaks through.
 Pipe a JSON array of task objects to `bulk-create`:
 
 ```bash
-python3 scripts/tasks.py bulk-create --feature {slug} <<'JSON'
+python3 ~/.claude/scripts/tasks.py bulk-create --feature {slug} <<'JSON'
 [
   {
     "task_id": "002.001",
@@ -104,7 +104,7 @@ Alternate inputs: `--json '[...]'` for inline, `--json-file path.json` for a fil
 For one-off tasks during debugging, flags are more discoverable than JSON:
 
 ```bash
-python3 scripts/tasks.py create --feature {slug} \
+python3 ~/.claude/scripts/tasks.py create --feature {slug} \
   --task-id 002.001 \
   --title "Implement auth data models" \
   --agent backend-developer \
@@ -141,7 +141,7 @@ Optional with defaults: `status` → `pending`, `dependencies` → `[]`,
 002                    # Second top-level task
 ```
 
-This allows arbitrary depth. The tree command (`python3 scripts/tasks.py tree`)
+This allows arbitrary depth. The tree command (`python3 ~/.claude/scripts/tasks.py tree`)
 renders the hierarchy visually.
 
 ## Complexity Scoring
@@ -185,10 +185,10 @@ likely touches too many files or has too many criteria for a single agent sessio
 
 After decomposition, verify:
 ```bash
-python3 scripts/tasks.py tree          # Visual hierarchy
-python3 scripts/tasks.py score         # All leaves score ≤ 7
-python3 scripts/tasks.py waves         # No file overlaps within waves
-python3 scripts/tasks.py status        # Correct counts
+python3 ~/.claude/scripts/tasks.py tree          # Visual hierarchy
+python3 ~/.claude/scripts/tasks.py score         # All leaves score ≤ 7
+python3 ~/.claude/scripts/tasks.py waves         # No file overlaps within waves
+python3 ~/.claude/scripts/tasks.py status        # Correct counts
 ```
 
 ## Integration with /implement
@@ -198,8 +198,8 @@ python3 scripts/tasks.py status        # Correct counts
 - STANDARD mode: single-level decomposition
 - DEEP mode: recursive decomposition until all leaves score ≤ 7
 
-After decomposition, `/implement` uses `python3 scripts/tasks.py waves` to
-determine execution order and `python3 scripts/tasks.py next` to find
+After decomposition, `/implement` uses `python3 ~/.claude/scripts/tasks.py waves` to
+determine execution order and `python3 ~/.claude/scripts/tasks.py next` to find
 what's ready for dispatch.
 
 ## Constraints
