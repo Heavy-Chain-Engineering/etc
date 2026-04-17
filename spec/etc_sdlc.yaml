@@ -17,7 +17,7 @@ version: "1.0"
 # ─── Defaults ────────────────────────────────────────────────────────────
 # Applied to all gates unless overridden at the gate level.
 defaults:
-  model: sonnet                           # Short alias — resolves to latest Sonnet at runtime
+  model: haiku                            # Default: fast/cheap for mechanical checks. Override per gate where reasoning matters.
   on_failure: block            # block = give agent feedback to retry
   on_loop: escalate            # escalate = fail loud, kill agent, tell human
   max_retries: 2               # After N retries on same gate, escalate
@@ -195,7 +195,6 @@ gates:
       Mirrors "is this ticket refined enough for a developer to pick up?"
     event: TaskCreated
     type: prompt
-    model: sonnet
     role: |
       You are a senior engineering manager who has refined thousands of
       tickets. You know that vague tasks produce vague implementations.
@@ -258,7 +257,6 @@ gates:
       inspects the work product.
     event: TaskCompleted
     type: agent
-    model: sonnet
     role: |
       You are a QA lead who has seen developers mark tasks "done" when
       they're clearly not. Your job is to mechanically verify every
