@@ -295,7 +295,16 @@ After all waves complete:
 
 1. Run full CI: tests + coverage + types (if applicable) + lint (if applicable)
 2. Run invariant checks: `INVARIANTS.md` verify commands
-3. Cross-check: every acceptance criterion from the original spec is met
+3. **Dispatch spec-enforcer** for adversarial AC verification:
+   ```
+   Agent({
+     subagent_type: "spec-enforcer",
+     prompt: "Verify the deliverables for feature '{slug}' against the PRD at {spec_path}. Check every acceptance criterion. Report COMPLIANT or NON-COMPLIANT with evidence."
+   })
+   ```
+   If the spec-enforcer returns NON-COMPLIANT, the build is NOT done.
+   Route the violations back to the responsible task owners for remediation
+   before proceeding to Step 8.
 4. Write `.etc_sdlc/features/{slug}/verification.md`:
 
 ```markdown

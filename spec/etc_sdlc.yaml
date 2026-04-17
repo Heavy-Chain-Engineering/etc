@@ -373,45 +373,19 @@ gates:
 
   # ── Session Lifecycle ──────────────────────────────────────────────────
 
-  ci-pipeline:
+  ci-gate:
     description: >
-      Full CI pipeline that runs before the agent can stop. The equivalent
-      of "green build before merge." Tests + coverage + types + lint +
-      invariants. This is the final quality gate.
+      Lightweight CI gate that checks the .tdd-dirty marker before running
+      any tests. If no production code was modified (no marker), exits
+      immediately — zero latency, zero cost. When code WAS modified, runs
+      pytest + mypy + ruff + invariant checks mechanically via bash.
+      Replaces the previous Sonnet 4.5 agent-type hook that spun up a
+      model invocation on every stop event including conversational turns.
     event: Stop
-    type: agent
-    model: claude-sonnet-4-5
-    role: |
-      You are the CI/CD pipeline for a disciplined engineering team.
-      You are mechanical and thorough. You run every check, report every
-      failure, and never let a red build through. You don't make judgment
-      calls — you run the checks and report the results.
-    prompt: |
-      The agent is about to finish its turn.
-
-      $ARGUMENTS
-
-      If no production code was modified (no .tdd-dirty marker in the
-      project root), allow the stop — not every turn produces code.
-
-      If production code WAS modified, run these checks:
-      1. Run the test suite with coverage (threshold from project config)
-      2. Run type checking (mypy src/)
-      3. Run linting (ruff check src/ tests/)
-      4. Check INVARIANTS.md verify commands if the file exists
-
-      If stop_hook_active is true and checks STILL fail:
-        Return {"continue": false, "stopReason": "CI FAILED: [details]. Escalating to human."}
-        This kills the agent and surfaces the failure. Do NOT retry infinitely.
-
-      If all checks pass (or no code was modified):
-        {"ok": true}
-
-      If any check fails:
-        {"ok": false, "reason": "[what failed, exact error output, how to fix]"}
+    type: command
+    script: ci-gate.sh
     timeout: 120
-    max_retries: 2
-    on_loop: escalate
+    on_failure: block
 
   change-control:
     description: >
@@ -554,6 +528,14 @@ agents:
     name: "Technical Writer"
     description: "API docs, architecture overviews, setup guides, READMEs."
     source: agents/technical-writer.md
+
+  spec-enforcer:
+    name: "Spec Enforcer"
+    description: >
+      Adversarial spec compliance reviewer. Compares deliverables against
+      PRD acceptance criteria. Assumes non-compliance until proven otherwise.
+      Read-only — blocks on violations but never fixes them.
+    source: agents/spec-enforcer.md
 
   process-evaluator:
     name: "Process Evaluator"
