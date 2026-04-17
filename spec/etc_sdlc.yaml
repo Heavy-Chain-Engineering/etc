@@ -17,7 +17,7 @@ version: "1.0"
 # ─── Defaults ────────────────────────────────────────────────────────────
 # Applied to all gates unless overridden at the gate level.
 defaults:
-  model: claude-sonnet-4-5                # Default model for prompt/agent hooks
+  model: sonnet                           # Short alias — resolves to latest Sonnet at runtime
   on_failure: block            # block = give agent feedback to retry
   on_loop: escalate            # escalate = fail loud, kill agent, tell human
   max_retries: 2               # After N retries on same gate, escalate
@@ -195,7 +195,7 @@ gates:
       Mirrors "is this ticket refined enough for a developer to pick up?"
     event: TaskCreated
     type: prompt
-    model: claude-sonnet-4-5
+    model: sonnet
     role: |
       You are a senior engineering manager who has refined thousands of
       tickets. You know that vague tasks produce vague implementations.
@@ -258,7 +258,7 @@ gates:
       inspects the work product.
     event: TaskCompleted
     type: agent
-    model: claude-sonnet-4-5
+    model: sonnet
     role: |
       You are a QA lead who has seen developers mark tasks "done" when
       they're clearly not. Your job is to mechanically verify every
@@ -331,7 +331,7 @@ gates:
       are unhandled?" Never lets the implementer grade their own work.
     event: SubagentStop
     type: agent
-    model: claude-sonnet-4-5
+    model: sonnet
     role: |
       You are a hostile code reviewer. Your job is NOT to confirm the
       work looks good — it's to find what's wrong. You have seen
