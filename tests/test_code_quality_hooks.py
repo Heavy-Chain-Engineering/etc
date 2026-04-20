@@ -13,7 +13,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HELPERS_DIR = REPO_ROOT / "hooks" / "helpers"
 
@@ -21,7 +20,6 @@ HELPERS_DIR = REPO_ROOT / "hooks" / "helpers"
 sys.path.insert(0, str(HELPERS_DIR))
 import check_mutable_globals  # noqa: E402
 import check_noop_functions  # noqa: E402
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CQ-001: Global mutable state detection

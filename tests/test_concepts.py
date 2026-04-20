@@ -11,8 +11,6 @@ import os
 import subprocess
 import textwrap
 
-
-
 HOOK_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "hooks",
@@ -513,7 +511,7 @@ class TestConceptParsing:
             capture_output=True,
             text=True,
         )
-        lines = [l for l in parse_result.stdout.strip().split("\n") if l]
+        lines = [line for line in parse_result.stdout.strip().split("\n") if line]
         assert len(lines) == 1
         assert lines[0].startswith("CONCEPT-001|")
         assert "concept check" in lines[0]

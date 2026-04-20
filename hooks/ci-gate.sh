@@ -43,10 +43,20 @@ if [[ -d "${CWD}/tests" ]] || [[ -d "${CWD}/test" ]]; then
   fi
 fi
 
+# Discover Python source directories that actually exist.
+# Checking hardcoded paths like `src/` fails on projects that use a
+# different layout (e.g., flat `hooks/` `scripts/` `tests/`). We let
+# ruff and mypy read their own config from pyproject.toml when no
+# explicit paths are passed.
+PY_DIRS=()
+for d in src tests hooks scripts platform/src; do
+  [[ -d "${CWD}/${d}" ]] && PY_DIRS+=("$d")
+done
+
 # 2. Type checking (only if mypy is configured)
 if [[ -f "${CWD}/pyproject.toml" ]] && grep -q '\[tool\.mypy\]' "${CWD}/pyproject.toml" 2>/dev/null; then
-  if command -v mypy &>/dev/null; then
-    MYPY_OUTPUT=$(cd "$CWD" && python3 -m mypy src/ 2>&1)
+  if command -v mypy &>/dev/null && [[ ${#PY_DIRS[@]} -gt 0 ]]; then
+    MYPY_OUTPUT=$(cd "$CWD" && python3 -m mypy "${PY_DIRS[@]}" 2>&1)
     MYPY_EXIT=$?
     if [[ $MYPY_EXIT -ne 0 ]]; then
       FAILURES+=("TYPE CHECK FAILED (exit $MYPY_EXIT)")
@@ -59,8 +69,8 @@ fi
 
 # 3. Linting (only if ruff is configured)
 if [[ -f "${CWD}/pyproject.toml" ]] && grep -q '\[tool\.ruff\]' "${CWD}/pyproject.toml" 2>/dev/null; then
-  if command -v ruff &>/dev/null; then
-    RUFF_OUTPUT=$(cd "$CWD" && ruff check src/ tests/ 2>&1)
+  if command -v ruff &>/dev/null && [[ ${#PY_DIRS[@]} -gt 0 ]]; then
+    RUFF_OUTPUT=$(cd "$CWD" && ruff check "${PY_DIRS[@]}" 2>&1)
     RUFF_EXIT=$?
     if [[ $RUFF_EXIT -ne 0 ]]; then
       FAILURES+=("LINT FAILED (exit $RUFF_EXIT)")

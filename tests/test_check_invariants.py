@@ -4,11 +4,7 @@
 import json
 import os
 import subprocess
-import tempfile
-import shutil
 import textwrap
-
-import pytest
 
 HOOK_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -289,7 +285,7 @@ class TestInvariantParsing:
             capture_output=True,
             text=True,
         )
-        lines = [l for l in parse_result.stdout.strip().split("\n") if l]
+        lines = [line for line in parse_result.stdout.strip().split("\n") if line]
         # Only the well-formed INV-001 should be parsed.
         # The heading without INV ID resets current_id to empty,
         # and the line not under a heading keeps whatever current_id was set.
@@ -297,9 +293,9 @@ class TestInvariantParsing:
         # so current_id stays as INV-001. The orphaned command and the
         # non-heading verify line will both use INV-001.
         # Let's verify the actual behavior:
-        assert any("INV-001" in l for l in lines)
+        assert any("INV-001" in line for line in lines)
         # The key test: the heading without INV ID does NOT produce a new ID
-        assert not any("INV-" in l and "INV-001" not in l for l in lines)
+        assert not any("INV-" in line and "INV-001" not in line for line in lines)
 
 
 # ---------------------------------------------------------------------------

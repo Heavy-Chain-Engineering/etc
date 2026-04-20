@@ -16,7 +16,8 @@ Usage:
     python3 tasks.py waves [--feature NAME]
     python3 tasks.py ready-to-decompose
     python3 tasks.py create --task-id ID --title T --agent A --file F --ac C [...]
-    python3 tasks.py bulk-create [--feature NAME] [--json JSON | --json-file PATH] [--allow-existing]
+    python3 tasks.py bulk-create [--feature NAME]
+        [--json JSON | --json-file PATH] [--allow-existing]
 """
 
 from __future__ import annotations

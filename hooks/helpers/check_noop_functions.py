@@ -90,7 +90,8 @@ def _is_logger_call(node: ast.AST) -> bool:
     # logger.info(), logger.debug(), log.warning(), etc.
     if isinstance(func, ast.Attribute):
         obj = func.value
-        if isinstance(obj, ast.Name) and obj.id in ("logger", "log", "logging", "self.logger", "self.log"):
+        _logger_names = ("logger", "log", "logging", "self.logger", "self.log")
+        if isinstance(obj, ast.Name) and obj.id in _logger_names:
             return True
         # self.logger.info()
         if isinstance(obj, ast.Attribute) and obj.attr in ("logger", "log"):
