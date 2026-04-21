@@ -137,16 +137,21 @@ strategy. The catalog is **exhaustive** — if a pattern is not on this
 list, we do not fix it, because the catalog is the contract for what
 "done" means.
 
-### AP-001: "Follow best practices"
+### AP-001: Vague quality descriptors
 
-- **Grep:** `best practices|follow established|industry standard`
+- **Grep:** `best practices|follow established|industry standard|\bidiomatic\b|\bstrict typing\b|\bproper\b|\brobust\b|\bwell-designed\b`
 - **Diagnosis:** implies a body of knowledge the model should infer.
   4.6 generalized; 4.7 executes literally (i.e., does nothing specific).
+  Includes vague adjective descriptors ("idiomatic", "robust", "proper")
+  that imply conformance to an unstated standard.
 - **Fix:** replace with either (a) an inline numbered list of the
   specific practices, or (b) a concrete reference to a standards doc
   (e.g., "apply the rules in standards/code/python-conventions.md")
 - **Delete condition:** if no specific practices are intended, delete
   the phrase entirely rather than leave it vague.
+- **Revision history:** grep pattern expanded during Phase 1 execution
+  (2026-04-17) after the narrower initial pattern missed "idiomatic"
+  and "strict typing" in `agents/backend-developer.md` line 30.
 
 ### AP-002: "Be thorough" / "Be exhaustive"
 
@@ -355,8 +360,8 @@ audit manually in Phase 2.
 ```
 mkdir -p .etc_sdlc/4.7-audit
 {
-  echo "=== AP-001: best practices / industry standard ==="
-  grep -rInE 'best practices|follow established|industry standard' agents/ skills/ standards/ spec/etc_sdlc.yaml | wc -l
+  echo "=== AP-001: vague quality descriptors ==="
+  grep -rInE 'best practices|follow established|industry standard|\bidiomatic\b|\bstrict typing\b|\bproper\b|\brobust\b|\bwell-designed\b' agents/ skills/ standards/ spec/etc_sdlc.yaml | wc -l
 
   echo "=== AP-002: be thorough / comprehensive ==="
   grep -rInE 'be thorough|be exhaustive|comprehensive review|careful analysis' agents/ skills/ standards/ spec/etc_sdlc.yaml | wc -l
