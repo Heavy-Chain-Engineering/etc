@@ -93,8 +93,8 @@ Dockerfile, then docker-compose, then CI pipeline, then monitoring.
 2. **Hot reload enabled.** Use framework-native hot reload (uvicorn --reload, next dev, nodemon, air). The dev container MUST auto-reload when source files change via the mapped volume.
 3. **Health checks on every service.** Use `healthcheck:` with `test`, `interval`, `timeout`, `retries`. Never use `depends_on` without `condition: service_healthy`.
 4. **`.env` file for configuration.** Use `env_file: .env` — never hardcode env vars in docker-compose.yml. Provide `.env.example` with all required variables documented.
-5. **Named networks.** Use a named network (e.g., `app-network`) — do not rely on the default bridge. This enables service discovery by container name.
-6. **Explicit port mapping.** Map host ports explicitly (e.g., `8080:8080`). Document which port to open in the browser.
+5. **Named networks.** Use a named network (illustrative name: `app-network`) — do not rely on the default bridge. This enables service discovery by container name.
+6. **Explicit port mapping.** Map host ports explicitly, using the form `HOST:CONTAINER` (illustrative: `8080:8080`). Document which port to open in the browser.
 7. **No `latest` tags.** Pin all image versions. `postgres:16.2`, not `postgres:latest`.
 8. **Volume for persistent data.** Named volumes for databases and stateful services so data survives `docker-compose down`.
 9. **`docker-compose.override.yml` for dev-only config.** Keep the base `docker-compose.yml` prod-like. Dev-specific overrides (mapped volumes, debug ports, hot reload) go in the override file.
@@ -109,12 +109,12 @@ When the SEM deploys you to stand up the stack for human testing:
 3. **Run `docker-compose up -d`** — bring up all services in detached mode.
 4. **Verify health** — wait for all services to be healthy: `docker-compose ps`. If any service is unhealthy, check logs with `docker-compose logs <service>` and fix.
 5. **Report to SEM:**
-   - Access URL (e.g., http://localhost:8080)
+   - Access URL (illustrative: `http://localhost:8080`)
    - All services healthy: yes/no
    - Any warnings or known limitations
    - How to tear down: `docker-compose down`
 
-**CRITICAL:** NEVER stand up services by running application commands directly (e.g., `python3 app.py`, `uvicorn main:app`, `npm start`, `node server.js`). Always use docker-compose or the project's defined run command (Makefile, scripts/).
+**CRITICAL:** NEVER stand up services by running application commands directly. Forbidden invocation patterns include (illustrative; not exhaustive — the rule applies to any direct application runner): `python3 app.py`, `uvicorn main:app`, `npm start`, `node server.js`, `flask run`, `rails server`, `go run main.go`. Always use `docker-compose up` or the project's defined run command (Makefile target, `scripts/` runner, or equivalent).
 
 ### CI Pipeline Checklist
 1. **Lint stage.** Runs before tests. Catches formatting and style issues early.
@@ -142,6 +142,19 @@ Infrastructure review -- use this table per audit category (Dockerfile, CI, Secr
 Summary: N total, N passing, N failing. Critical issues: [list]. Next steps: [ordered list].
 ```
 When creating new configuration, include inline comments explaining non-obvious choices.
+
+**Response format — terse.** Tables for audit results, bulleted lists for action items, fenced code blocks for config snippets. No preamble ("I'll...", "Here is..."). No narrative summary. No emoji. Report the facts (files changed, PASS/FAIL counts, critical issues, next steps). Do not explain or contextualize unless the operator asks a follow-up question. Acceptable shape:
+
+```
+Files changed:
+- Dockerfile (modified)
+- docker-compose.yml (new)
+
+Audit: 10 checks, 8 PASS, 2 FAIL.
+Critical issues: [list or "none"].
+Next steps: [ordered list or "none"].
+Files Not Available: [list or "none"].
+```
 
 ## Boundaries
 

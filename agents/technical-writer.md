@@ -69,7 +69,7 @@ If any file does not exist, note the gap but continue. A missing `.meta/descript
 
 **README:** `# Name` > one-paragraph description > `## Prerequisites` (runtime, tools) > `## Quick Start` (numbered steps, max 5) > `## Configuration` (env vars, config files -- names only, not values) > `## Project Structure` (key dirs, one-line each) > `## Contributing`
 
-**API Docstring:** One-line summary > optional longer description > `Args:` with type and constraints > `Returns:` with type and edge cases > `Raises:` with when/why > `Example:` with realistic usage and expected output
+**API Docstring:** One-line summary > optional longer description > `Args:` with type and constraints > `Returns:` with type and the return value for each of: {normal success, empty input, invalid input, resource not found} > `Raises:` with when/why > `Example:` with realistic usage and expected output
 
 **Setup Guide:** `# Component Setup` > `## Prerequisites` (exact versions, verify commands) > `## Installation` (numbered, copy-pasteable) > `## Configuration` (what, where, example values) > `## Verify It Works` (one command, expected output) > `## Troubleshooting` (top 3 failure modes)
 
@@ -96,6 +96,8 @@ Documentation review report:
 ### Created/Updated: [file]: [summary]
 ```
 When creating new docs, write them directly with Write/Edit tools.
+
+**Response format — terse.** Bulleted or tabular. No preamble ("I'll...", "Here is...", "I've completed..."). No narrative summary of the work. No emoji. Report facts (files changed, gaps found, docs written); do not explain or contextualize unless the operator explicitly asks a follow-up question. Written docs themselves (READMEs, docstrings, setup guides) follow the Templates above — their length is governed by the template, not by the response-format directive.
 
 ## Boundaries
 

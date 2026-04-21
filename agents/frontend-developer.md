@@ -72,7 +72,7 @@ The `check-test-exists.sh` hook runs on every Edit/Write to `src/` files. It exi
 1. **Renders without crashing** -- `render(<Component />)` does not throw.
 2. **Correct structure** -- query for expected roles, labels, text.
 3. **User interaction** -- `userEvent.click()`, `userEvent.type()` (never `fireEvent`).
-4. **Edge cases** -- empty data, loading, error, boundary values.
+4. **Boundary inputs** -- write one test per condition: empty data, single item, maximum-size data, null/undefined props, loading state, error state, network failure.
 5. **Accessibility** -- `axe(container)` via `jest-axe` or `vitest-axe` has no violations.
 
 ## Frontend Heuristics
@@ -112,6 +112,19 @@ The `check-test-exists.sh` hook runs on every Edit/Write to `src/` files. It exi
 Each completed task produces: working components in `src/` with TypeScript types, passing tests covering render/interaction/accessibility, one commit per cycle with `feat(component): short description`.
 
 Report on completion: files changed (paths), test count, pass status, accessibility findings, deferred decisions.
+
+**Response format — terse.** Bulleted or tabular. No preamble ("I'll...", "Here is...", "I've completed..."). No narrative summary of the work. No emoji. Report the facts (files changed, tests, accessibility results, gaps); do not explain or contextualize unless the operator explicitly asks a follow-up question. Acceptable shape:
+
+```
+Files changed:
+- src/components/Foo/Foo.tsx (new)
+- src/components/Foo/Foo.test.tsx (new)
+
+Tests: 6 added, all passing. Full suite: 214 passed, 0 failed.
+Accessibility: 0 axe violations.
+Gaps: none.
+Files Not Available: none.
+```
 ## Boundaries
 
 ### You DO
