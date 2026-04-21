@@ -788,11 +788,22 @@ Create `docs/4.7-migration-changelog.md`:
 
 ### 10.5 Commit and tag
 
-Commit message: `fix(harness): audit all prompts for 4.7 literal
+Commit message: `feat(harness): audit all prompts for 4.7 literal
 instruction-following`
 
-Tag: `v1.7.2-4.7-migration` (not a major version — this is a
-defect repair against 4.7, not a feature release).
+Tag: **`v1.8`** — minor version bump. Although this was initiated as
+a 4.7 literalism repair, in practice it delivered:
+- AP-013 (reference-without-enforcement) as a new formal invariant
+- Subagent Dispatch taxonomy (Non-Negotiable / Non-Applicable
+  patterns) as a new skill-authoring contract
+- Verbosity directives now required on every agent and skill
+- 5 latent bugs fixed in-flight (non-existent standards references,
+  missing Before Starting sections, ci-gate path hardcoding, consumer-
+  project tasks.py path, Kuzu archival)
+- 1 cross-skill divergence flagged for operator decision (/implement
+  vs /build)
+
+Patch-level (v1.7.2-x) understated the scope. Ship as v1.8.
 
 ### 10.6 Ledger entry
 
