@@ -288,6 +288,44 @@ list, we do not fix it, because the catalog is the contract for what
   encounter a request that feels dual-use, flag it explicitly
   rather than refusing silently."
 
+### AP-013: Reference without read-enforcement
+
+- **Grep:** Not a single-pass grep. This is a cross-reference
+  structural check. For each standards-doc or file reference in an
+  agent prompt (e.g., `standards/code/python-conventions.md`),
+  verify that at least one read-enforcement mechanism puts the
+  referenced content into the agent's context.
+- **Diagnosis:** Under 4.7's fewer-tool-calls default, an agent may
+  see a reference like "conformant to `standards/X.md`" and not
+  Read the file — because nothing forced it to. The reference
+  becomes a false promise the harness doesn't keep. Experimentally
+  validated 2026-04-17: when the trigger condition ("before writing
+  any code") fires, agents do read all forced-read files; when it
+  doesn't fire, they read only what the task requires. So the
+  enforcement mechanism is what makes the reference real.
+- **Check procedure:** For each file reference in the agent prompt:
+  1. Does the agent have a "Before Starting" (or equivalent)
+     section that mandates reading the referenced file?
+  2. Does `hooks/inject-standards.sh` inject the referenced
+     content into this agent's context at dispatch?
+  3. Is the referenced file listed in `requires_reading` in the
+     task YAML that dispatches this agent, enforced by
+     `hooks/check-required-reading.sh`?
+  If none of 1-3 is true, the reference is an AP-013 violation.
+- **Fix options:** (a) add the referenced file to the agent's
+  Before Starting section; (b) remove the reference and inline
+  the rules the reference was pointing to; (c) move enforcement
+  to `inject-standards.sh` or `requires_reading` at the task level.
+- **Exempt condition:** Pure documentation/commentary references
+  (e.g., "See also..." in a "Further Reading" section) are not
+  behavioral directives. They do not require enforcement.
+- **Revision history:** added 2026-04-17 during Phase 1 execution
+  after Experiment 2 confirmed the forced-reads pattern works
+  unconditionally for code-writing tasks on `backend-developer.md`
+  but only because all standards references in that file were
+  already on the Before Starting list. The check formalizes what
+  was verified implicitly.
+
 ---
 
 ## 4. The fix catalog
@@ -552,11 +590,21 @@ the main thread, and must include:
    looks like"
 5. Explicit verbosity directive: "Produce a diff for the target
    file. Return the diff text, the AP-NNN pattern counts before/
-   after, and the number of edits made. Terse output; no prose
-   commentary."
+   after, the number of edits made, and the AP-013 reference-
+   enforcement check result. Terse output; no prose commentary."
 6. Explicit completion rule: "You have one file to audit. When the
-   file contains zero AP-NNN matches, you are done. Do not audit
-   other files."
+   file contains zero matches for AP-001..AP-012 AND the AP-013
+   structural check passes (every standards reference has an
+   enforcement path), you are done. Do not audit other files."
+7. AP-013 structural check instructions: "After fixing AP-001..AP-012,
+   list every `standards/...` or `.md` file reference in the target
+   file. For each, identify the enforcement path: (a) a Before
+   Starting section in the same agent that mandates reading the
+   file, OR (b) `inject-standards.sh` injection (only for files in
+   `standards/`), OR (c) `requires_reading` in task YAML. If a
+   reference has no enforcement path, either add the file to the
+   Before Starting section or remove the reference. Document the
+   check in the completion report."
 
 ### 7.3 Dispatch pattern
 

@@ -146,12 +146,41 @@ All three sections use specific, observable language. No AP matches.
 | Section | AP | Edit type |
 |---|---|---|
 | Frontmatter description | AP-001 | Text replacement |
+| Body opening line 30 | AP-001 | Text replacement (added post-brief after grep pattern expansion) |
 | Responsibilities #2 | AP-001 | Text replacement |
 | Before Starting fallback | AP-004-ish | Text replacement |
+| Python Antipatterns #3 "proper caching" | AP-001 | Text replacement (caught by expanded grep) |
 | Python Antipatterns #4 | AP-004 | Text replacement |
 | Output Format | AP-008 | Addition (new paragraph) |
+| Error Recovery "best practices" | AP-001 | Text replacement (caught post-expansion) |
 
-Total edits: 5. No section deletions. No structural restructuring.
+Total edits: 8. No section deletions. No structural restructuring.
+
+## AP-013 structural check (added retroactively 2026-04-17)
+
+Per the AP-013 fix (added to the spec after Experiment 2), verify that
+every standards/code/etc reference in the updated file has a read-
+enforcement path.
+
+Standards-doc references after edits:
+1. `standards/code/python-conventions.md` (frontmatter description)
+2. `standards/code/typing-standards.md` (frontmatter description)
+3. `standards/code/python-conventions.md` (body opening line 30)
+4. `standards/code/typing-standards.md` (body opening line 30)
+5. `standards/code/python-conventions.md` (Responsibilities #2)
+
+Enforcement paths:
+- `standards/code/python-conventions.md` → listed in Before Starting
+  item 5: `~/.claude/standards/code/python-conventions.md`. ✓
+- `standards/code/typing-standards.md` → listed in Before Starting
+  item 3: `~/.claude/standards/code/typing-standards.md`. ✓
+
+Both referenced files are in the Before Starting mandatory-reads list.
+Under 4.7, the "before writing any code" conditional triggers the
+reads (Experiment 2 confirmed this empirically: the agent read all 7
+Before Starting files for a code-writing task).
+
+**AP-013 result for `agents/backend-developer.md`: PASS.**
 
 ## Verification plan
 
