@@ -97,6 +97,23 @@ to `python3 ~/.claude/scripts/tasks.py` (the actual install path).
 **Impact if unfixed:** Consumer projects broke on first task
 operation.
 
+### A8. `install.sh` hardcoded standards subdirectories → `git/commit-discipline.md` never installed
+
+**Severity:** High (silent failure; `/hotfix` Before Starting would fail on first run after fresh install)
+**Origin:** Pre-migration (dates to v1.6 when `standards/git/` was added)
+**Detection:** Post-install inventory run in the 4.7-migration soak
+check session (Apr 21). `~/.claude/standards/` was missing 8 files
+from what `dist/standards/` contained.
+**Fix:** `install.sh` now discovers standards subdirectories from
+`dist/standards/*/` dynamically. Both the `mkdir -p` line and the copy
+loop were rewritten. Same structural pattern as the earlier `ci-gate.sh`
+dynamic-path fix from A5.
+**Commit:** `a082460`
+**Impact if unfixed:** `/hotfix` dispatches would fail on the first
+forced Read of `~/.claude/standards/git/commit-discipline.md`. The
+file exists in the repo, compiles into `dist/`, but never reaches
+`~/.claude/`.
+
 ### A7. Kuzu graph DB archived
 
 **Severity:** Low (spec-authoring issue, not harness)
