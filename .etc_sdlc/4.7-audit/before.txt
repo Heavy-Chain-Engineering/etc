@@ -1,0 +1,24 @@
+=== AP-001: best practices / industry standard ===
+      14
+=== AP-002: be thorough / comprehensive ===
+       0
+=== AP-003: edge/corner cases ===
+      17
+=== AP-004: where applicable / as needed ===
+       5
+=== AP-005: progress scaffolding ===
+       7
+=== AP-006: implicit subagent dispatch (skills only) ===
+       8
+=== AP-007: implicit tool use (narrow patterns) ===
+       3
+=== AP-008: implicit verbosity — manual audit in Phase 2 ===
+N/A
+=== AP-009: tone assumptions ===
+       3
+=== AP-010: example-as-scope ===
+      64
+=== AP-011: implicit DoD (skills only) ===
+       1
+=== AP-012: cyber-adjacent phrasing ===
+      26

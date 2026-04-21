@@ -47,6 +47,9 @@ dist/
 .etc_sdlc/*
 !.etc_sdlc/incidents/
 !.etc_sdlc/incidents/**
+!.etc_sdlc/4.7-audit/
+!.etc_sdlc/4.7-audit/**
+!.etc_sdlc/4.7-migration-state.md
 
 # Internal docs (valuable ideas, not for public release)
 docs/.internal/
