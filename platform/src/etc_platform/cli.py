@@ -326,7 +326,7 @@ def phase_approve(
             conn.commit()
         except ValueError as exc:
             console.print(f"[red]Error: {exc}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
         console.print(
             f"[green]Phase advanced to '{next_phase}' for project '{project['name']}'[/green]"
@@ -843,7 +843,7 @@ def knowledge_resolve(
         winner_uuid = UUID(winner_id)
     except ValueError:
         console.print(f"[red]Invalid UUID: {winner_id}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     with get_conn() as conn:
         project = _require_active_project(conn)
@@ -971,7 +971,7 @@ def guardrails_override(
         parsed_id = UUID(check_id)
     except ValueError:
         console.print(f"[red]Invalid UUID: {check_id}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     with get_conn() as conn:
         result = override_guardrail_check(conn, parsed_id, reason=reason, overridden_by=by)

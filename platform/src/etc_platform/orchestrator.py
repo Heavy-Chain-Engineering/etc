@@ -16,16 +16,18 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-import psycopg
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from etc_platform.config import EtcConfig, load_config
 from etc_platform.events import EventBus, EventType, emit_event
 from etc_platform.phases import PhaseEngine
+
+if TYPE_CHECKING:
+    import psycopg
 
 logger = logging.getLogger(__name__)
 

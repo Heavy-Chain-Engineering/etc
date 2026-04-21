@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from uuid import UUID
+from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
@@ -12,6 +12,9 @@ from psycopg.rows import dict_row
 from typer.testing import CliRunner
 
 from etc_platform.cli import app
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 runner = CliRunner()
 

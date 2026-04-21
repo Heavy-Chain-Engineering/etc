@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any
-from uuid import UUID
-
-import psycopg
+from typing import TYPE_CHECKING, Any
 
 from etc_platform.events import EventType, emit_event
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 VALID_CHECK_TYPES: set[str] = {
     "automatic",

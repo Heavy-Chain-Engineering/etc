@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import UUID
-
-import psycopg
 
 from etc_platform.agent_runtime import AgentRunner
 from etc_platform.config import EtcConfig
@@ -18,6 +17,9 @@ from etc_platform.retry import (
     retry_all_eligible,
     should_retry,
 )
+
+if TYPE_CHECKING:
+    import psycopg
 
 # ---------------------------------------------------------------------------
 # Helpers

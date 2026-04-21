@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-import psycopg
 import pytest
 
 from etc_platform.intake import (
@@ -20,6 +20,9 @@ from etc_platform.intake import (
     triage_summary,
     update_source_material,
 )
+
+if TYPE_CHECKING:
+    import psycopg
 
 
 def _create_project(db: psycopg.Connection) -> UUID:

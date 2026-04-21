@@ -7,10 +7,9 @@ fixture) but never call the real Claude API.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import UUID, uuid4
-
-import psycopg
 
 from etc_platform.config import EtcConfig
 from etc_platform.events import EventType, emit_event
@@ -25,6 +24,9 @@ from etc_platform.knowledge import (
 )
 from etc_platform.phases import PhaseEngine
 from etc_platform.run_engine import RunEngine
+
+if TYPE_CHECKING:
+    import psycopg
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -286,7 +288,7 @@ class TestFullProjectLifecycle:
         run2_id = run2["id"]
 
         # Agent 1 contributes knowledge
-        k1_id = contribute_knowledge(
+        contribute_knowledge(
             db, pid, key="api_base_url", value="https://api.example.com/v1",
             scope="project", contributed_by=run1_id,
         )
@@ -297,7 +299,7 @@ class TestFullProjectLifecycle:
         assert entry["value"] == "https://api.example.com/v1"
 
         # Agent 2 contributes conflicting knowledge (same key, different value, different contributor)
-        k2_id = contribute_knowledge(
+        contribute_knowledge(
             db, pid, key="api_base_url", value="https://api.example.com/v2",
             scope="project", contributed_by=run2_id,
         )
@@ -404,7 +406,7 @@ class TestFullProjectLifecycle:
         PhaseEngine.activate_phase(db, pid, "Build")
 
         # Build a graph with ready nodes
-        graph_id = build_fanout_graph(
+        build_fanout_graph(
             db, pid, phases["Build"], "run-engine-test",
             agents=[
                 {"name": "worker-1", "agent_type": "researcher", "assignment": {"task": "A"}},
@@ -486,7 +488,7 @@ class TestResilience:
         graph_id = GraphEngine.create_graph(db, pid, phases["Build"], "partial-graph")
         n1 = GraphEngine.add_node(db, graph_id, "done-node", "leaf", agent_type="researcher")
         n2 = GraphEngine.add_node(db, graph_id, "running-node", "leaf", agent_type="researcher")
-        n3 = GraphEngine.add_node(db, graph_id, "ready-node", "leaf", agent_type="researcher")
+        GraphEngine.add_node(db, graph_id, "ready-node", "leaf", agent_type="researcher")
         GraphEngine.start_graph(db, graph_id)
 
         # Simulate partial execution
@@ -518,7 +520,7 @@ class TestResilience:
         PhaseEngine.activate_phase(db, pid, "Build")
 
         # Create a graph with ready nodes
-        graph_id = build_fanout_graph(
+        build_fanout_graph(
             db, pid, phases["Build"], "restart-test",
             agents=[
                 {"name": "w1", "agent_type": "researcher", "assignment": {"task": "X"}},

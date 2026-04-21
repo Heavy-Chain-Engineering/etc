@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from typing import TYPE_CHECKING
 
-import psycopg
 import pytest
 
 from etc_platform.metrics import ProjectMetrics
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 # ---------------------------------------------------------------------------
 # Helpers

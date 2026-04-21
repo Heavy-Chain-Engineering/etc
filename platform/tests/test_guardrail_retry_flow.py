@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import UUID
 
-import psycopg
 import pytest
 
 from etc_platform.guardrails import (
@@ -24,6 +24,9 @@ from etc_platform.guardrails import (
     emit_guardrail_violation,
 )
 from etc_platform.orchestrator import DecisionType, SEMDecision, execute_decision
+
+if TYPE_CHECKING:
+    import psycopg
 
 # ---------------------------------------------------------------------------
 # Helpers

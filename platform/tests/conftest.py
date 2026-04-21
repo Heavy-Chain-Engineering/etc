@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
 from psycopg.rows import dict_row
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 @pytest.fixture(scope="session")

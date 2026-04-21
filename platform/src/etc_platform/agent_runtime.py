@@ -11,15 +11,18 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
-import psycopg
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 
 from etc_platform.config import EtcConfig, load_config
 from etc_platform.events import EventType, emit_event
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 logger = logging.getLogger(__name__)
 

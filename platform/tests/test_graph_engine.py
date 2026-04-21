@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-import psycopg
-
 from etc_platform.graph_engine import GraphEngine, build_fanout_graph
+
+if TYPE_CHECKING:
+    import psycopg
 
 
 def _create_project_and_phase(db: psycopg.Connection) -> tuple[UUID, UUID]:
@@ -250,7 +252,7 @@ class TestGraphCompletion:
         pid, phase_id = _create_project_and_phase(db)
         graph_id = GraphEngine.create_graph(db, pid, phase_id, "g")
         n1 = GraphEngine.add_node(db, graph_id, "leaf-1", "leaf")
-        n2 = GraphEngine.add_node(db, graph_id, "leaf-2", "leaf")
+        GraphEngine.add_node(db, graph_id, "leaf-2", "leaf")
         GraphEngine.start_graph(db, graph_id)
 
         GraphEngine.mark_node_running(db, n1)
@@ -473,7 +475,7 @@ class TestParentActivationGate:
         c1 = GraphEngine.add_node(db, graph_id, "group-1", "composite")
         c2 = GraphEngine.add_node(db, graph_id, "group-2", "composite")
         GraphEngine.add_dependency(db, c2, c1)
-        leaf = GraphEngine.add_node(
+        GraphEngine.add_node(
             db, graph_id, "nested-leaf", "leaf",
             agent_type="researcher", parent_node_id=c2, depth=1,
         )
@@ -488,7 +490,7 @@ class TestParentActivationGate:
         pid, phase_id = _create_project_and_phase(db)
         graph_id = GraphEngine.create_graph(db, pid, phase_id, "g")
         composite = GraphEngine.add_node(db, graph_id, "group-1", "composite")
-        leaf = GraphEngine.add_node(
+        GraphEngine.add_node(
             db, graph_id, "child-leaf", "leaf",
             agent_type="researcher", parent_node_id=composite, depth=1,
         )
@@ -567,7 +569,7 @@ class TestCompositeStatusRollup:
             db, graph_id, "leaf-1", "leaf",
             agent_type="researcher", parent_node_id=composite, depth=1,
         )
-        l2 = GraphEngine.add_node(
+        GraphEngine.add_node(
             db, graph_id, "leaf-2", "leaf",
             agent_type="researcher", parent_node_id=composite, depth=1,
         )

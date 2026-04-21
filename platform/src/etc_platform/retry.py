@@ -10,12 +10,14 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
-import psycopg
+if TYPE_CHECKING:
+    from uuid import UUID
 
-from etc_platform.agent_runtime import AgentRunner
+    import psycopg
+
+    from etc_platform.agent_runtime import AgentRunner
 
 logger = logging.getLogger(__name__)
 

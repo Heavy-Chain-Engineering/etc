@@ -524,7 +524,7 @@ class TestGuardrailMiddleware:
 
         # guardrail_results should be a JSONB summary
         gr = output["guardrail_results"]
-        assert isinstance(gr, (dict, str))
+        assert isinstance(gr, dict | str)
 
     def test_record_checks_accepts_on_all_pass(self, db: psycopg.Connection) -> None:
         output_id = _setup_output_chain(db)
