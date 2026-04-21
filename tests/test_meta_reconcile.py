@@ -5,9 +5,7 @@ Uses temporary directory structures to simulate real project layouts.
 """
 
 import json
-import os
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest

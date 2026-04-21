@@ -14,7 +14,6 @@ from typing import Any
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DIST_DIR = REPO_ROOT / "dist"
 SETTINGS_HOOKS_PATH = DIST_DIR / "settings-hooks.json"

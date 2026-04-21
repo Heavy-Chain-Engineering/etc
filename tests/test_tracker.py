@@ -3,10 +3,10 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
-import shutil
 
 TRACKER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".sdlc", "tracker.py")
 

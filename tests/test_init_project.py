@@ -37,7 +37,6 @@ from typing import Any
 import pytest
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_NAME = "init-project"
 

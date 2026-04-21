@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-
 HOOK_NAME = "check-test-exists.sh"
 
 

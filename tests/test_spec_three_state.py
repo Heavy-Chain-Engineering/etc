@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_SRC = REPO_ROOT / "skills" / "spec" / "SKILL.md"
 

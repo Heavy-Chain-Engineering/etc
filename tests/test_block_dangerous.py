@@ -11,7 +11,6 @@ from typing import Any
 
 import pytest
 
-
 HOOK_NAME = "block-dangerous-commands.sh"
 BLOCKED = 2
 ALLOWED = 0

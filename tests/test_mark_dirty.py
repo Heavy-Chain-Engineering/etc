@@ -12,7 +12,6 @@ from typing import Any
 
 import pytest
 
-
 HOOK_NAME = "mark-dirty.sh"
 
 

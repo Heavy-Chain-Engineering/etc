@@ -14,7 +14,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 HOOK_NAME = "check-phase-gate.sh"
 
 

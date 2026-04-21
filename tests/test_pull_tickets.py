@@ -12,7 +12,6 @@ from pathlib import Path
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DIST_DIR = REPO_ROOT / "dist"
 SPEC_PATH = REPO_ROOT / "spec" / "etc_sdlc.yaml"

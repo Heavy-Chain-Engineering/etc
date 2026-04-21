@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 HOOK_NAME = "check-invariants.sh"
 BLOCKED = 2
 ALLOWED = 0

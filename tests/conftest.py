@@ -14,7 +14,6 @@ from typing import Any
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_DIR = REPO_ROOT / "hooks"
 HOOK_TIMEOUT_SECONDS = 10
