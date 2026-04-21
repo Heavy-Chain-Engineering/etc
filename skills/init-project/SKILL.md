@@ -18,6 +18,80 @@ After you finish, the `tier-0-preflight` hook stops blocking Edit|Write, the rol
 manifest loader has manifests to load, and `/build` has the context substrate it
 needs.
 
+## Response Format (Verbosity)
+
+Terse and structured. Prose is limited to:
+(a) phase-entry announcements, (b) interactive question render blocks,
+(c) the Completion Report, (d) the Post-Completion Guidance block.
+Use fenced code blocks for machine-readable artifacts (template diffs,
+YAML, `AskUserQuestion` call shapes). Use tables for enumerations of
+files, directories, or template sources. No preamble ("I'll...", "Here
+is..."). No narrative summary. No emoji. Max 300 words per phase-entry
+response unless producing the Completion Report (max 600 words) or the
+Post-Completion Guidance block (max 400 words). When `project-bootstrapper`
+returns in Phase 1, summarize its result in <= 10 lines; do not echo the
+full subagent output.
+
+## Subagent Dispatch (Non-Negotiable)
+
+Phase 1 dispatches the `project-bootstrapper` subagent. The rules below
+are absolute:
+
+1. **You MUST invoke the Agent tool exactly once with
+   `subagent_type: "project-bootstrapper"`.** This is the only way
+   Phase 1 executes the technical scaffold.
+2. **You MUST NOT perform technical scaffold work in your own context.**
+   You MUST NOT install tooling, write `pyproject.toml` / `package.json` /
+   `Cargo.toml` / `go.mod`, scaffold `src/` layout, generate CI config,
+   or write any `.meta/description.md` files. That work belongs to
+   `project-bootstrapper`.
+3. **You MUST NOT shell out to replicate `project-bootstrapper`'s
+   behavior.** No `cookiecutter`, no `create-next-app`, no copy of a
+   template monorepo. Dispatch the agent; it owns the logic.
+4. **You MUST NOT call another skill to do Phase 1.** No skill-calls-
+   skill chaining. Dispatch the agent directly.
+5. **You proceed to Phase 2 only after the dispatched agent returns
+   a result.** Read the returned `.meta/` tree layout before extracting
+   the brownfield vocabulary for Phase 2.
+6. **Your allowed in-context actions for Phase 1 are limited to:**
+   (a) detecting whether Phase 1 is already complete (existing
+   `.meta/description.md` plus tooling files), (b) writing the two
+   Tier 0 placeholder stubs (`DOMAIN.md`, `PROJECT.md`) so the
+   `tier-0-preflight` hook allows the dispatched agent's writes,
+   (c) issuing the one Agent-tool invocation, (d) reading and
+   summarizing the agent's returned result, (e) extracting
+   candidate entity nouns from `.meta/**/description.md` for Phase 2.
+
+Phases 2, 3, and 4 run in your own context. They are interactive (Phase 2)
+or template-copy (Phases 3, 4) — no subagent dispatch. Do not dispatch
+subagents for those phases.
+
+## Before Starting (Non-Negotiable)
+
+Read these files in order before any phase action, using the Read tool
+on each exact path:
+
+1. `standards/process/interactive-user-input.md` — the
+   `AskUserQuestion` Pattern A and visual-marker Pattern B referenced
+   throughout Phase 2 and Phase 3. If this file does not exist, STOP
+   and report the missing file to the user — interactive phases
+   cannot proceed without it.
+2. `skills/init-project/templates/DOMAIN.md.template` — the Phase 2
+   DOMAIN.md template with `{{PLACEHOLDERS}}`. If missing, STOP and
+   report the gap pointing at BR-011 in the PRD.
+3. `skills/init-project/templates/PROJECT.md.template` — the Phase 2
+   PROJECT.md template. If missing, STOP and report.
+4. `skills/init-project/templates/CLAUDE.md.template` — the Phase 2
+   CLAUDE.md template. If missing, STOP and report.
+
+The five Tier 1 README stubs under `skills/init-project/templates/tier-1/`
+and the six role-related templates under `skills/init-project/templates/roles/`
+and `skills/init-project/templates/roles-README.md` are copied verbatim
+via `Bash cp`; do NOT Read them in your context at dispatch. Reading
+them pre-emptively burns tokens and risks transcription drift. Verify
+their existence only at the moment of copy (Phases 3 and 4) — if `cp`
+fails because a template is missing, STOP and report the gap.
+
 ## Usage
 
 ```
@@ -271,19 +345,26 @@ exists" question).
 
 ### Step 2: Delegate to project-bootstrapper
 
-**Delegation:** invoke `project-bootstrapper` via the Task tool. Do NOT shell
-out. Do NOT re-implement its logic inline. Do NOT call another skill.
+**Delegation:** invoke `project-bootstrapper` via the Agent tool. The
+Subagent Dispatch (Non-Negotiable) section above applies absolutely —
+one Agent invocation, no in-context scaffold work, no shell replication,
+no skill-calls-skill.
 
-Use the Task tool with exactly this shape:
+Use the Agent tool with exactly this shape:
 
 ```
-Task(
+Agent(
   subagent_type: "project-bootstrapper",
   description: "Bootstrap technical scaffold",
-  prompt: "Run your greenfield or brownfield detection and complete your
-           standard phases (survey / scaffold / tooling gap analysis / .meta/
-           tree generation). When finished, report the .meta/ tree layout so
-           /init-project can consume the vocabulary for Phase 2."
+  prompt: "Run your greenfield-or-brownfield detection and complete every
+           phase defined in your agent definition: survey, scaffold,
+           tooling gap analysis, and .meta/ tree generation. When finished,
+           return: (1) the absolute path of every file created or modified,
+           (2) the full .meta/ directory tree layout with one line per
+           description.md written, (3) the detected mode (greenfield vs
+           brownfield), (4) any tooling gaps you could not fill and the
+           reason. Do not include narrative prose — return the artifact
+           list and the tree only."
 )
 ```
 
@@ -413,7 +494,8 @@ The 6 questions are:
 4. **"How does the business make money?"**
    Transaction fees? Subscriptions? Usage-based? Take rate? This determines
    the Revenue Model section and often implies non-negotiable constraints
-   (e.g., per-transaction uptime requirements).
+   (illustrative; not exhaustive: per-transaction uptime requirements,
+   settlement-window latency, reconciliation cadence).
 
 5. **"What does the business explicitly NOT do?"**
    Scope boundaries. "We do not provide tax advice." "We do not custody
@@ -580,8 +662,9 @@ If the user chooses "Defer", record the deferral in the completion report.
 
 **Before rendering the AskUserQuestion call**, you may include a brief
 recommendation paragraph explaining *why* you're recommending one option
-over the other (e.g., "Your DOMAIN.md implies strong bounded contexts, so
-I'd recommend creating Tier 2 now"). But the actual question MUST go
+over the other (illustrative phrasing: "Your DOMAIN.md implies strong
+bounded contexts, so I'd recommend creating Tier 2 now"). But the
+actual question MUST go
 through `AskUserQuestion` so the user sees it as a structural picker,
 not as a buried paragraph in prose.
 
@@ -629,9 +712,9 @@ The five roles and their purposes:
 | `frontend-dev` | `templates/roles/frontend-dev.yaml` | Leaf dev, frontend variant |
 | `code-reviewer` | `templates/roles/code-reviewer.yaml` | Read-only, cross-context |
 
-`cp -n` is no-clobber: if `roles/backend-dev.yaml` already exists (e.g.,
-from a prior experiment), it is preserved untouched and the other four
-manifests are still created.
+`cp -n` is no-clobber: if `roles/backend-dev.yaml` already exists (for
+any reason — prior experiment, manual edit, earlier partial run), it
+is preserved untouched and the other four manifests are still created.
 
 Every starter manifest follows the soft-POLA pattern:
 - `default_consumes:` block naming the files and globs the role sees by default
@@ -647,9 +730,13 @@ soft-POLA shape, which is the whole reason these templates exist.
 
 After writing, each manifest must parse as valid YAML and must reference only
 files that either (a) exist in the repo already or (b) will exist after
-`/init-project` completes (e.g., `DOMAIN.md`, `PROJECT.md`, `docs/prds/`). If a
-template references a file that does not match this invariant, stop and report
-the drift -- this is a template bug, not a user problem.
+`/init-project` completes (the complete set of category-b post-init files:
+`DOMAIN.md`, `PROJECT.md`, `CLAUDE.md`, `docs/prds/`, `docs/plans/`,
+`docs/sources/`, `docs/standards/`, `docs/guides/`, and — if the user
+opted in at Phase 3 Step 2 — `docs/adrs/`, `docs/contexts/`,
+`docs/invariants/`). If a template references a file that does not match
+this invariant, stop and report the drift -- this is a template bug, not
+a user problem.
 
 ## Completion Report
 
@@ -716,9 +803,57 @@ Next step:
   /build
 ```
 
+## Definition of Done
+
+`/init-project` is done for a given invocation when ALL of the following
+observable artifacts exist and pass:
+
+1. `DOMAIN.md` exists at repo root, is non-empty, and contains every one
+   of the nine required sections in the specified order: Domain, Core
+   Problem, Revenue Model, What It Does, Operational & Regulatory
+   Constraints, Product Core, What It Is Not, Risk Posture, Design
+   Implications.
+2. `PROJECT.md` exists at repo root, is non-empty, and is not flagged
+   as a Phase 1 placeholder stub (the "placeholder" comment from
+   Phase 1 Step 1 has been replaced).
+3. `CLAUDE.md` exists at repo root. If it existed before the run, it
+   was preserved or merged per the user's `AskUserQuestion` answer in
+   Phase 2 Step 7 — never silently overwritten.
+4. The five Tier 1 directories exist with README stubs:
+   `docs/prds/README.md`, `docs/plans/README.md`,
+   `docs/sources/README.md`, `docs/standards/README.md`,
+   `docs/guides/README.md`. Each stub is byte-identical to its
+   template source under `skills/init-project/templates/tier-1/`
+   (verify with `diff`).
+5. `roles/README.md` exists and is byte-identical to
+   `skills/init-project/templates/roles-README.md`.
+6. All five role manifests exist under `roles/`: `sem.yaml`,
+   `architect.yaml`, `backend-dev.yaml`, `frontend-dev.yaml`,
+   `code-reviewer.yaml`. Each manifest is byte-identical to its
+   template source under `skills/init-project/templates/roles/`
+   (unless the file pre-existed and was preserved by `cp -n`).
+7. Every role manifest parses as valid YAML and contains a
+   `default_consumes` block and a `discovery` block with an
+   `allowed_requests` field. No manifest contains a `forbids` block —
+   the soft-POLA pattern uses defaults + discovery, not denials.
+8. If Phase 1 ran, `.meta/description.md` exists at repo root and was
+   written by the dispatched `project-bootstrapper` agent (not by
+   `/init-project` in its own context).
+9. If Phase 1 ran, the two Phase 1 placeholder stubs for `DOMAIN.md`
+   and `PROJECT.md` have been overwritten by Phase 2 (their
+   "placeholder" comment text no longer appears in either file).
+10. The Completion Report has been rendered with every phase marked
+    run, skipped, or deferred — one line per phase — and with the
+    `created_files[]` and `skipped_files[]` lists fully enumerated.
+11. The Post-Completion Guidance block has been rendered.
+
+If any of the eleven items is not satisfied, `/init-project` is NOT
+done, regardless of how many phases reported success individually. Do
+not render the Completion Report as "complete" unless every item holds.
+
 ## Constraints
 
-- Phase 1 MUST use the Task tool with `subagent_type: "project-bootstrapper"`.
+- Phase 1 MUST use the Agent tool with `subagent_type: "project-bootstrapper"`.
   No shell delegation, no skill-calls-skill, no inline reimplementation.
 - Phase 2 MUST ask the mode question upfront before the six questions.
 - Phase 2 MUST NOT silently overwrite an existing `CLAUDE.md`.

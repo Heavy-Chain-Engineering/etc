@@ -13,6 +13,51 @@ This is the intelligence layer that replaces Taskmaster's PRD parsing and task
 expansion. It reads specs and tasks, understands dependencies, and generates
 the task YAML files that `/implement` dispatches.
 
+## Response Format (Verbosity)
+
+Terse and structured. Use tables for task/score data, numbered lists for
+ordered procedures, fenced code blocks for machine-readable artifacts (task
+YAML, JSON arrays piped to `tasks.py bulk-create`, tree output). Prose is
+limited to: (a) workflow-phase announcements, (b) rejection messages when
+a decomposition rule is violated, (c) the Post-Completion Guidance block.
+No preamble ("I'll...", "Here is..."). No narrative summary. No emoji. Max
+300 words per response unless producing a tree/score report (max 600 words)
+or the final Post-Completion block (max 800 words). When displaying the
+task tree, render the raw `tasks.py tree` output; do not re-describe it in
+prose.
+
+## Subagent Dispatch (Non-Applicable)
+
+`/decompose` does not dispatch subagents. It is the decomposition engine
+itself — called by `/build` (Step 3 and Step 4) and `/implement`. All
+task-creation work happens in your own context by invoking the `tasks.py`
+CLI via Bash. You MUST NOT attempt to Agent-dispatch the creation, scoring,
+or tree construction of tasks; those operations live in this skill.
+
+Your allowed in-context actions are: (a) reading specs and parent task
+YAML via Read, (b) reading `requires_reading` files referenced by a parent
+task, (c) invoking `tasks.py bulk-create`, `tasks.py create`,
+`tasks.py score`, `tasks.py ready-to-decompose`, `tasks.py tree`,
+`tasks.py waves`, `tasks.py status` via Bash, (d) setting parent status
+to `decomposed` via `tasks.py set-status`, (e) rendering the
+Post-Completion Guidance block and the `AskUserQuestion` call.
+
+## Before Starting (Non-Negotiable)
+
+Read these files in order before any decomposition action, using the
+Read tool on each exact path:
+
+1. The spec file or parent task YAML passed as the argument — full contents.
+2. For parent-task expansion: every path listed in the parent's
+   `requires_reading` field.
+3. `standards/process/interactive-user-input.md` — AskUserQuestion
+   Pattern A (used in Post-Completion Guidance).
+
+If the input spec or parent task file does not exist, STOP and report the
+missing path. If `standards/process/interactive-user-input.md` does not
+exist, STOP and report — the Post-Completion Guidance step cannot
+complete without it. Do not proceed to task creation on partial reads.
+
 ## Usage
 
 ```
@@ -32,7 +77,7 @@ the task YAML files that `/implement` dispatches.
    hand-write task YAML files with the Write tool — the CLI is ~75% cheaper in
    tokens, enforces schema at write time, and writes atomically (all tasks or
    none). See "Creating Tasks" below for the invocation format.
-4. **Score each task** — run `python3 ~/.claude/scripts/tasks.py score`
+4. **Score each task** — invoke `python3 ~/.claude/scripts/tasks.py score`
 5. **Flag complex tasks** — anything scoring > 7 needs further decomposition
 6. **Auto-decompose flagged tasks** — recurse into them immediately
 
@@ -53,7 +98,7 @@ the task YAML files that `/implement` dispatches.
 
 ### When auto-decomposing (batch mode):
 
-1. Run `python3 ~/.claude/scripts/tasks.py ready-to-decompose`
+1. Invoke `python3 ~/.claude/scripts/tasks.py ready-to-decompose`
 2. For each flagged task, apply the subtask expansion workflow
 3. Continue until no tasks exceed the threshold
 
@@ -214,6 +259,40 @@ what's ready for dispatch.
 - ALWAYS verify the tree after decomposition
 - If a task can't be decomposed further (already 1-2 criteria, 1-2 files),
   leave it as-is even if complexity is high — some tasks are irreducibly complex
+
+## Definition of Done
+
+`/decompose` is done for a given invocation when ALL of the following
+observable artifacts exist and pass:
+
+1. For PRD decomposition: at least one task YAML file exists under
+   `.etc_sdlc/features/{slug}/tasks/`, created via
+   `python3 ~/.claude/scripts/tasks.py bulk-create`. No task YAML was
+   written with the Write tool.
+2. For parent-task expansion: the parent task's `status` field equals
+   `decomposed`, set via `python3 ~/.claude/scripts/tasks.py set-status`.
+3. `python3 ~/.claude/scripts/tasks.py score` reports every leaf task
+   with a complexity score less than or equal to 7. If any leaf still
+   scores greater than 7, recurse into it — decomposition is not done.
+4. Every acceptance criterion from the parent (or from every spec
+   section, for PRD decomposition) appears in exactly one leaf task.
+   No orphaned criteria. Verifiable via a diff between parent AC set
+   and the union of child AC sets.
+5. Every file from the parent's `files_in_scope` (or every file in the
+   spec's Module Structure, for PRD decomposition) appears in exactly
+   one leaf task. No orphaned files. No two leaf tasks share a file in
+   `files_in_scope`.
+6. `python3 ~/.claude/scripts/tasks.py tree` renders a valid hierarchy
+   with parent tasks marked `decomposed` and every leaf marked
+   `pending`.
+7. `python3 ~/.claude/scripts/tasks.py waves` returns successfully and
+   reports no file overlaps within any wave.
+8. The Post-Completion Guidance block has been rendered and the
+   `AskUserQuestion` call has been issued.
+
+If any of the eight items fails, `/decompose` is NOT done regardless of
+how many subtasks were created. Do not return control to `/build` or
+`/implement` until every item holds.
 
 ## Post-Completion Guidance
 

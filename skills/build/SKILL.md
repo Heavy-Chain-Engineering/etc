@@ -1,6 +1,6 @@
 ---
 name: build
-description: Full pipeline conductor — validate, decompose recursively, plan waves, execute wave-by-wave, verify. The single entry point for building any feature from spec to working code.
+description: Full pipeline conductor — validate, decompose recursively, plan waves, dispatch each wave via Agent-tool subagent calls, verify. The single entry point for building any feature from spec to working code.
 ---
 
 # /build — The Conductor
@@ -11,6 +11,64 @@ deterministic sequence with checkpoints at every step.
 
 Unlike `/implement` (which handles dispatch) or `/decompose` (which handles
 breakdown), `/build` owns the full pipeline and ensures nothing is skipped.
+
+## Response Format (Verbosity)
+
+Terse and structured. Use tables for wave/task data, numbered lists for
+ordered procedures, fenced code blocks for machine-readable artifacts
+(state.yaml, wave plans, verification reports). Prose is limited to:
+(a) step-entry announcements defined below, (b) rejection messages from
+Step 1, (c) escalation messages to the user. No preamble ("I'll...",
+"Here is..."). No narrative summary. No emoji. Max 300 words per
+orchestrator-level response unless producing a step-transition report
+(max 600 words) or the final Step 8 summary (max 800 words). When a
+dispatched subagent returns, summarize the result in <= 5 lines; do not
+echo the full subagent output.
+
+## Subagent Dispatch (Non-Negotiable)
+
+Your sole execution mode for task work is dispatch. You MUST NOT perform
+task implementation in your own context. The rules below are absolute:
+
+1. **For every task in the current wave, you MUST invoke the Agent tool
+   once with `subagent_type` set to the task's `assigned_agent` field.**
+   One Agent invocation per task, no exceptions.
+2. **You MUST NOT implement the task in your own context.** If you catch
+   yourself writing production code, writing tests, or editing files in
+   `src/`, stop and dispatch to the correct agent instead.
+3. **You proceed to the next wave only after every dispatched subagent
+   has returned a result.** Read each result before updating task status.
+4. **In parallel fan-out within a wave, issue all N Agent-tool calls
+   in a single turn.** The wave-planner has already verified file-set
+   isolation; do not serialize within a wave unless a subagent
+   returned an escalation requiring the next Agent call to wait.
+5. **Your allowed in-context actions are limited to:** (a) reading state
+   via Read/Grep/Glob/Bash, (b) announcing step and wave transitions,
+   (c) writing briefing prompts for subagents, (d) reading and
+   summarizing subagent results, (e) updating `state.yaml` and task
+   status via `tasks.py` Bash calls, (f) running verification commands
+   (pytest, compile, invariant checks) at Step 7, (g) writing the
+   `verification.md` artifact.
+
+If a task has no `assigned_agent` or the agent name does not resolve,
+STOP and ask the user which agent should own it. Do not default to
+doing the task yourself.
+
+## Before Starting (Non-Negotiable)
+
+Read these files in order before any Step 1 action, using the Read tool
+on each exact path:
+
+1. `standards/process/interactive-user-input.md` — AskUserQuestion
+   Pattern A (used in Steps 3 and 5)
+2. `INVARIANTS.md` (at repo root, if present) — the verify commands
+   referenced in Step 7
+
+If `INVARIANTS.md` does not exist, record that Step 7 will skip the
+invariant-check sub-step and proceed. If
+`standards/process/interactive-user-input.md` does not exist, STOP and
+report the missing file to the user — Steps 3 and 5 cannot proceed
+without it.
 
 ## Usage
 
@@ -56,8 +114,8 @@ the DoR check already happened upstream. Write `step_completed: 1_validate`.
 
 **Step 1b: Inline DoR check (for hand-written specs).**
 
-If the spec did NOT come through /spec — e.g., the user ran
-`/build spec/some-file.md` on a hand-written PRD — evaluate the DoR
+If the spec did NOT come through /spec (for instance, the user ran
+`/build spec/some-file.md` on a hand-written PRD), evaluate the DoR
 checklist yourself against the spec file contents:
 
 - [ ] **Specific enough to implement without ambiguity.** No phrases like
@@ -254,27 +312,41 @@ Wait for the user's selection before executing.
 
 For each wave, in order:
 
-**6a. Dispatch wave N:**
-- For each task in the wave:
-  - Update task status: `in_progress`
-  - Spawn subagent with the task's assigned_agent type
-  - Subagent receives: task file, standards injection, project invariants
-  - Subagent is gated by hooks: TDD, invariants, required reading, phase gate
-  - Parallel dispatch for tasks in the same wave (file-set isolated)
+**6a. Dispatch wave N (Agent-tool rules from the Subagent Dispatch
+section above apply absolutely):**
+
+For each task in the current wave:
+- Update task status via `python3 ~/.claude/scripts/tasks.py set-status
+  --id {task_id} --status in_progress`
+- Invoke the Agent tool ONCE with `subagent_type` set to the task's
+  `assigned_agent` field. The prompt MUST include: the task YAML path,
+  the list of `requires_reading` file paths, the list of
+  `files_in_scope` paths, the acceptance criteria, and the instruction
+  "Dispatch hooks will enforce TDD, invariants, required reading, and
+  phase gate — do not circumvent them."
+- You MUST NOT read, edit, or write any file listed in the task's
+  `files_in_scope` in your own context. That work belongs to the
+  dispatched subagent.
+
+Dispatch all tasks in the wave in a single turn (parallel fan-out).
+The wave-planner from Step 5 has already verified file-set isolation;
+do not serialize within a wave.
 
 **6b. Wait for wave completion:**
-- All subagents in the wave must complete or escalate
-- Update completed task statuses: `completed`
-- Update escalated task statuses: `escalated`
+- Every dispatched subagent must return a result before you proceed.
+- For each returned result, set task status to `completed` (if the
+  subagent reported success) or `escalated` (if the subagent reported
+  a blocker) via `tasks.py set-status`.
 
 **6c. Verify wave:**
 - Run tests: `python3 -m pytest --tb=short -q`
 - If tests fail: STOP. Report the failure. Do NOT proceed to next wave.
-- If any task escalated: STOP. Report the escalation to the user.
+- If any task status is `escalated`: STOP. Report the escalation to
+  the user.
 
 **6d. Checkpoint:**
 - Update `state.yaml`: `waves_completed: {N}`
-- This enables resume from the last completed wave if session dies
+- This enables resume from the last completed wave if session dies.
 
 **6e. Proceed to next wave or finish.**
 
@@ -389,11 +461,15 @@ If no incomplete features found: "No build in progress. Start with: /build spec/
 
 - You NEVER skip steps. The pipeline is sequential and checkpointed.
 - You NEVER proceed past a failed wave. Stop and report.
-- You NEVER dispatch tasks scoring > 7. Decompose first.
-- You ALWAYS wait for user confirmation before executing (Step 6).
-- You ALWAYS write state.yaml after each step for resume capability.
-- You ALWAYS write verification.md before reporting success.
-- If context is getting large (> 60%), suggest `/checkpoint` then `/compact`.
+- You NEVER issue an Agent-tool call for a task whose complexity score
+  is > 7. Decompose it via Step 4 first.
+- You ALWAYS wait for user confirmation before entering Step 6.
+- You ALWAYS write `state.yaml` at each step completion for resume
+  capability.
+- You ALWAYS write `verification.md` before reporting success in
+  Step 8.
+- If context utilization exceeds 60%, suggest `/checkpoint` then
+  `/compact`.
 
 ## Post-Completion Guidance
 
@@ -428,4 +504,33 @@ Wave {N} of {total} complete. {M} tasks done, {K} remaining.
 Tests passing. Proceeding to Wave {N+1}...
 ```
 
-Keep the user informed at every natural boundary.
+## Definition of Done
+
+The `/build` pipeline is done for a given feature when ALL of the
+following observable artifacts exist and pass:
+
+1. `.etc_sdlc/features/{slug}/state.yaml` exists with
+   `current_step: 8` and a non-null `completed_at` timestamp.
+2. `.etc_sdlc/features/{slug}/spec.md` exists (copied from the input
+   spec path, if different).
+3. `.etc_sdlc/features/{slug}/tasks/` contains one YAML file per leaf
+   task, each with `status: completed` (no `in_progress` or
+   `escalated` remaining).
+4. `python3 ~/.claude/scripts/tasks.py list --tree` shows every leaf
+   task with status `completed` and a complexity score <= 7.
+5. `python3 -m pytest --tb=short -q` passes with zero failures.
+6. If `INVARIANTS.md` exists at the repo root, every invariant-verify
+   command it lists has been run and returned exit code 0.
+7. An adversarial `spec-enforcer` subagent has been dispatched via
+   the Agent tool against the spec and returned `COMPLIANT`. A
+   `NON-COMPLIANT` result means the feature is NOT done; remediation
+   tasks must be dispatched and the check re-run.
+8. `.etc_sdlc/features/{slug}/verification.md` exists with every
+   checklist item under "Acceptance Criteria" and "Quality Checks"
+   marked passing (or explicitly marked `skipped` with a stated
+   reason).
+9. The Step 8 summary has been rendered to the user.
+
+If any of the nine items is not satisfied, the build is NOT done,
+regardless of how many steps reported success individually. Do not
+report "Build Complete" unless every item holds.

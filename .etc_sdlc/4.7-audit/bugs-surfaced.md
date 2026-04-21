@@ -191,6 +191,25 @@ can skip them with justification.
 **Priority:** P1 (prevents drift after migration)
 **Estimated effort:** 3 hours
 
+### B7. `/implement` and `/build` contract divergence
+
+**Severity:** Medium (parallel orchestrators that aren't actually parallel)
+**Origin:** Pre-migration
+**Detection:** Phase 3 `/implement` audit surfaced it
+**Proposed fix:** Operator decision required on each gap:
+  1. `/build` has `state.yaml` + `--resume` protocol; `/implement` has neither. Should `/implement` gain resume capability, or is it intentionally session-only?
+  2. `/build` has AskUserQuestion confirmation gates at Steps 3 and 5; `/implement` dispatches without user confirmation. Should `/implement` add gates?
+  3. `/build` dispatches `spec-enforcer` adversarially in Step 7; `/implement` does AC verification in-context. Should `/implement` also dispatch `spec-enforcer`?
+  4. `/build` reads `standards/process/interactive-user-input.md` in Before Starting; `/implement` does not. Consequence of #2 — resolves when #2 does.
+  5. Task YAML shape and `tasks.py` contract ARE aligned. No issue.
+
+**Priority:** P2 (not a blocker for 4.7 migration; but these two skills
+overlap in scope and their divergence creates operator confusion about
+which to use when)
+**Estimated effort:** 2 hours to align (assuming the operator decides
+`/implement` should be a true parallel orchestrator) OR 30 minutes to
+document the intentional differences (assuming they should stay separate)
+
 ### B6. AP-008 enforcement needs a positive check, not just absence
 
 **Severity:** Low (absence-based rule is hard to audit)

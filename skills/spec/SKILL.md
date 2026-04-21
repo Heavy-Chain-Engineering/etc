@@ -19,6 +19,60 @@ marker `---` + `**▶ Your answer needed:**`). Multi-choice decisions
 (accept / refine / research, gray-area resolution, section approvals)
 use Pattern A (`AskUserQuestion` tool). Never bury a question in prose.
 
+## Response Format (Verbosity)
+
+Moderate and structured. Use prose paragraphs for section drafts (the
+spec body the user is reviewing), fenced code blocks for AskUserQuestion
+invocations and PRD artifacts, numbered lists for ordered procedures,
+and tables for enumerated data (security auto-populate, gray-area
+summary). Prose responses to the user are limited to: (a) phase-entry
+announcements, (b) Socratic questions via Pattern B, (c) status
+summaries of research/gray-areas, (d) drafted PRD sections rendered for
+review. No preamble ("I'll...", "Here is..."). No narrative summary
+wrapping user answers. No emoji. Max 400 words per facilitator-level
+response unless rendering a drafted PRD section (max 1200 words for the
+section body itself) or the final Phase 5 summary (max 800 words). When
+presenting research findings, summarize in <= 10 bullets per source; do
+not echo raw tool output.
+
+## Subagent Dispatch (Non-Applicable)
+
+`/spec` does not dispatch subagents. It is an interactive specification
+facilitator — all user interaction happens in your own context via the
+`AskUserQuestion` tool (Pattern A) and Pattern B visual markers. You
+MUST NOT attempt to Agent-dispatch Socratic questioning, gray-area
+resolution, section drafting, or the Definition of Ready validation;
+those operations live in this skill.
+
+Your allowed in-context actions are: (a) reading the input spec path,
+prior draft, or reference files via Read, (b) reading codebase context
+via Read/Grep/Glob for Phase 2 codebase exploration, (c) fetching web
+results via WebFetch/WebSearch for Phase 2 web research, (d) invoking
+`AskUserQuestion` for Pattern A decisions (draft-handling, research
+approval, gray-area resolution, section approval, post-completion
+routing), (e) rendering Pattern B visual markers for open-ended
+Socratic questions, (f) writing the PRD, gray-areas, research artifacts,
+and the draft file via Write/Edit as defined in Phase 5.
+
+## Before Starting (Non-Negotiable)
+
+Read this file before any Phase 1 action, using the Read tool on the
+exact path:
+
+1. `standards/process/interactive-user-input.md` — Pattern A
+   (`AskUserQuestion`) and Pattern B (visual marker) usage rules.
+   Every question in Phases 1 through 5 uses one of these two patterns.
+
+If `standards/process/interactive-user-input.md` does not exist, STOP
+and report the missing file to the user — no phase in this skill can
+proceed without it, because every user interaction is Pattern A or
+Pattern B.
+
+Additionally, in Phase 2 (Research), Read `INVARIANTS.md` at the repo
+root if present, and Read `.etc_sdlc/antipatterns.md` if present. These
+are conditional reads (they may not exist in every repo) — absence is
+recorded in the research summary, not an error.
+
 ## Tunable Constants
 
 These constants govern the three-state PRD classification in Phase 2.75.
@@ -166,11 +220,17 @@ a research summary to the user before proceeding to spec writing.
    - Does `INVARIANTS.md` exist? If so, what contracts apply to this feature?
    - What naming conventions, module structure, and architectural patterns are established?
 
-2. **Web Research** -- Search for best practices and common pitfalls:
-   - Best practices for this type of feature
-   - Security considerations (OWASP patterns, known CVEs for relevant libraries)
-   - Common pitfalls and edge cases others have encountered
-   - Relevant library or framework documentation
+2. **Web Research** -- Search for established patterns, documented
+   pitfalls, and applicable standards for this feature type:
+   - Documented patterns for this feature type (OWASP for auth, RFC
+     references for protocol work, framework-official guides for the
+     libraries in use)
+   - Security considerations: OWASP Top 10 entries that apply, known
+     CVEs for the specific libraries this feature will use
+   - Documented failure modes and boundary-condition bugs from the
+     framework's issue tracker, library changelogs, or vendor advisories
+   - Relevant library or framework documentation for the exact version
+     pinned in the repo
 
 3. **Antipatterns Check** -- Read `.etc_sdlc/antipatterns.md` if it exists:
    - Are any past antipatterns relevant to this feature?
@@ -240,7 +300,7 @@ AskUserQuestion(
     options: [
       {
         label: "Yes, proceed to spec writing (Recommended)",
-        description: "Research covers the codebase, best practices, and antipatterns. Move to Phase 2.5 gray-area resolution."
+        description: "Research covers the codebase, the documented patterns from web sources, and the antipatterns file. Move to Phase 2.5 gray-area resolution."
       },
       {
         label: "Research more",
@@ -338,9 +398,9 @@ file.
 
 **Backward compatibility:** Readers MUST tolerate legacy entries that
 omit `Citation` and `Resolution rationale`, and MUST tolerate legacy
-`Decided by` values written as free-form text (e.g. `Decided by: user,
-2026-03-01`). Only newly-written entries are guaranteed to use the
-controlled enum.
+`Decided by` values written as free-form text — illustrative legacy
+form: `Decided by: user, 2026-03-01` (illustrative; not exhaustive).
+Only newly-written entries are guaranteed to use the controlled enum.
 
 These resolutions will be:
 - Incorporated into the PRD's Technical Constraints section
@@ -571,7 +631,7 @@ Also written to: spec/{slug}.md
 
 Definition of Ready: PASSED
 - [N] acceptance criteria
-- [N] edge cases documented
+- [N] entries in the Edge Cases section
 - [N] security considerations
 - [N] gray areas resolved
 - [N] files in scope
@@ -678,7 +738,7 @@ AskUserQuestion(
     options: [
       {
         label: "Kick off /build now (Recommended)",
-        description: "Validate, decompose recursively, execute wave-by-wave, verify. Recommended for most features because it exercises the whole pipeline."
+        description: "Hand off to /build, which owns the full pipeline: validation, recursive decomposition, wave planning, per-wave Agent-tool dispatch to one subagent per leaf, and final verification. Recommended for most features because it exercises the whole pipeline."
       },
       {
         label: "Review decomposition first with /decompose",
@@ -695,3 +755,51 @@ AskUserQuestion(
 
 Always present `/build` as the recommended default. Wait for the user's
 selection before executing anything.
+
+## Definition of Done
+
+`/spec` is done for a given invocation when ALL of the following
+observable artifacts exist and pass. The exact set depends on the
+Phase 2.75 classification, so the checklist branches: items 1-3 always
+apply, items 4-8 apply to the well-specified and research-assisted
+paths, and item 9 applies to the rejected path (in which case items 4-8
+are explicitly N/A, not skipped).
+
+1. `.etc_sdlc/features/{slug}/` exists as the feature directory.
+2. `.etc_sdlc/features/{slug}/state.yaml` exists and records the
+   Phase 2.75 classification in its `classification` field, using
+   exactly one of the controlled enum values `well-specified`,
+   `research-assisted`, or `rejected`. The schema is load-bearing for
+   `/build` Step 1a; do not rename fields or values.
+3. `.etc_sdlc/features/{slug}/gray-areas.md` exists. If no gray areas
+   were found, the file contains the literal sentinel line "No gray
+   areas identified — research findings are unambiguous." If gray
+   areas exist, every entry uses the extended schema (`Decided by`
+   enum = `research` | `user` | `rejected`, with `Citation` and
+   `Resolution rationale` required for `research` entries).
+4. `.etc_sdlc/features/{slug}/spec.md` exists and has passed the
+   Definition of Ready checklist from Phase 4. Every DoR item is
+   checked. Exists ONLY on the well-specified and research-assisted
+   paths.
+5. `spec/{slug}.md` exists as a byte-identical copy of
+   `.etc_sdlc/features/{slug}/spec.md`, for browsability.
+6. `.etc_sdlc/features/{slug}/research/` exists and contains at least
+   one of `codebase.md`, `web.md`, or `antipatterns.md` capturing the
+   Phase 2 findings. An empty directory is NOT sufficient.
+7. `spec/.drafts/{slug}.md` has been removed (if it existed during the
+   session). In-progress drafts are not artifacts of a completed spec.
+8. The Phase 5 output summary and the Post-Completion Guidance
+   `AskUserQuestion` have been rendered to the user. Apply to all
+   non-rejected paths.
+9. REJECTED PATH ONLY: `.etc_sdlc/features/{slug}/rejected.md` exists
+   with the layout defined in the Rejection Flow (`Reason`, threshold
+   figures, unanswered questions, preserved research fills, next
+   action). `spec.md` MUST NOT exist alongside `rejected.md` — the two
+   files are mutually exclusive and that exclusivity is how `/build`
+   Step 1a distinguishes a rejected feature from a build-ready one.
+
+If any applicable item is not satisfied, `/spec` is NOT done,
+regardless of how many phases reported internal success. Do not report
+"PRD complete" on the non-rejected paths unless every item 1-8 holds,
+and do not report "PRD rejected" on the rejected path unless items 1-3
+and item 9 hold.
