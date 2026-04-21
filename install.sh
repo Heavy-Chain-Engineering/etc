@@ -55,7 +55,17 @@ else
 fi
 
 # ── 1. Create directory structure ────────────────────────────────────────
-mkdir -p "$TARGET_DIR"/{agents,skills,standards/{process,code,testing,architecture,security,quality},hooks,sdlc,scripts,templates}
+# Standards subdirectories are discovered from the compiled dist/ rather
+# than hardcoded — a hardcoded list silently drops any new category
+# added in the spec (this happened with standards/git/ in v1.6).
+mkdir -p "$TARGET_DIR"/{agents,skills,standards,hooks,sdlc,scripts,templates}
+if [ -d "$DIST_DIR/standards" ]; then
+    for src_dir in "$DIST_DIR/standards"/*/; do
+        [ -d "$src_dir" ] || continue
+        category=$(basename "$src_dir")
+        mkdir -p "$TARGET_DIR/standards/$category"
+    done
+fi
 info "Directory structure ready"
 
 # ── 2. Install agents ───────────────────────────────────────────────────
@@ -96,14 +106,16 @@ info "Installed $SKILL_COUNT skills"
 # ── 4. Install standards ────────────────────────────────────────────────
 STANDARD_COUNT=0
 if [ -d "$DIST_DIR/standards" ]; then
-    for dir in process code testing architecture security quality; do
-        if [ -d "$DIST_DIR/standards/$dir" ]; then
-            for f in "$DIST_DIR/standards/$dir"/*.md; do
-                [ -f "$f" ] || continue
-                cp "$f" "$TARGET_DIR/standards/$dir/"
-                STANDARD_COUNT=$((STANDARD_COUNT + 1))
-            done
-        fi
+    # Discover subdirectories dynamically rather than hardcoding a list.
+    # See "directory structure" block above for why.
+    for src_dir in "$DIST_DIR/standards"/*/; do
+        [ -d "$src_dir" ] || continue
+        category=$(basename "$src_dir")
+        for f in "$src_dir"/*.md; do
+            [ -f "$f" ] || continue
+            cp "$f" "$TARGET_DIR/standards/$category/"
+            STANDARD_COUNT=$((STANDARD_COUNT + 1))
+        done
     done
 fi
 info "Installed $STANDARD_COUNT standards"
