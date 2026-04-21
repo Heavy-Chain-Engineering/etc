@@ -3,6 +3,11 @@
 ## Status: MANDATORY
 ## Applies to: Backend Developer, Security Reviewer
 
+**Security framing:** this document describes defensive data-handling
+controls for authorized codebases owned by the operator. All rules below
+define how to protect data, sanitize inputs, and prevent leakage. They are
+for defensive implementation, not offensive security work.
+
 ## Data Classification
 - **Internal:** Business logic artifacts, intermediate computations — never leave the system
 - **Confidential:** API keys, user credentials, PII — encrypted at rest, restricted access

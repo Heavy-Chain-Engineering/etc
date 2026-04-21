@@ -32,8 +32,9 @@ The marker MUST only be written after a *successful* verification.
 Failed checks (exit 2 on block) MUST NOT write markers. A failing check
 must not poison the cache: the next Edit must re-run the full
 verification, giving the agent a chance to have fixed the underlying
-issue (e.g., by reading the missing required file) in between. A hook
-that writes its marker before checking its exit code is broken.
+issue in between (one common example: reading the missing required
+file). A hook that writes its marker before checking its exit code
+is broken.
 
 ## Why This Rule Exists
 
@@ -87,9 +88,9 @@ depends on per-Edit state will silently miss violations.
   — each Edit has a different file path and the verification must run
   fresh against it.
 - The dependency can change mid-subagent in a way the `-nt` check
-  can't detect (e.g., an in-place edit that preserves the original
-  mtime, or a dependency spread across hundreds of files where the
-  "newest mtime" query is itself expensive).
+  can't detect. Two illustrative modes (not exhaustive): an in-place
+  edit that preserves the original mtime; a dependency spread across
+  hundreds of files where the "newest mtime" query is itself expensive.
 - The hook has side effects that must run on every Edit (metrics
   emission, audit logging, telemetry) — caching would suppress the
   side effect on every cached Edit.
@@ -118,8 +119,9 @@ where `{key}` is derived as:
 key = sha256(transcript_path) | cut -c1-16   # 16 hex chars
 ```
 
-and `{hook-name}` is a short identifier chosen by the hook author
-(e.g., `required-reading`, `phase-gate`). Example marker path:
+and `{hook-name}` is a short identifier chosen by the hook author.
+The two hooks made cacheable by this standard use `required-reading`
+and `phase-gate` as their identifiers. Example marker path:
 
 ```
 .etc_sdlc/.hook-markers/a1b2c3d4e5f60718-required-reading
@@ -172,13 +174,14 @@ failure turn a passing verification into a blocking exit.
 
 **Markers directory is a symlink.** If `.etc_sdlc/.hook-markers/`
 exists as a symlink (detectable with `test -L`), the hook MUST refuse
-to write through it. This is a defense against a symlink attack where
-an adversary with write access to `.etc_sdlc/` creates a symlink
-pointing at `/etc/` or another sensitive directory, so that hook
-marker writes would land outside the repo. On detection, the hook
-logs a warning to stderr, skips the cache write, and runs the full
-verification. Do not `rm -rf` the symlink and do not follow it; just
-decline to use it.
+to write through it. This is a defensive measure: an adversary with
+write access to `.etc_sdlc/` could create a symlink pointing at
+`/etc/` or another sensitive directory, so that hook marker writes
+would land outside the repo. On detection, the hook logs a warning
+to stderr, skips the cache write, and runs the full verification. Do
+not `rm -rf` the symlink and do not follow it; just decline to use
+it. This framing is defensive — the goal is remediation of the
+symlink condition, not exploitation analysis.
 
 **Clock skew.** If the system clock goes backwards — NTP adjustment,
 VM snapshot restore, container time warp — a previously-valid marker

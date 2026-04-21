@@ -68,6 +68,6 @@ PaymentIntent.model_validate(mock_data)  # Fails if shape is wrong
 ## What NOT to Do
 
 - Don't invent API response shapes for test doubles -- derive from docs or captured responses
-- Don't create dev endpoints that bypass the service layer
+- Don't create dev endpoints that skip the service layer
 - Don't assume a test double is correct because tests pass -- validate against production models
 - Don't skip fixture fidelity checks because "it's just a test" -- tests are the specification

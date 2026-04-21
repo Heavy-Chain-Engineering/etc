@@ -37,7 +37,7 @@ Each section separated by a blank line. Ruff isort handles sorting automatically
 
 ### Absolute imports only
 
-Relative imports (`from . import foo`) are forbidden. Use absolute imports only. This makes dependency graphs explicit and grep-friendly.
+Relative imports (`from . import foo`) are forbidden. Use absolute imports only. This makes dependency graphs explicit and greppable via literal module paths.
 
 ## What NOT to Do
 

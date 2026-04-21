@@ -89,8 +89,9 @@ is impossible to miss.
 **Rules:**
 
 - Put the question on its own line after the marker.
-- If the question needs context (e.g., "push back on marketing fluff" or
-  example answers), put the context ABOVE the marker block, not after.
+- If the question needs context — two illustrative forms are a
+  priming instruction like "push back on marketing fluff" or a set of
+  example answers — put the context ABOVE the marker block, not after.
   The user should see the question and be able to answer immediately
   without scrolling back up.
 - Ask ONE question at a time in Pattern B. Do not batch open-ended

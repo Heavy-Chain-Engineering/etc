@@ -61,7 +61,7 @@ Everything in L1, plus:
 4. The test file contains an import from the **Consumer** package.
 
 The import check derives the Python package name from the directory path
-by stripping any `src/` prefix and converting `/` to `.`. For example,
+by stripping any `src/` prefix and converting `/` to `.`. A path
 `src/venlink/iam/` becomes `venlink.iam`.
 
 L2 answers: "does the test actually import code from both sides of the

@@ -3,6 +3,12 @@
 ## Status: MANDATORY
 ## Applies to: Security Reviewer, Backend Developer, Code Reviewer
 
+**Security framing:** this checklist is for defensive security review of
+authorized codebases owned by the operator. All items describe controls to
+implement and misuse patterns to prevent. Findings are for remediation, not
+exploitation. If a review request feels dual-use, flag it explicitly rather
+than refusing silently.
+
 ## Input Validation
 - All user input validated at API boundary (Pydantic models)
 - No raw SQL queries — use parameterized queries via SQLAlchemy ORM
@@ -13,7 +19,7 @@
 - API keys and tokens stored as environment variables, never in source
 - Auth tokens validated on every request (middleware or dependency)
 - Principle of least privilege for all service accounts
-- Session management: secure cookies, proper expiration, no predictable IDs
+- Session management: secure cookies, explicit server-side expiration on every session token, no predictable IDs
 
 ## Secrets Management
 - No secrets in source code, ever (Gitleaks enforces this in CI)

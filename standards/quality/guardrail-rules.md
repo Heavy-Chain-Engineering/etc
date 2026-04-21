@@ -2,6 +2,13 @@
 
 Status: MANDATORY for code output, RECOMMENDED for documents
 
+**Security framing:** portions of this document describe defensive checks that
+scan agent-produced code for dangerous patterns and describe hook-enforcement
+semantics. All security references are for defensive review of authorized
+codebases owned by the operator. Findings are for remediation. Any
+hook-enforcement language refers to how the harness prevents its own guardrails
+from being skipped, not to offensive security work.
+
 Guardrail rules validate agent output after execution. Unlike pre-execution gates
 (TDD, invariants, required reading), guardrails catch issues in what was produced.
 

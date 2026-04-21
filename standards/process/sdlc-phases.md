@@ -103,7 +103,7 @@
 - **Parallel:** Independent tasks with **no overlapping file sets** can be built by separate agents simultaneously (use worktree isolation)
 - **Pipeline + Watchdogs:** Every implementation agent gets a background code-reviewer + verifier regardless of parallel/sequential
 
-**⚠️ File-Set Isolation Rule:** Before parallelizing tasks, identify which files each task will touch. If any two tasks share a file, they MUST be serialized. Worktrees isolate the filesystem, not the file set — two agents modifying the same file on different branches will produce merge conflicts. This includes indirect overlaps (e.g., two agents both adding to the same `__init__.py`). When merging parallel results back to main, merge one branch at a time in dependency order and run integration tests after each merge.
+**⚠️ File-Set Isolation Rule:** Before parallelizing tasks, identify which files each task will touch. If any two tasks share a file, they MUST be serialized. Worktrees isolate the filesystem, not the file set — two agents modifying the same file on different branches will produce merge conflicts. This includes indirect overlaps — one illustrative case is two agents both adding to the same `__init__.py`; the rule applies to any shared file regardless of directness. When merging parallel results back to main, merge one branch at a time in dependency order and run integration tests after each merge.
 
 **Output:** Working, tested, reviewed code
 
@@ -112,7 +112,7 @@
 "Start the Build phase for task [N]. Deploy the backend-developer agent for implementation. Run code-reviewer and verifier as background watchdogs."
 ```
 
-**Watchdog pattern:** During Build, quality agents should be spawned as background tasks that review each completed unit of work. The implementation agent works in foreground; after each task completion, watchdogs review before proceeding to the next task.
+**Watchdog pattern:** During Build, quality agents are spawned as background tasks that review each completed unit of work. The implementation agent works in foreground; once a task is committed, the watchdog agents review the produced artifacts (commit diff, test output) before the next task is dispatched. The trigger is the task's commit, not a prose progress report — the review is an artifact check, not a status update.
 
 ### Verify Phase
 **Purpose:** Stand up the running system for human acceptance testing. The SEM offers to bring up the stack so the human can test the feature in a real environment before shipping.
