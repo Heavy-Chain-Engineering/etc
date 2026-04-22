@@ -422,35 +422,26 @@ gates:
 
   # ── Session Lifecycle ──────────────────────────────────────────────────
 
-  ci-gate:
-    description: >
-      Lightweight CI gate that checks the .tdd-dirty marker before running
-      any tests. If no production code was modified (no marker), exits
-      immediately — zero latency, zero cost. When code WAS modified, runs
-      pytest + mypy + ruff + invariant checks mechanically via bash.
-      Replaces the previous Sonnet 4.5 agent-type hook that spun up a
-      model invocation on every stop event including conversational turns.
-    event: Stop
-    type: command
-    script: ci-gate.sh
-    timeout: 120
-    on_failure: block
-
   completion-discipline:
     description: >
-      Enforces standards/process/completion-discipline.md via state
-      inspection (not language matching). Blocks stop when either signal
-      indicates unfinished work: (1) .tdd-dirty is present, or (2) any
-      task has status: in_progress. Language-agnostic: the agent cannot
-      phrase its way past this check. Valid exits are: complete the work,
-      formally escalate (tasks.py set-status escalated + ESCALATION block),
-      or formally block (tasks.py set-status blocked). Added 2026-04-21
-      in response to 4.7 regressions on premature session termination
-      and task under-scoping.
+      Single Stop hook combining CI gate and completion discipline.
+      Runs sequentially, not in parallel (prior design had ci-gate and
+      completion-discipline as peer hooks racing on the .tdd-dirty
+      marker — this version absorbs ci-gate's logic to make the
+      sequence deterministic).
+
+      Step 1: if .tdd-dirty is present, run pytest + mypy + ruff +
+      invariants. On pass, clear the marker; on fail, block with
+      CI output.
+      Step 2: if any task has status: in_progress, block with the
+      three-valid-exits message (complete / escalate / block).
+
+      Language-agnostic: the agent cannot phrase its way past this
+      check. Enforces standards/process/completion-discipline.md.
     event: Stop
     type: command
     script: check-completion-discipline.sh
-    timeout: 10
+    timeout: 120
     on_failure: block
 
   change-control:
