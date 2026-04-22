@@ -36,3 +36,7 @@ select = ["E", "F", "I", "W"]
 # inline examples, and long path expressions. Matches the reference
 # ruff config in standards/code/ruff-reference.toml.
 "tests/**/*.py" = ["E501"]
+# platform/ is legacy v2 prototype code; E501 and N806 are cosmetic/
+# naming rules not worth churning there. Correctness rules (B904,
+# TC002/TC003) have already been fixed in-tree.
+"platform/**/*.py" = ["E501", "N806"]

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-import psycopg
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import psycopg
 
 
 class TestApplySchema:

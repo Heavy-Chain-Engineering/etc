@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from uuid import UUID
+from typing import TYPE_CHECKING
 
-import psycopg
 import pytest
 
 from etc_platform.phases import PhaseEngine
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 
 def _create_project(db: psycopg.Connection) -> UUID:

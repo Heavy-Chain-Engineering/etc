@@ -6,10 +6,12 @@ for dashboards, CLI reporting, and operational visibility.
 
 from __future__ import annotations
 
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
-import psycopg
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 
 class ProjectMetrics:

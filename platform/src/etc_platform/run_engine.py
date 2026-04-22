@@ -8,16 +8,18 @@ evaluates DoD status. The SEM LLM decision loop is a layer above this.
 from __future__ import annotations
 
 import logging
-from typing import Any
-from uuid import UUID
-
-import psycopg
+from typing import TYPE_CHECKING, Any
 
 from etc_platform.agent_runtime import AgentRunner
 from etc_platform.config import EtcConfig, load_config
 from etc_platform.events import EventType, emit_event
 from etc_platform.graph_engine import GraphEngine
 from etc_platform.phases import PhaseEngine
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 logger = logging.getLogger(__name__)
 

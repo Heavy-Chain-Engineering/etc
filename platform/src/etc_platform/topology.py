@@ -8,14 +8,17 @@ Two-stage process:
 from __future__ import annotations
 
 import logging
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
-import psycopg
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from etc_platform.graph_engine import GraphEngine
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 logger = logging.getLogger(__name__)
 

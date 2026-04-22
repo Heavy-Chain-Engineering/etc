@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
-from uuid import UUID
 
-import psycopg
 import pytest
 from typer.testing import CliRunner
 
 from etc_platform.cli import app
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+    from uuid import UUID
+
+    import psycopg
 
 runner = CliRunner()
 

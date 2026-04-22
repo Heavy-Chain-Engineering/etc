@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
-import psycopg
 from pydantic_ai.models.test import TestModel
 
 from etc_platform.agent_runtime import (
@@ -21,6 +20,11 @@ from etc_platform.agent_runtime import (
 )
 from etc_platform.config import EtcConfig
 from etc_platform.intake import add_source_material
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import psycopg
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -698,7 +702,7 @@ class TestAgentDepsProjectId:
             return result
 
         with patch.object(runner, "_run_agent", side_effect=capturing_run_agent):
-            run_id = runner.deploy(
+            runner.deploy(
                 conn=db,
                 node_id=node_id,
                 agent_type="researcher",
@@ -817,7 +821,7 @@ class TestKnowledgeToolIntegration:
         except (json.JSONDecodeError, TypeError):
             parsed_value = {"text": value_str}
 
-        entry_id = _contribute_knowledge(
+        _contribute_knowledge(
             conn=db,
             project_id=pid,
             key="tech_stack",
@@ -851,7 +855,7 @@ class TestKnowledgeToolIntegration:
         except (json.JSONDecodeError, TypeError):
             parsed_value = {"text": value_str}
 
-        entry_id = _contribute_knowledge(
+        _contribute_knowledge(
             conn=db,
             project_id=pid,
             key="api_notes",

@@ -9,10 +9,12 @@ contributors) can be detected and resolved.
 from __future__ import annotations
 
 import json
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
-import psycopg
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 VALID_SCOPES: set[str] = {"project", "phase", "graph", "node"}
 

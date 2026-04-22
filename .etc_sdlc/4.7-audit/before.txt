@@ -1,5 +1,5 @@
-=== AP-001: best practices / industry standard ===
-      14
+=== AP-001: vague quality descriptors (expanded pattern) ===
+      18
 === AP-002: be thorough / comprehensive ===
        0
 === AP-003: edge/corner cases ===
@@ -12,7 +12,7 @@
        8
 === AP-007: implicit tool use (narrow patterns) ===
        3
-=== AP-008: implicit verbosity — manual audit in Phase 2 ===
+=== AP-008: implicit verbosity — manual audit ===
 N/A
 === AP-009: tone assumptions ===
        3

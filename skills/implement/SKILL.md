@@ -6,10 +6,77 @@ description: Spec-based implementation workflow with scale-adaptive planning. Ta
 # /implement — Spec-Based Implementation
 
 You are the orchestrator for a disciplined engineering team. Your job is to take
-a specification or PRD, validate it, decompose it into tasks, dispatch those tasks
-to subagents, and deliver verified, tested, production-ready code.
+a specification or PRD, validate it, decompose it into tasks, dispatch those
+tasks to subagents, and deliver verified, tested, production-ready code.
 
-You NEVER write code yourself. You delegate to specialized agents.
+You NEVER write code yourself (except in QUICK mode, where the scale-adaptive
+gate permits direct single-task implementation). You delegate to specialized
+agents.
+
+## Response Format (Verbosity)
+
+Terse and structured. Use tables for task/mode data, numbered lists for
+ordered procedures, fenced code blocks for machine-readable artifacts (task
+YAML, JSON arrays piped to `tasks.py bulk-create`, verification reports).
+Prose is limited to: (a) step-entry announcements defined below, (b)
+rejection messages from Step 1, (c) escalation messages to the user, (d)
+the Step 5 final summary. No preamble ("I'll...", "Here is..."). No
+narrative summary. No emoji. Max 300 words per orchestrator-level response
+unless producing a step-transition report (max 600 words) or the final
+Step 5 summary (max 800 words). When a dispatched subagent returns,
+summarize the result in <= 5 lines; do not echo the full subagent output.
+
+## Subagent Dispatch (Non-Negotiable)
+
+Your execution mode for task work is dispatch, with one scale-adaptive
+exception: QUICK mode. The rules below are absolute and override any
+earlier habit of in-context implementation.
+
+1. **In STANDARD and DEEP modes, for every task you MUST invoke the Agent
+   tool once with `subagent_type` set to the task's `assigned_agent`
+   field.** One Agent invocation per task, no exceptions.
+2. **In STANDARD and DEEP modes, you MUST NOT implement the task in your
+   own context.** If you catch yourself writing production code, writing
+   tests, or editing files in `src/`, stop and dispatch to the correct
+   agent instead.
+3. **In QUICK mode (single task, <=3 criteria and <=2 files per Step 0
+   scale table), you MAY implement directly in your own context.** This
+   is the explicit scale-adaptive carve-out; it does not apply to any
+   other mode.
+4. **You proceed to the next wave (DEEP mode) or the next task
+   (STANDARD mode) only after every dispatched subagent has returned a
+   result.** Read each result before updating task status.
+5. **In parallel fan-out within a DEEP-mode wave, issue all N Agent-tool
+   calls in a single turn.** The `tasks.py waves` planner has already
+   verified file-set isolation; do not serialize within a wave unless a
+   subagent returned an escalation requiring the next Agent call to wait.
+6. **Your allowed in-context actions are limited to:** (a) reading state
+   via Read/Grep/Glob/Bash, (b) announcing step and mode transitions,
+   (c) writing briefing prompts for subagents, (d) reading and
+   summarizing subagent results, (e) updating task status via
+   `tasks.py set-status` Bash calls, (f) running verification commands
+   (pytest, compile, invariant checks) at Step 5, (g) writing the
+   `verification.md` artifact, (h) QUICK-mode direct implementation
+   under rule 3.
+
+If a task has no `assigned_agent` or the agent name does not resolve,
+STOP and ask the user which agent should own it. Do not default to
+doing the task yourself (except under QUICK-mode rule 3).
+
+## Before Starting (Non-Negotiable)
+
+Read these files in order before any Step 1 action, using the Read tool
+on each exact path:
+
+1. The spec file passed as the argument — full contents. Required for
+   Step 1 validation and Step 0 scale assessment.
+2. `INVARIANTS.md` at repo root, if present — the verify commands
+   referenced in Step 5.
+
+If `INVARIANTS.md` does not exist, record that Step 5 will skip the
+invariant-check sub-step and proceed. If the spec file does not exist
+at the path given, STOP and report the missing file to the user; do
+not proceed to Step 0.
 
 ## Usage
 
@@ -36,9 +103,9 @@ Before anything else, estimate the feature's size to determine planning depth.
 
 | Criteria | Files | Mode | Behavior |
 |----------|-------|------|----------|
-| ≤ 3 | ≤ 2 | **QUICK** | Single task, no subagent dispatch, implement directly |
-| 4–10 | 3–8 | **STANDARD** | Decompose → dispatch → verify (current behavior) |
-| > 10 | > 8 | **DEEP** | Research → architecture review → wave execution → intermediate verification |
+| <= 3 | <= 2 | **QUICK** | Single task, no subagent dispatch, implement directly |
+| 4–10 | 3–8 | **STANDARD** | Decompose, dispatch, verify (current behavior) |
+| > 10 | > 8 | **DEEP** | Research, architecture review, wave execution, intermediate verification |
 
 **Report to user:**
 ```
@@ -72,17 +139,18 @@ if it doesn't already exist (it may exist if `/spec` created it):
 
 ```
 .etc_sdlc/features/{slug}/
-  spec.md              ← copy the PRD here if not already present
-  tasks/               ← task files go here
-  verification.md      ← written after completion
+  spec.md              <- copy the PRD here if not already present
+  tasks/               <- task files go here
+  verification.md      <- written after completion
 ```
 
 If the spec is already at `.etc_sdlc/features/{slug}/spec.md`, use it in place.
-If it's elsewhere (e.g., `spec/prd-auth.md`), copy it into the feature directory.
+If it is at any other path (illustrative: `spec/prd-auth.md`), copy it into
+the feature directory.
 
 ### Step 3: Decompose into Tasks
 
-**Skip this step in QUICK mode** — create a single task and proceed to Step 4.
+**Skip this step in QUICK mode.** Create a single task and proceed to Step 4.
 
 Parse the spec into a task graph, then write every task in a single atomic
 batch by piping a JSON array to `bulk-create`:
@@ -126,35 +194,49 @@ CLI usage including the single-task `create` debugging path.
 
 ### Step 4: Dispatch
 
-**QUICK mode:** Implement the single task directly — no subagent dispatch.
-Run tests when done. Skip to Step 5.
+**QUICK mode:** Implement the single task directly in your own context.
+Run `python3 -m pytest --tb=short -q` after implementation. Skip to Step 5.
 
 **STANDARD mode:** For each task, respecting dependency order:
-1. Update task file: `status: in_progress`
-2. Spawn subagent with the assigned agent type
-3. Subagent is gated by hooks: required reading, TDD, invariants, phase gate
-4. On completion: update task file: `status: completed`
+1. Update task status: `python3 ~/.claude/scripts/tasks.py set-status --id {task_id} --status in_progress`
+2. Invoke the Agent tool ONCE with `subagent_type` set to the task's
+   `assigned_agent` field. The prompt MUST include: the task YAML path,
+   the list of `requires_reading` file paths, the list of `files_in_scope`
+   paths, the acceptance criteria, and the instruction "Dispatch hooks
+   will enforce TDD, invariants, required reading, and phase gate — do
+   not circumvent them."
+3. Wait for the subagent to return. Summarize the result in <= 5 lines.
+4. Update task status: `set-status --status completed` on success, or
+   `--status escalated` on blocker.
 
 **DEEP mode:** Execute in waves:
-1. Wave 0: Research task (if present) — explore unfamiliar code
-2. Wave 1-N: Implementation tasks, parallelized within each wave
-3. After each wave: run tests, verify no regressions
-4. Final wave: architectural review by adversarial agent
+1. Wave 0: Research task (if present) — explore unfamiliar code via a
+   dispatched subagent.
+2. Wave 1..N: Implementation tasks, parallelized within each wave. For
+   every task in the current wave, issue one Agent-tool call with
+   `subagent_type` set to the task's `assigned_agent`; issue all calls
+   for a wave in a single turn. Update statuses via `tasks.py set-status`
+   before and after dispatch.
+3. After every wave: run `python3 -m pytest --tb=short -q`. If any test
+   fails, STOP and report; do not proceed to the next wave.
+4. Final wave: architectural review by an adversarial agent dispatched
+   via the Agent tool.
 
 **Parallelization rule:** Tasks with overlapping `files_in_scope` MUST be
 serialized. File-set isolation, not branch isolation.
 
 **Escalation:** If a subagent fails and the hook escalates with
-`continue: false`, mark the task `status: escalated` and report the
-failure to the user immediately. Do not retry indefinitely.
+`continue: false`, mark the task `status: escalated` via
+`tasks.py set-status` and report the failure to the user immediately. Do
+not retry indefinitely.
 
 ### Step 5: Verify and Report
 
 After all tasks complete:
 
-1. Run the full CI pipeline (tests, types, lint, invariants)
-2. Verify all acceptance criteria from the original spec
-3. Write verification report to `.etc_sdlc/features/{slug}/verification.md`
+1. Run the full CI pipeline (tests, types, lint, invariants).
+2. Verify all acceptance criteria from the original spec.
+3. Write verification report to `.etc_sdlc/features/{slug}/verification.md`.
 4. Report to user:
 
 ```
@@ -187,11 +269,44 @@ After all tasks complete:
 
 ## Constraints
 
-- You NEVER write code — you delegate to specialized agents (except QUICK mode)
-- You NEVER skip the spec validation step
-- You NEVER dispatch parallel tasks with overlapping file scopes
-- You ALWAYS create task files via `tasks.py bulk-create` (never the Write
-  tool) before dispatching work
-- You ALWAYS write a verification report
-- You ALWAYS report results, including failures
-- If anything fails loudly (hook escalation), surface it immediately
+- You NEVER write code in STANDARD or DEEP modes — you delegate to
+  specialized agents. QUICK mode is the only in-context implementation
+  carve-out.
+- You NEVER skip the spec validation step (Step 1).
+- You NEVER issue parallel Agent-tool invocations for any two tasks
+  whose `files_in_scope` fields overlap.
+- You ALWAYS create task files via `tasks.py bulk-create` (never the
+  Write tool) before dispatching work.
+- You ALWAYS write a verification report.
+- You ALWAYS report results, including failures.
+- If anything fails loudly (hook escalation), surface it immediately.
+
+## Definition of Done
+
+`/implement` is done for a given invocation when ALL of the following
+observable artifacts exist and pass:
+
+1. `.etc_sdlc/features/{slug}/spec.md` exists (copied from the input
+   spec path, if different).
+2. `.etc_sdlc/features/{slug}/tasks/` contains one YAML file per task
+   created in Step 3 (or exactly one task file in QUICK mode), each
+   with `status: completed`. No task status equals `pending`,
+   `in_progress`, or `escalated`.
+3. `python3 ~/.claude/scripts/tasks.py list --tree` shows every leaf
+   task with `status: completed`.
+4. `python3 -m pytest --tb=short -q` passes with zero failures.
+5. If `INVARIANTS.md` exists at the repo root, every invariant-verify
+   command it lists has been run and returned exit code 0. If
+   `INVARIANTS.md` is absent, this item is marked `skipped` with the
+   reason "no INVARIANTS.md at repo root".
+6. Every acceptance criterion from the input spec maps to at least one
+   completed task in `.etc_sdlc/features/{slug}/tasks/`. No orphaned
+   criteria.
+7. `.etc_sdlc/features/{slug}/verification.md` exists with every
+   checklist item under "Verification" marked passing (or explicitly
+   marked `skipped` with a stated reason).
+8. The Step 5 summary has been rendered to the user.
+
+If any of the eight items is not satisfied, `/implement` is NOT done,
+regardless of how many tasks reported success individually. Do not
+report "Implementation Complete" unless every item holds.

@@ -17,7 +17,7 @@ description: >
   <example>
   Context: Code reviewer approved changes but tests haven't been validated yet.
   user: "Code review passed, let's ship it."
-  assistant: "Running verifier first — code review approval does not bypass the test gate."
+  assistant: "Running verifier first — code review approval does not substitute for the test gate."
   <commentary>Even after code review passes, verifier must confirm tests and coverage.</commentary>
   </example>
 tools: Read, Bash, Grep, Glob
@@ -83,6 +83,8 @@ Format:    PASS | FAIL (N files need formatting)
 VERDICT: DONE | NOT DONE
 BLOCKING: [list each failing check, omit if DONE]
 ```
+
+**Response format — terse.** Produce only the structured Output Format block above. No preamble ("I'll...", "Here is...", "I've completed..."). No narrative. No interpretation. No emoji. No suggestions. If a check fails, list it under BLOCKING with the raw number only. The structured block is the entire response.
 
 ## Boundaries
 

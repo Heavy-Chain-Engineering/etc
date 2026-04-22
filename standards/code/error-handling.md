@@ -9,7 +9,7 @@
 2. **Catch specific exceptions.** Never `except Exception` without re-raising or explicit justification.
    - **Enforce:** ruff(BLE001)
 3. **Fail fast.** Validate at system boundaries (API input, external service responses). Trust internal code.
-4. **Errors are values.** Where appropriate, use result types instead of exceptions for expected failure modes.
+4. **Errors are values.** For expected failure modes (not-found lookups, validation failures, known business-rule violations), use result types or domain error returns instead of exceptions. Reserve exceptions for unexpected failures (infrastructure errors, programming bugs, contract violations).
 
 ## Exception Hierarchy
 - Define domain-specific exceptions that extend a base project exception
@@ -18,12 +18,12 @@
 - Include context in exception messages (what was attempted, what went wrong)
 
 ## Logging
-- Log at the appropriate level: ERROR for failures, WARNING for degraded behavior, INFO for state changes
+- Log at the matching level: ERROR for failures, WARNING for degraded behavior, INFO for state changes, DEBUG for diagnostic detail
 - Include correlation IDs in log messages for traceability
 - Never log secrets, tokens, or PII
 
 ## API Error Responses
-- Use appropriate HTTP status codes (400 for bad input, 404 for not found, 500 for internal errors)
+- Use HTTP status codes matching the failure mode: 400 for bad input, 401 for missing auth, 403 for forbidden, 404 for not found, 409 for conflict, 422 for validation failure, 500 for internal errors
 - Return structured error responses with: error code, human message, request ID
 - Never expose internal stack traces in API responses
 

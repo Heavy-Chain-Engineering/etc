@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
-import psycopg
 from typer.testing import CliRunner
 
 from etc_platform.config import EtcConfig
 from etc_platform.graph_engine import GraphEngine
 from etc_platform.run_engine import RunEngine
+
+if TYPE_CHECKING:
+    import psycopg
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -208,7 +211,7 @@ class TestRunEngineCompositeFiltering:
 
         graph_id = GraphEngine.create_graph(db, pid, phase_id, "g")
         composite = GraphEngine.add_node(db, graph_id, "group", "composite")
-        leaf = GraphEngine.add_node(
+        GraphEngine.add_node(
             db, graph_id, "task", "leaf",
             agent_type="researcher", parent_node_id=composite, depth=1,
         )
@@ -235,7 +238,7 @@ class TestRunEngineCompositeFiltering:
 
         graph_id = GraphEngine.create_graph(db, pid, phase_id, "g")
         composite = GraphEngine.add_node(db, graph_id, "group", "composite")
-        leaf = GraphEngine.add_node(
+        GraphEngine.add_node(
             db, graph_id, "task", "leaf",
             agent_type="researcher", parent_node_id=composite, depth=1,
         )

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-import psycopg
+if TYPE_CHECKING:
+    import psycopg
 
 
 def _create_chain(db: psycopg.Connection) -> dict[str, UUID]:

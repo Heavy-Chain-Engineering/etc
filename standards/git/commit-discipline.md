@@ -1,9 +1,9 @@
 # Git Commit Discipline — Parallel-Agent Safety
 
 When multiple agents may be writing commits in the same repository at
-the same time (e.g. a `/build` wave that dispatches three frontend
-agents in parallel), the shared git index is a race condition waiting
-to fire. The canonical "add then commit" pattern that humans use is
+the same time — a `/build` wave that dispatches three frontend agents
+in parallel is one such case — the shared git index is a race condition
+waiting to fire. The canonical "add then commit" pattern that humans use is
 **wrong** in parallel-agent contexts, because `git commit` commits the
 entire index — not just what you just staged. Another agent's staged
 files silently become part of your commit.
@@ -34,8 +34,9 @@ Additional rules that follow from the same principle:
    work and sweep it into your commit.
 2. **Deletes:** use `git rm --cached <path>` then `git commit <path>`.
    Plain `git rm <path>` also modifies the shared index.
-3. **If you absolutely must stage** (e.g. to preview a diff with
-   `git diff --cached`), reset the index afterward with
+3. **If you absolutely must stage** — the one legitimate case is
+   previewing a diff with `git diff --cached` — reset the index
+   afterward with
    `git reset HEAD` before committing — but prefer the direct
    `git commit <paths>` form so you never touch the index at all.
 4. **High-collision-risk work** — multi-agent refactors where each

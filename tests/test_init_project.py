@@ -695,9 +695,15 @@ class TestSkillMdContract:
             "for placeholder stubs — future maintainers will not understand "
             "why the stubs exist."
         )
-        # Placeholder instructions must appear BEFORE the Task tool invocation
+        # Placeholder instructions must appear BEFORE the actual Task tool
+        # invocation. Use rfind() to locate the last occurrence (the real
+        # Phase 1 Step 2 invocation); earlier occurrences may appear in
+        # policy sections (e.g., Subagent Dispatch) that describe dispatch
+        # rules without executing them. The invariant we care about is
+        # "actual invocation comes after placeholder creation," not "every
+        # mention of the type comes after."
         idx_placeholder = skill_md_text.find("placeholder")
-        idx_task_tool = skill_md_text.find('subagent_type: "project-bootstrapper"')
+        idx_task_tool = skill_md_text.rfind('subagent_type: "project-bootstrapper"')
         assert idx_placeholder != -1 and idx_task_tool != -1
         assert idx_placeholder < idx_task_tool, (
             "Placeholder instructions must appear BEFORE the Task tool "

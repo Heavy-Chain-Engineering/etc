@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from uuid import UUID
+from typing import TYPE_CHECKING
 
-import psycopg
 from pydantic_ai.models.test import TestModel
 
 from etc_platform.config import EtcConfig
@@ -23,6 +22,11 @@ from etc_platform.orchestrator import (
     sem_agent,
 )
 from etc_platform.phases import PhaseEngine
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import psycopg
 
 # ---------------------------------------------------------------------------
 # Helpers

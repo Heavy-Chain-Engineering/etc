@@ -13,6 +13,64 @@ failures.
 
 You NEVER skip governance gates. The pipeline is non-negotiable.
 
+## Response Format (Verbosity)
+
+Terse and structured. Use tables for per-ticket status data, numbered lists for
+ordered procedures, fenced code blocks for Linear comment templates, PRD
+artifacts, and execution-plan output. Prose is limited to: (a) phase-entry
+announcements, (b) the Phase 4 summary, (c) the Triage Phase T4 summary, (d)
+rejection-channel status messages surfaced to the conversation. No preamble
+("I'll...", "Here is..."). No narrative summary. No emoji. Max 400 words per
+orchestrator-level response unless producing the Phase 4 summary or Triage
+Phase T4 summary (max 800 words each) or a drafted PRD (the PRD artifact
+itself has no word cap, but the surrounding prose does). When a dispatched
+`/build` run returns, summarize in <= 5 lines per ticket; do not echo the full
+build output.
+
+## Subagent Dispatch (Non-Applicable)
+
+`/pull-tickets` does not invoke the Agent tool directly. It is a pipeline
+orchestrator that dispatches work by invoking `/build` as a skill command
+per ticket; `/build` then owns the Agent-tool subagent dispatch for that
+ticket's tasks. You MUST NOT attempt to Agent-dispatch ticket triage, PRD
+generation, rejection-comment composition, or MCP calls; those operations
+live in this skill.
+
+Your allowed in-context actions are: (a) invoking Linear MCP tools
+(`get_status_map`, `list_issues`, `get_issue`, `update_issue`, `create_comment`,
+`create_issue`) via the Bash tool or the MCP surface, (b) reading the codebase
+via Read/Grep/Glob for Phase 2 dependency analysis, (c) writing the PRD
+artifact to `.etc_sdlc/features/{ticket-identifier}/spec.md` via the Write
+tool, (d) invoking `/build` as a skill command per ticket (one invocation per
+ticket), (e) invoking `gh pr create` via the Bash tool after a successful
+build, (f) rendering status and summary output per the Response Format rules
+above.
+
+If an operation appears to require an Agent-tool dispatch — illustrative
+trigger: a ticket whose PRD would produce more than 15 leaf tasks — route it
+through the Scope Gate instead. Decompose into sub-tickets in Linear and let
+the next `/pull-tickets` cycle build the sub-tickets through `/build`.
+
+## Before Starting (Non-Negotiable)
+
+Read these files in order before any Phase 0 action, using the Read tool on
+each exact path:
+
+1. `skills/build/SKILL.md` — the downstream pipeline this skill hands each
+   ticket off to. Phase 3d invokes `/build`; you must know what `/build`
+   expects as input (a well-formed spec.md path) and what it returns
+   (success, DoR failure, or build failure).
+2. `standards/process/interactive-user-input.md` — present if this skill ever
+   surfaces a question to the operator (the cron path does not, but manual
+   invocation may). Required reading so that any operator-facing prompt uses
+   Pattern A or Pattern B correctly.
+
+If `skills/build/SKILL.md` does not exist, STOP and report the missing file
+to the operator — `/pull-tickets` cannot complete ticket processing without
+the downstream pipeline. If `standards/process/interactive-user-input.md`
+does not exist, record that fact in the Phase 4 summary and proceed; the
+primary cron path has no operator interaction.
+
 ## Usage
 
 ```
@@ -175,15 +233,17 @@ The PRD MUST contain ALL 8 sections:
 
 **3. Requirements**
 - Extract business requirements from the ticket description
-- Add implied requirements discovered during codebase research (e.g., if the
-  ticket says "add a notes field" and the codebase has an event system, add
-  a requirement for emitting the relevant event)
+- Add implied requirements discovered during codebase research (illustrative;
+  not exhaustive — extend as the situation warrants: if the ticket says "add
+  a notes field" and the codebase has an event system, add a requirement for
+  emitting the relevant event)
 - Each requirement gets a BR-NNN identifier
 
 **4. Acceptance Criteria**
 - Pull from the ticket's "How will we know it's done" section if present
-- Add criteria inferred from codebase patterns (e.g., if all endpoints have
-  OpenAPI docs, add a criterion for API documentation)
+- Add criteria inferred from codebase patterns (illustrative; not exhaustive
+  — extend as the situation warrants: if all endpoints have OpenAPI docs, add
+  a criterion for API documentation)
 - Each criterion must be specific and measurable
 
 **5. Edge Cases**
@@ -225,7 +285,7 @@ The pipeline runs with ALL governance gates intact:
 - Code review
 - CI pipeline verification
 
-Do NOT bypass, skip, or weaken any gate. The pipeline is the product.
+Do NOT circumvent, skip, or weaken any gate. The pipeline is the product.
 
 #### 3e. Handle Build Result
 
@@ -268,10 +328,10 @@ Determine the failure type and route accordingly:
   "I started working on this but need some clarification before I can
   finish:
 
-  - [Gap 1 in plain language -- e.g., 'Which users should have access
-    to this feature? Everyone, or just admins?']
-  - [Gap 2 in plain language -- e.g., 'When you say "recent activity,"
-    how far back should that go? Last 7 days? 30 days?']
+  - [Gap 1 in plain language. Illustrative form: 'Which users should have
+    access to this feature? Everyone, or just admins?']
+  - [Gap 2 in plain language. Illustrative form: 'When you say "recent
+    activity," how far back should that go? Last 7 days? 30 days?']
 
   Once you've updated the ticket with these details, move it back to
   Todo and I'll pick it up again."
@@ -355,8 +415,9 @@ For each pair of tickets where a dependency was detected in Phase 2:
 
    "**Dependency detected:** This ticket depends on [{blocker-id}]: {blocker title}.
 
-   **Reason:** [e.g., 'Both tickets touch the vendor API endpoints, and this
-   ticket requires the data model changes from the other ticket to be in place.']
+   **Reason:** [one-line explanation of why the dependency exists. Illustrative
+   form: 'Both tickets touch the vendor API endpoints, and this ticket requires
+   the data model changes from the other ticket to be in place.']
 
    **Recommendation:** Build {blocker-id} first."
 
@@ -487,9 +548,10 @@ These are non-negotiable. Violating any constraint is a pipeline failure.
   Two tickets touching overlapping files MUST be sequenced regardless of the
   concurrency setting (file-set isolation rule).
 
-- **Sanitize ticket identifiers.** Before using a ticket identifier (e.g., "ENG-19")
-  in directory names or file paths, strip all characters except alphanumeric and
-  hyphen. This prevents path traversal or shell injection from crafted ticket IDs.
+- **Sanitize ticket identifiers.** Before using a ticket identifier (illustrative
+  form: "ENG-19") in directory names or file paths, strip all characters except
+  alphanumeric and hyphen. This prevents path traversal or shell injection from
+  crafted ticket IDs.
 
 - **Snapshot ticket content at pull time.** Mid-processing changes in Linear are
   ignored until the next cycle (Edge Case 4). Do not re-fetch ticket details
@@ -516,3 +578,61 @@ These are non-negotiable. Violating any constraint is a pipeline failure.
 | 10 | All tickets interdependent | Process sequentially, effective concurrency becomes 1 |
 | 11 | Epic-sized ticket (>15 leaf tasks) | Create sub-issues in Linear, do not build parent (BR-010) |
 | 12 | Triage mode with 0 eligible tickets | Report "No eligible tickets" and exit cleanly |
+
+---
+
+## Definition of Done
+
+`/pull-tickets` is done for a given invocation when ALL of the following
+observable artifacts exist and pass. The checklist branches by mode: items
+1-3 always apply; items 4-7 apply to normal (non-triage) mode; items 8-10
+apply to `--triage-only` mode. An item marked N/A for the active mode is
+skipped, not silently passed.
+
+1. Phase 0 MCP verification has completed: `get_status_map` returned a
+   non-empty mapping for the target team containing at minimum the status
+   names "Todo", "In Progress", "In Review", and "Needs Clarification".
+   If the MCP was unreachable, the invocation aborted before any ticket
+   was touched — that aborted run is a terminal state, not a DoD candidate.
+2. Phase 1 pulled the eligible-ticket list and the count was reported to
+   the conversation. A run with zero eligible tickets exited cleanly after
+   this step and is considered done.
+3. Phase 2 dependency analysis ran for every eligible ticket: each ticket
+   has a recorded set of affected codebase areas, and every detected
+   cross-ticket conflict was rejected to source per Edge Case 3 before
+   any processing began.
+4. NORMAL MODE ONLY: for every non-rejected ticket in the batch, a feature
+   directory exists at `.etc_sdlc/features/{ticket-identifier}/` containing
+   a `spec.md` with all 8 required sections (Summary, Scope, Requirements,
+   Acceptance Criteria, Edge Cases, Technical Constraints, Security
+   Considerations, Module Structure).
+5. NORMAL MODE ONLY: for every non-rejected ticket, `/build` was invoked
+   exactly once against its `spec.md` and returned a terminal result
+   (success, DoR failure, or system failure). No ticket is left in an
+   "in flight" state.
+6. NORMAL MODE ONLY: every successful build produced a PR via `gh pr
+   create`, the Linear ticket was moved to "In Review", and an SME-language
+   summary comment was posted (no file paths, no stack traces, no class
+   names, no function signatures).
+7. NORMAL MODE ONLY: every failed build was routed per failure type — DoR
+   failures routed as SME-actionable gaps, system failures routed as "not
+   your problem" notices — and the ticket was moved to "Needs Clarification"
+   with a comment.
+8. TRIAGE MODE ONLY: every eligible ticket has a Triage Analysis comment
+   posted via `create_comment` containing the estimated size (S/M/L/XL),
+   affected areas, and estimated subtask count.
+9. TRIAGE MODE ONLY: every detected dependency has a comment posted on
+   both the dependent ticket and the blocker ticket. Every XL-sized ticket
+   has had sub-issues created via `create_issue` linked to the parent,
+   and the parent has a summary comment listing the sub-issues.
+10. TRIAGE MODE ONLY: NO ticket was moved out of "Todo" by the triage
+    run. The SME retains control of what gets built next.
+11. The Phase 4 summary (normal mode) or Triage Phase T4 summary (triage
+    mode) has been rendered to the conversation with counts for processed,
+    succeeded, rejected, and skipped tickets.
+
+If any applicable item is not satisfied, `/pull-tickets` is NOT done for
+that invocation, regardless of how many tickets reported internal success.
+A run that crashed mid-batch is NOT done; the resume path is the next cron
+cycle, which re-pulls the eligible-ticket list and processes anything still
+in "Todo" (idempotency per BR-008 prevents duplicate work).

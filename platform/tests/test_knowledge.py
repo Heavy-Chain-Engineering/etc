@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-import psycopg
 import pytest
 
 from etc_platform.knowledge import (
@@ -17,6 +17,9 @@ from etc_platform.knowledge import (
     query_knowledge,
     resolve_conflict,
 )
+
+if TYPE_CHECKING:
+    import psycopg
 
 
 def _create_project(db: psycopg.Connection) -> UUID:
@@ -146,7 +149,7 @@ class TestContributeKnowledge:
         """Same key with different scopes are not superseded."""
         pid = _create_project(db)
         id1 = contribute_knowledge(db, pid, "entity:User", {"v": 1}, scope="project")
-        id2 = contribute_knowledge(db, pid, "entity:User", {"v": 2}, scope="phase")
+        contribute_knowledge(db, pid, "entity:User", {"v": 2}, scope="phase")
 
         row1 = db.execute(
             "SELECT superseded_by FROM knowledge_entries WHERE id = %s", (id1,)

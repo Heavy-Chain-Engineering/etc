@@ -206,17 +206,18 @@ gates:
       $ARGUMENTS
 
       ════════════════════════════════════════════════════════════════════
-      SHAPE CHECK — built-in TaskCreate todos bypass this gate
+      SHAPE CHECK — built-in TaskCreate todos skip this gate
       ════════════════════════════════════════════════════════════════════
 
       The TaskCreated event fires for TWO very different things:
 
       1. **Formal ETC task assignment** (what this gate was built for).
-         $ARGUMENTS contains a YAML-like task file with fields such as
-         `task_id`, `files_in_scope`, `acceptance_criteria`,
-         `requires_reading`, and `assigned_agent`. These come from
-         /decompose writing task files under .etc_sdlc/features/*/tasks/.
-         Evaluate the DoR checklist below on these.
+         $ARGUMENTS contains a YAML-like task file whose top-level keys
+         include at minimum `task_id`, `files_in_scope`,
+         `acceptance_criteria`, `requires_reading`, and `assigned_agent`.
+         These come from /decompose writing task files under
+         .etc_sdlc/features/*/tasks/. Evaluate the DoR checklist below
+         on these.
 
       2. **Built-in TaskCreate todo** used by the agent for in-context
          progress tracking. $ARGUMENTS contains only `{title, status,
@@ -268,7 +269,7 @@ gates:
       $ARGUMENTS
 
       ════════════════════════════════════════════════════════════════════
-      SHAPE CHECK — built-in TaskCreate todos bypass this gate
+      SHAPE CHECK — built-in TaskCreate todos skip this gate
       ════════════════════════════════════════════════════════════════════
 
       The TaskCompleted event fires for TWO different shapes:
@@ -293,11 +294,27 @@ gates:
       ════════════════════════════════════════════════════════════════════
 
       Verify by inspecting the actual codebase:
-      1. All files listed in files_in_scope exist and contain relevant changes
-      2. Tests exist and cover the acceptance criteria
-      3. Run the test suite — all tests pass
-      4. Coverage meets the project threshold
-      5. Each acceptance criterion is demonstrably satisfied
+      1. Every file path listed in `files_in_scope` exists on disk and
+         contains the changes the task required.
+      2. Tests exist whose assertions map to each acceptance criterion.
+      3. Run the project test command. Record whether every test passes.
+      4. Coverage of the files in `files_in_scope` meets the project
+         threshold declared in the repo's coverage configuration.
+      5. For each entry in `acceptance_criteria`, emit a verdict of
+         exactly one of: PASS, FAIL, or NOT_APPLICABLE. For FAIL, cite
+         the file path and line number or the failing test name. For
+         NOT_APPLICABLE, state the concrete reason the criterion does
+         not map to observable evidence in this repo.
+
+      The task is verified only when steps 1-4 hold AND every
+      acceptance criterion in step 5 is PASS or NOT_APPLICABLE.
+
+      Response shape:
+      - Use ONLY valid JSON, no prose outside the JSON object.
+      - On verification pass, return {"ok": true}.
+      - On verification fail, return {"ok": false, "reason": "..."} where
+        the reason string is a single line listing each failed AC as
+        "AC-N: FAIL — <evidence>" separated by "; ".
 
       If this is a second attempt (stop_hook_active=true in $ARGUMENTS) and
       verification still fails:
@@ -332,39 +349,73 @@ gates:
     model: sonnet
     role: |
       You are a hostile code reviewer. Your job is NOT to confirm the
-      work looks good — it's to find what's wrong. You have seen
-      thousands of bugs escape well-intentioned reviews because the
-      reviewer was too agreeable.
+      work looks good — it is to find what is wrong. You have seen
+      thousands of bugs escape reviews that were too agreeable.
 
       You are a FRESH agent with no context from the implementation.
-      You review the output cold, looking for:
-      - Edge cases the implementer didn't consider
-      - Error handling gaps (what happens when X fails?)
-      - Assumptions that aren't validated
-      - Security implications
-      - Missing test cases for failure paths
-      - Spec compliance gaps (does it ACTUALLY meet criteria?)
+      You review the output cold.
 
-      You are constructive but relentless. You don't say "looks good"
-      unless you genuinely cannot find issues.
+      For each finding you produce, cite the file path and line number.
+      Do not return "looks good" unless you have verified every check
+      in the prompt's review checklist and found nothing to report.
     prompt: |
       A subagent just completed its work. Review it adversarially.
 
       $ARGUMENTS
 
-      Read the actual files that were modified. Don't trust the summary.
-      Check the tests — do they test failure paths or only happy paths?
-      Check error handling — are exceptions caught too broadly?
-      Check the acceptance criteria — is each one demonstrably met?
+      This is a defensive code-review activity on a codebase owned by
+      the operator. All findings are for remediation by the implementer.
 
-      If stop_hook_active is true and you still find critical issues:
-        Return {"continue": false, "stopReason": "ADVERSARIAL REVIEW FAILED: [details]"}
+      Review procedure — every step is mandatory:
 
-      If you find issues the agent should fix:
-        Return {"ok": false, "reason": "[specific issues with file:line references]"}
+      1. Use the Read tool on every file the subagent modified. Do not
+         rely on the subagent's written summary of what it did.
+      2. Use the Read tool on every test file that claims to cover
+         the change.
+      3. For each of the following review dimensions, produce either a
+         finding with file:line evidence or the literal string
+         "no finding":
 
-      If the work genuinely passes adversarial scrutiny:
-        Return {"ok": true}
+         a. Error-handling paths — every raised exception has a
+            matching except clause at an appropriate layer; no bare
+            `except:` or `except Exception:` that swallows errors.
+         b. Empty and null inputs — the implementation handles empty
+            string, empty list, empty dict, and None for every public
+            parameter declared in the changed code.
+         c. Off-by-one conditions — every loop bound, slice index, and
+            range expression in the changed code has been checked for
+            the first and last element.
+         d. Concurrent-access assumptions — any shared state (module
+            globals, class attributes, file handles, DB connections)
+            either has explicit locking or a documented single-writer
+            assumption.
+         e. Security boundaries — user-supplied input is validated
+            before use; no string interpolation into SQL, shell, or
+            file paths; secrets are not logged or echoed.
+         f. Test coverage of failure paths — every branch in changed
+            code that handles an error condition has at least one test
+            that triggers that branch.
+         g. Acceptance-criteria compliance — for each criterion in
+            the task's `acceptance_criteria`, cite the file:line or
+            test name that demonstrates the criterion is satisfied.
+         h. Spec compliance — the changed behaviour matches the task
+            description; no scope drift, no silently dropped
+            requirements.
+
+      Response shape — valid JSON only, no prose outside the JSON
+      object:
+
+      If stop_hook_active is true in $ARGUMENTS AND at least one
+      finding from a-h is non-null, return:
+        {"continue": false,
+         "stopReason": "ADVERSARIAL REVIEW FAILED: <one-line summary with file:line>"}
+
+      If any finding from a-h is non-null (first attempt), return:
+        {"ok": false,
+         "reason": "<one line per finding, 'dimension: <file:line> — <issue>', joined by '; '>"}
+
+      If every finding from a-h is "no finding", return:
+        {"ok": true}
     timeout: 90
     max_retries: 1
     on_loop: escalate
@@ -383,6 +434,23 @@ gates:
     type: command
     script: ci-gate.sh
     timeout: 120
+    on_failure: block
+
+  completion-discipline:
+    description: >
+      Enforces standards/process/completion-discipline.md via state
+      inspection (not language matching). Blocks stop when either signal
+      indicates unfinished work: (1) .tdd-dirty is present, or (2) any
+      task has status: in_progress. Language-agnostic: the agent cannot
+      phrase its way past this check. Valid exits are: complete the work,
+      formally escalate (tasks.py set-status escalated + ESCALATION block),
+      or formally block (tasks.py set-status blocked). Added 2026-04-21
+      in response to 4.7 regressions on premature session termination
+      and task under-scoping.
+    event: Stop
+    type: command
+    script: check-completion-discipline.sh
+    timeout: 10
     on_failure: block
 
   change-control:

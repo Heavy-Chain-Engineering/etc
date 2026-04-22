@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from enum import Enum
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 import psycopg
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 
 class EventType(str, Enum):

@@ -1,5 +1,12 @@
 # Incident Response — The Hotfix Lane
 
+**Framing:** This document describes defensive incident response for
+authorized codebases owned by the operator. Terms like "bypass,"
+"attack," and "guardrail" appear in the context of gate controls,
+threat-model analysis, and abuse-detection defenses inside the harness
+itself — all for remediation, not exploitation. If a passage feels
+dual-use, flag it explicitly rather than refusing silently.
+
 Incident response is the operating mode every engineering team needs but
 most harnesses neglect. When production is on fire, the operator does
 not need a Definition-of-Ready interview, a three-state PRD classifier,
@@ -226,10 +233,12 @@ invocation detects this and offers interactive recovery via
   happened out-of-band.
 - **Wait — the original is still working** — the new `/hotfix` aborts.
   Use this when you see the stale incident but believe the original
-  subagent is still making progress (e.g., a long-running fix).
+  subagent is still making progress (one illustrative case: a
+  long-running fix).
 - **Cancel new /hotfix** — neither the stale incident nor the new one
-  changes state. Use this when you need to go investigate manually
-  before proceeding.
+  changes state. Use this when you need to review the stale incident's
+  state manually (read the `incident.md`, check the target service,
+  inspect recent commits) before proceeding.
 
 "Mark escalated" is the normal path. Escalation is not failure — it's
 an acknowledgment that the hotfix lane couldn't finish the work

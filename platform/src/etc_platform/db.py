@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -11,6 +10,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     from psycopg import Connection
 
 _pool: ConnectionPool | None = None

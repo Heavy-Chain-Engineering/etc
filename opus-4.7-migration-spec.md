@@ -137,16 +137,21 @@ strategy. The catalog is **exhaustive** — if a pattern is not on this
 list, we do not fix it, because the catalog is the contract for what
 "done" means.
 
-### AP-001: "Follow best practices"
+### AP-001: Vague quality descriptors
 
-- **Grep:** `best practices|follow established|industry standard`
+- **Grep:** `best practices|follow established|industry standard|\bidiomatic\b|\bstrict typing\b|\bproper\b|\brobust\b|\bwell-designed\b`
 - **Diagnosis:** implies a body of knowledge the model should infer.
   4.6 generalized; 4.7 executes literally (i.e., does nothing specific).
+  Includes vague adjective descriptors ("idiomatic", "robust", "proper")
+  that imply conformance to an unstated standard.
 - **Fix:** replace with either (a) an inline numbered list of the
   specific practices, or (b) a concrete reference to a standards doc
   (e.g., "apply the rules in standards/code/python-conventions.md")
 - **Delete condition:** if no specific practices are intended, delete
   the phrase entirely rather than leave it vague.
+- **Revision history:** grep pattern expanded during Phase 1 execution
+  (2026-04-17) after the narrower initial pattern missed "idiomatic"
+  and "strict typing" in `agents/backend-developer.md` line 30.
 
 ### AP-002: "Be thorough" / "Be exhaustive"
 
@@ -283,6 +288,97 @@ list, we do not fix it, because the catalog is the contract for what
   encounter a request that feels dual-use, flag it explicitly
   rather than refusing silently."
 
+### AP-014: Conversational self-termination
+
+- **Diagnosis:** 4.7 regressions produce fluent stop-messages that
+  mask unfinished work: "good place to pause," "we've made good
+  progress," "approaching context limit — what do you think?" The
+  failure is smuggling an end-of-session decision past the operator
+  using collaborative-sounding phrasing.
+- **Grep:** No phrase list. The AP is detected structurally, not
+  linguistically — see `hooks/check-completion-discipline.sh`. The
+  hook checks `.tdd-dirty` and `in_progress` task state rather than
+  matching words. (A regex list of quit-phrases would be a cat-and-
+  mouse game; the model can always phrase a quit in a form the
+  regex doesn't match.)
+- **Fix in agent/skill prompts:** Every agent and skill MUST
+  reference `standards/process/completion-discipline.md` in a
+  Before Starting section. That standard forbids conversational
+  quits and mandates the `## ESCALATION` block format for
+  handoffs.
+- **Fix at the harness layer:** `check-completion-discipline.sh`
+  blocks stop events where either signal fires, regardless of
+  message content. This is the mechanical enforcement that makes
+  the prompt-level rule load-bearing.
+- **Revision history:** added 2026-04-21 during the 4.7 migration
+  soak period when quit-early behavior was observed in the broader
+  Anthropic-using community. See
+  `standards/process/completion-discipline.md` for the full
+  standard.
+
+### AP-015: Implicit task completion
+
+- **Diagnosis:** 4.7 under-scoping regressions: an agent reads a
+  task, scopes it as simpler than stated, produces surface work,
+  and claims "done." No per-AC evidence; no re-read of the spec;
+  no proportionality check against the stated complexity. The
+  operator later discovers the claim was false and trust is lost.
+- **Grep:** Absence check — every agent must require per-AC
+  observable evidence (file path, test name, quoted output) for
+  every completion claim. Absence of this requirement in an agent
+  prompt is an AP-015 violation.
+- **Fix:** Agent prompts MUST include explicit evidence rules:
+  "Before marking complete, verify every acceptance criterion has
+  observable evidence. Work done must be proportional to the
+  stated complexity score. If the task felt suspiciously easy,
+  re-read the spec."
+- **Enforcement:** The `task-completion` hook (agent-type, runs
+  on TaskCompleted event) already requires PASS/FAIL/NOT_APPLICABLE
+  verdicts per AC with file:line or test-name evidence (Phase 4
+  update). AP-015 formalizes this requirement at the agent-prompt
+  layer so the verdict has something to check against.
+- **Revision history:** added 2026-04-21 alongside AP-014. Same
+  origin: observed 4.7 regressions producing false-completion
+  claims that erode operator trust.
+
+### AP-013: Reference without read-enforcement
+
+- **Grep:** Not a single-pass grep. This is a cross-reference
+  structural check. For each standards-doc or file reference in an
+  agent prompt (e.g., `standards/code/python-conventions.md`),
+  verify that at least one read-enforcement mechanism puts the
+  referenced content into the agent's context.
+- **Diagnosis:** Under 4.7's fewer-tool-calls default, an agent may
+  see a reference like "conformant to `standards/X.md`" and not
+  Read the file — because nothing forced it to. The reference
+  becomes a false promise the harness doesn't keep. Experimentally
+  validated 2026-04-17: when the trigger condition ("before writing
+  any code") fires, agents do read all forced-read files; when it
+  doesn't fire, they read only what the task requires. So the
+  enforcement mechanism is what makes the reference real.
+- **Check procedure:** For each file reference in the agent prompt:
+  1. Does the agent have a "Before Starting" (or equivalent)
+     section that mandates reading the referenced file?
+  2. Does `hooks/inject-standards.sh` inject the referenced
+     content into this agent's context at dispatch?
+  3. Is the referenced file listed in `requires_reading` in the
+     task YAML that dispatches this agent, enforced by
+     `hooks/check-required-reading.sh`?
+  If none of 1-3 is true, the reference is an AP-013 violation.
+- **Fix options:** (a) add the referenced file to the agent's
+  Before Starting section; (b) remove the reference and inline
+  the rules the reference was pointing to; (c) move enforcement
+  to `inject-standards.sh` or `requires_reading` at the task level.
+- **Exempt condition:** Pure documentation/commentary references
+  (e.g., "See also..." in a "Further Reading" section) are not
+  behavioral directives. They do not require enforcement.
+- **Revision history:** added 2026-04-17 during Phase 1 execution
+  after Experiment 2 confirmed the forced-reads pattern works
+  unconditionally for code-writing tasks on `backend-developer.md`
+  but only because all standards references in that file were
+  already on the Before Starting list. The check formalizes what
+  was verified implicitly.
+
 ---
 
 ## 4. The fix catalog
@@ -355,8 +451,8 @@ audit manually in Phase 2.
 ```
 mkdir -p .etc_sdlc/4.7-audit
 {
-  echo "=== AP-001: best practices / industry standard ==="
-  grep -rInE 'best practices|follow established|industry standard' agents/ skills/ standards/ spec/etc_sdlc.yaml | wc -l
+  echo "=== AP-001: vague quality descriptors ==="
+  grep -rInE 'best practices|follow established|industry standard|\bidiomatic\b|\bstrict typing\b|\bproper\b|\brobust\b|\bwell-designed\b' agents/ skills/ standards/ spec/etc_sdlc.yaml | wc -l
 
   echo "=== AP-002: be thorough / comprehensive ==="
   grep -rInE 'be thorough|be exhaustive|comprehensive review|careful analysis' agents/ skills/ standards/ spec/etc_sdlc.yaml | wc -l
@@ -547,11 +643,21 @@ the main thread, and must include:
    looks like"
 5. Explicit verbosity directive: "Produce a diff for the target
    file. Return the diff text, the AP-NNN pattern counts before/
-   after, and the number of edits made. Terse output; no prose
-   commentary."
+   after, the number of edits made, and the AP-013 reference-
+   enforcement check result. Terse output; no prose commentary."
 6. Explicit completion rule: "You have one file to audit. When the
-   file contains zero AP-NNN matches, you are done. Do not audit
-   other files."
+   file contains zero matches for AP-001..AP-012 AND the AP-013
+   structural check passes (every standards reference has an
+   enforcement path), you are done. Do not audit other files."
+7. AP-013 structural check instructions: "After fixing AP-001..AP-012,
+   list every `standards/...` or `.md` file reference in the target
+   file. For each, identify the enforcement path: (a) a Before
+   Starting section in the same agent that mandates reading the
+   file, OR (b) `inject-standards.sh` injection (only for files in
+   `standards/`), OR (c) `requires_reading` in task YAML. If a
+   reference has no enforcement path, either add the file to the
+   Before Starting section or remove the reference. Document the
+   check in the completion report."
 
 ### 7.3 Dispatch pattern
 
@@ -735,11 +841,22 @@ Create `docs/4.7-migration-changelog.md`:
 
 ### 10.5 Commit and tag
 
-Commit message: `fix(harness): audit all prompts for 4.7 literal
+Commit message: `feat(harness): audit all prompts for 4.7 literal
 instruction-following`
 
-Tag: `v1.7.2-4.7-migration` (not a major version — this is a
-defect repair against 4.7, not a feature release).
+Tag: **`v1.8`** — minor version bump. Although this was initiated as
+a 4.7 literalism repair, in practice it delivered:
+- AP-013 (reference-without-enforcement) as a new formal invariant
+- Subagent Dispatch taxonomy (Non-Negotiable / Non-Applicable
+  patterns) as a new skill-authoring contract
+- Verbosity directives now required on every agent and skill
+- 5 latent bugs fixed in-flight (non-existent standards references,
+  missing Before Starting sections, ci-gate path hardcoding, consumer-
+  project tasks.py path, Kuzu archival)
+- 1 cross-skill divergence flagged for operator decision (/implement
+  vs /build)
+
+Patch-level (v1.7.2-x) understated the scope. Ship as v1.8.
 
 ### 10.6 Ledger entry
 

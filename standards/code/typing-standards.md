@@ -17,7 +17,7 @@
   - **Enforce:** ruff(UP007)
 - Use `list[str]` lowercase generics (not `List[str]`)
   - **Enforce:** ruff(UP006)
-- Use `type` aliases for complex types
+- Use `type` aliases when a type annotation exceeds 40 characters, repeats in 2+ signatures, or contains nested generics with two or more type parameters per level
 
 ## Pydantic Models
 - All data transfer objects are Pydantic `BaseModel` subclasses

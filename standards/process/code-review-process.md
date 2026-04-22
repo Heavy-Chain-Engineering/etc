@@ -12,6 +12,8 @@ Before reviewing any code, read:
 
 ## Review Checklist
 
+This checklist is for defensive security review of authorized codebases owned by the operator. All findings are for remediation, not exploitation.
+
 ### Critical (must fix before merge)
 - Security vulnerabilities (injection, XSS, auth bypass, secrets in source)
 - Silent error swallowing (empty catch blocks, ignored return values)
