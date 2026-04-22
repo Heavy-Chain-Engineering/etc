@@ -208,6 +208,27 @@ can skip them with justification.
 **Priority:** P1 (prevents drift after migration)
 **Estimated effort:** 3 hours
 
+### B8. Complete completion-discipline rollout to agent/skill Before Starting lists
+
+**Severity:** Medium (enforcement is already mechanical via the hook;
+this makes the contract legible to the agents themselves)
+**Origin:** Completion discipline standard added 2026-04-21 in
+response to 4.7 regressions.
+**Status:** The standard (`standards/process/completion-discipline.md`)
+and the hook (`hooks/check-completion-discipline.sh`) are shipped.
+The hook enforces unconditionally at the Stop event. But individual
+agent and skill prompts don't reference the standard in their
+"Before Starting" lists yet, which means agents don't know about
+the ESCALATION-block requirement until they hit the hook's block
+message. A Phase-2-style audit pass across all 24 agents and 10
+skills would make the contract legible proactively.
+**Proposed fix:** One-session audit pass adding
+`standards/process/completion-discipline.md` to every agent's
+Before Starting list. Mechanical work; can parallelize in batches
+of 5 per the v1.8 Phase 2 pattern.
+**Priority:** P2 (the hook already enforces; this is legibility)
+**Estimated effort:** 1-2 hours
+
 ### B7. `/implement` and `/build` contract divergence
 
 **Severity:** Medium (parallel orchestrators that aren't actually parallel)

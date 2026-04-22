@@ -288,6 +288,59 @@ list, we do not fix it, because the catalog is the contract for what
   encounter a request that feels dual-use, flag it explicitly
   rather than refusing silently."
 
+### AP-014: Conversational self-termination
+
+- **Diagnosis:** 4.7 regressions produce fluent stop-messages that
+  mask unfinished work: "good place to pause," "we've made good
+  progress," "approaching context limit — what do you think?" The
+  failure is smuggling an end-of-session decision past the operator
+  using collaborative-sounding phrasing.
+- **Grep:** No phrase list. The AP is detected structurally, not
+  linguistically — see `hooks/check-completion-discipline.sh`. The
+  hook checks `.tdd-dirty` and `in_progress` task state rather than
+  matching words. (A regex list of quit-phrases would be a cat-and-
+  mouse game; the model can always phrase a quit in a form the
+  regex doesn't match.)
+- **Fix in agent/skill prompts:** Every agent and skill MUST
+  reference `standards/process/completion-discipline.md` in a
+  Before Starting section. That standard forbids conversational
+  quits and mandates the `## ESCALATION` block format for
+  handoffs.
+- **Fix at the harness layer:** `check-completion-discipline.sh`
+  blocks stop events where either signal fires, regardless of
+  message content. This is the mechanical enforcement that makes
+  the prompt-level rule load-bearing.
+- **Revision history:** added 2026-04-21 during the 4.7 migration
+  soak period when quit-early behavior was observed in the broader
+  Anthropic-using community. See
+  `standards/process/completion-discipline.md` for the full
+  standard.
+
+### AP-015: Implicit task completion
+
+- **Diagnosis:** 4.7 under-scoping regressions: an agent reads a
+  task, scopes it as simpler than stated, produces surface work,
+  and claims "done." No per-AC evidence; no re-read of the spec;
+  no proportionality check against the stated complexity. The
+  operator later discovers the claim was false and trust is lost.
+- **Grep:** Absence check — every agent must require per-AC
+  observable evidence (file path, test name, quoted output) for
+  every completion claim. Absence of this requirement in an agent
+  prompt is an AP-015 violation.
+- **Fix:** Agent prompts MUST include explicit evidence rules:
+  "Before marking complete, verify every acceptance criterion has
+  observable evidence. Work done must be proportional to the
+  stated complexity score. If the task felt suspiciously easy,
+  re-read the spec."
+- **Enforcement:** The `task-completion` hook (agent-type, runs
+  on TaskCompleted event) already requires PASS/FAIL/NOT_APPLICABLE
+  verdicts per AC with file:line or test-name evidence (Phase 4
+  update). AP-015 formalizes this requirement at the agent-prompt
+  layer so the verdict has something to check against.
+- **Revision history:** added 2026-04-21 alongside AP-014. Same
+  origin: observed 4.7 regressions producing false-completion
+  claims that erode operator trust.
+
 ### AP-013: Reference without read-enforcement
 
 - **Grep:** Not a single-pass grep. This is a cross-reference

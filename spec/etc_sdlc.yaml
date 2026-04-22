@@ -436,6 +436,23 @@ gates:
     timeout: 120
     on_failure: block
 
+  completion-discipline:
+    description: >
+      Enforces standards/process/completion-discipline.md via state
+      inspection (not language matching). Blocks stop when either signal
+      indicates unfinished work: (1) .tdd-dirty is present, or (2) any
+      task has status: in_progress. Language-agnostic: the agent cannot
+      phrase its way past this check. Valid exits are: complete the work,
+      formally escalate (tasks.py set-status escalated + ESCALATION block),
+      or formally block (tasks.py set-status blocked). Added 2026-04-21
+      in response to 4.7 regressions on premature session termination
+      and task under-scoping.
+    event: Stop
+    type: command
+    script: check-completion-discipline.sh
+    timeout: 10
+    on_failure: block
+
   change-control:
     description: >
       Prevents the agent from modifying its own governance. Blocks
