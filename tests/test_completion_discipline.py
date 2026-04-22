@@ -91,6 +91,9 @@ class TestDirtyMarkerTriggersCI:
         exit 1 (CI failure) and the marker remains set.
         """
         (tmp_path / ".tdd-dirty").write_text("")
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0.0.0"\n'
+        )
         tests_dir = tmp_path / "tests"
         tests_dir.mkdir()
         (tests_dir / "test_failing.py").write_text(
@@ -107,6 +110,9 @@ class TestDirtyMarkerTriggersCI:
         self, run_hook: Any, tmp_path: Path
     ) -> None:
         (tmp_path / ".tdd-dirty").write_text("")
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0.0.0"\n'
+        )
         tests_dir = tmp_path / "tests"
         tests_dir.mkdir()
         (tests_dir / "test_passing.py").write_text(
@@ -115,6 +121,31 @@ class TestDirtyMarkerTriggersCI:
         result = run_hook(HOOK_NAME, _build_input(tmp_path))
         assert result.exit_code == 0
         assert not (tmp_path / ".tdd-dirty").exists()
+
+    def test_should_skip_pytest_when_not_a_python_project(
+        self, run_hook: Any, tmp_path: Path
+    ) -> None:
+        """A directory with a `tests/` subdir but no Python-project
+        marker (no pyproject.toml with a recognized section, no
+        pytest.ini, no setup.cfg, no uv.lock) must not run pytest.
+        Otherwise a frontend bootstrap that happens to create an
+        empty `tests/` dir weaponizes the Stop hook.
+        """
+        (tmp_path / ".tdd-dirty").write_text("")
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        # Real test content with a failing assertion — if pytest ran,
+        # the hook would exit 1. The assertion below proves it didn't.
+        (tests_dir / "test_would_fail.py").write_text(
+            "def test_must_fail():\n    assert False\n"
+        )
+        result = run_hook(HOOK_NAME, _build_input(tmp_path))
+        assert result.exit_code == 0, (
+            "Hook must not run pytest without a Python-project marker"
+        )
+        assert not (tmp_path / ".tdd-dirty").exists(), (
+            "Marker clears because CI vacuously passes (pytest skipped)"
+        )
 
 
 class TestInProgressTasksBlock:
@@ -190,6 +221,9 @@ class TestSequencing:
         check — the user sees CI output, not task output.
         """
         (tmp_path / ".tdd-dirty").write_text("")
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0.0.0"\n'
+        )
         tests_dir = tmp_path / "tests"
         tests_dir.mkdir()
         (tests_dir / "test_failing.py").write_text(

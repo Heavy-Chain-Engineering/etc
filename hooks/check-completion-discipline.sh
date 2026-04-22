@@ -51,9 +51,31 @@ if [[ -f "$DIRTY" ]]; then
     [[ -d "${CWD}/${d}" ]] && PY_DIRS+=("$d")
   done
 
+  # Detect uv-managed Python projects so we invoke the repo's pinned
+  # toolchain (pinned ruff, pinned pytest, project venv) instead of
+  # whatever happens to be on $PATH. System ruff/pytest on a dev box can
+  # lag behind the repo pins and produce false-positive gate failures
+  # (e.g. system ruff refusing `target-version = "py314"`).
+  if [[ -f "${CWD}/uv.lock" ]] || { [[ -f "${CWD}/pyproject.toml" ]] && grep -q '^\[tool\.uv\]' "${CWD}/pyproject.toml" 2>/dev/null; }; then
+    PY_RUNNER=("uv" "run")
+  else
+    PY_RUNNER=()
+  fi
+
+  # Decide whether this directory is actually a Python project. Empty
+  # `tests/` dirs (e.g. a frontend bootstrap that happens to create one)
+  # used to weaponize the gate — pytest would find nothing, exit 5, and
+  # block the stop event on a non-Python project.
+  IS_PY_PROJECT=0
+  if [[ -f "${CWD}/uv.lock" ]] || [[ -f "${CWD}/pytest.ini" ]] || [[ -f "${CWD}/setup.cfg" ]]; then
+    IS_PY_PROJECT=1
+  elif [[ -f "${CWD}/pyproject.toml" ]] && grep -Eq '^\[(project|tool\.poetry|tool\.pytest\.ini_options|tool\.uv)\]' "${CWD}/pyproject.toml" 2>/dev/null; then
+    IS_PY_PROJECT=1
+  fi
+
   # 1a. Test suite
-  if [[ -d "${CWD}/tests" ]] || [[ -d "${CWD}/test" ]]; then
-    TEST_OUTPUT=$(cd "$CWD" && python3 -m pytest -q 2>&1)
+  if [[ $IS_PY_PROJECT -eq 1 ]] && { [[ -d "${CWD}/tests" ]] || [[ -d "${CWD}/test" ]]; }; then
+    TEST_OUTPUT=$(cd "$CWD" && "${PY_RUNNER[@]}" python3 -m pytest -q 2>&1)
     TEST_EXIT=$?
     if [[ $TEST_EXIT -ne 0 ]]; then
       FAILURES+=("TESTS FAILED (exit $TEST_EXIT)")
@@ -65,8 +87,8 @@ if [[ -f "$DIRTY" ]]; then
 
   # 1b. Type checking (only if mypy is configured)
   if [[ -f "${CWD}/pyproject.toml" ]] && grep -q '\[tool\.mypy\]' "${CWD}/pyproject.toml" 2>/dev/null; then
-    if command -v mypy &>/dev/null && [[ ${#PY_DIRS[@]} -gt 0 ]]; then
-      MYPY_OUTPUT=$(cd "$CWD" && python3 -m mypy "${PY_DIRS[@]}" 2>&1)
+    if [[ ${#PY_DIRS[@]} -gt 0 ]]; then
+      MYPY_OUTPUT=$(cd "$CWD" && "${PY_RUNNER[@]}" python3 -m mypy "${PY_DIRS[@]}" 2>&1)
       MYPY_EXIT=$?
       if [[ $MYPY_EXIT -ne 0 ]]; then
         FAILURES+=("TYPE CHECK FAILED (exit $MYPY_EXIT)")
@@ -79,8 +101,8 @@ if [[ -f "$DIRTY" ]]; then
 
   # 1c. Linting (only if ruff is configured)
   if [[ -f "${CWD}/pyproject.toml" ]] && grep -q '\[tool\.ruff\]' "${CWD}/pyproject.toml" 2>/dev/null; then
-    if command -v ruff &>/dev/null && [[ ${#PY_DIRS[@]} -gt 0 ]]; then
-      RUFF_OUTPUT=$(cd "$CWD" && ruff check "${PY_DIRS[@]}" 2>&1)
+    if [[ ${#PY_DIRS[@]} -gt 0 ]]; then
+      RUFF_OUTPUT=$(cd "$CWD" && "${PY_RUNNER[@]}" ruff check "${PY_DIRS[@]}" 2>&1)
       RUFF_EXIT=$?
       if [[ $RUFF_EXIT -ne 0 ]]; then
         FAILURES+=("LINT FAILED (exit $RUFF_EXIT)")
