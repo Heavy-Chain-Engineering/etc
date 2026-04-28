@@ -21,7 +21,9 @@ responsibility:
 
 from __future__ import annotations
 
+import argparse
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -219,7 +221,7 @@ def _split_sections(text: str) -> dict[str, list[str]]:
                 current_key = None
                 continue
             current_key = heading_text
-            sections.setdefault(current_key, [])
+            sections.setdefault(heading_text, [])
             continue
 
         if current_key is not None:
@@ -359,3 +361,89 @@ def _render_rolled_up_list(
         lines.append(empty_note)
         lines.append("")
     return "\n".join(lines)
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────
+
+
+def _build_argument_parser() -> argparse.ArgumentParser:
+    """Build the argparse parser for the CLI.
+
+    Single subcommand for now (`build`) so the CLI shape leaves room
+    for future verbs (e.g. `validate`) without breaking callers.
+    """
+    parser = argparse.ArgumentParser(
+        prog="release_notes.py",
+        description=(
+            "Roll up per-phase completion reports into a single "
+            "release-notes markdown document and print it to stdout."
+        ),
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    build_parser = subparsers.add_parser(
+        "build",
+        help="Render release notes for FEATURE_DIR to stdout.",
+    )
+    build_parser.add_argument(
+        "feature_dir",
+        help=(
+            "Path to a feature directory (e.g. "
+            ".etc_sdlc/features/F042-metrics-and-release-notes). "
+            "Absolute or cwd-relative — the CLI does not require any "
+            "particular working directory."
+        ),
+    )
+    return parser
+
+
+def _cmd_build(feature_dir_arg: str) -> int:
+    """Handle ``build <feature_dir>``: print rollup, return exit code.
+
+    Returns 0 on success, 1 on a missing/non-directory ``feature_dir``.
+    Errors are written to stderr; stdout is reserved for the markdown
+    rollup so the caller can redirect cleanly.
+    """
+    feature_dir = Path(feature_dir_arg)
+    if not feature_dir.exists():
+        print(
+            f"error: feature_dir does not exist: {feature_dir}",
+            file=sys.stderr,
+        )
+        return 1
+    if not feature_dir.is_dir():
+        print(
+            f"error: feature_dir is not a directory: {feature_dir}",
+            file=sys.stderr,
+        )
+        return 1
+
+    rendered = build(feature_dir)
+    # Use sys.stdout.write to avoid an extra trailing newline beyond
+    # whatever build() chose to emit.
+    sys.stdout.write(rendered)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point. Returns the exit code; does not call sys.exit.
+
+    Kept thin so tests can drive it directly if subprocess-based smoke
+    tests prove insufficient. The ``__main__`` block below propagates
+    the return value to the OS.
+    """
+    parser = _build_argument_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "build":
+        return _cmd_build(args.feature_dir)
+
+    # argparse with required=True should make this unreachable; keep a
+    # belt-and-suspenders branch so a future subcommand stub does not
+    # silently exit 0.
+    parser.error(f"unknown command: {args.command}")
+    return 2  # pragma: no cover -- argparse.error raises SystemExit
+
+
+if __name__ == "__main__":
+    sys.exit(main())

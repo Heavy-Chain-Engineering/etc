@@ -435,23 +435,23 @@ Resolve the two IDs in this order:
 1. **Feature ID (`F<NNN>`).** Read the `target_feature_id` field from the incident's YAML frontmatter if the subagent populated it; otherwise re-read the operator's `/hotfix {description}` argument and the incident's `target` field for an explicit `F<NNN>` token (regex `\bF\d{3}\b`). If neither yields an ID, the hotfix is not feature-scoped — log a warning and SKIP the tag write. Continue to Phase 5.1; tag-skip is non-fatal.
 2. **Hotfix ID (`H<MMM>`).** Compute `H<MMM>` as `max(existing H-IDs in tags matching refs/tags/etc/feature/F<NNN>/hotfix/H*) + 1`, zero-padded to 3 digits. If no prior hotfix tag exists for this feature, use `H001`. Use `git for-each-ref refs/tags/etc/feature/F<NNN>/hotfix/` to enumerate.
 
-Write the tag via the `scripts.git_tags.write_tag()` helper. The helper handles non-git directories and no-HEAD repos gracefully (returns False, logs a warning) per its public contract:
-
-```python
-from scripts.git_tags import write_tag
-tag_name = f"etc/feature/{feature_id}/hotfix/{hotfix_id}"
-ok = write_tag(tag_name)  # returns False on non-git / no-HEAD / git failure
-```
-
-Equivalently, you may shell out:
+Write the tag via the git_tags.py write-tag CLI. The CLI handles non-git directories and no-HEAD repos gracefully (exit code 1 with a stderr warning) per its public contract:
 
 ```
-git tag etc/feature/F042/hotfix/H001 HEAD
+python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/F<NNN>/hotfix/H<MMM>"
 ```
 
-Tag failure is **non-fatal**. If `write_tag` returns False or the shell `git tag` exits non-zero, log a warning Pattern B notice and continue to Phase 5.1. Do NOT abort the skill, do NOT roll back the incident's `status: completed`, do NOT retry. Per BR-008, tags are append-only — there is no delete/retag/force-update path; a missed tag is missed.
+Substitute `F<NNN>` and `H<MMM>` with the resolved feature and hotfix IDs (e.g. `etc/feature/F042/hotfix/H001`). Exit codes:
 
-On success, also update the incident's YAML frontmatter with the new tag name in a `hotfix_tag` field (read-parse-mutate-write atomic flow). This makes the tag discoverable from the incident file even if the operator later filters tags by namespace.
+- `0` — tag created successfully.
+- `1` — graceful degrade (not a git repo, no HEAD commit, or the underlying `git tag` failed). The CLI logs a stderr warning.
+- `2` — hard error (an unexpected exception inside the CLI).
+
+The CLI form is required because the helpers are installed under `~/.claude/scripts/`, not the user's project — `from scripts.git_tags import write_tag` only resolves inside this checkout, so it MUST NOT be used.
+
+Tag failure is **non-fatal**. If the CLI exits 1 or 2, log a warning Pattern B notice and continue to Phase 5.1. Do NOT abort the skill, do NOT roll back the incident's `status: completed`, do NOT retry. Per BR-008, tags are append-only — there is no delete/retag/force-update path; a missed tag is missed.
+
+On success (CLI exit code 0), also update the incident's YAML frontmatter with the new tag name in a `hotfix_tag` field (read-parse-mutate-write atomic flow). This makes the tag discoverable from the incident file even if the operator later filters tags by namespace.
 
 After the tag-write attempt (success or skip), proceed to Phase 5.1.
 

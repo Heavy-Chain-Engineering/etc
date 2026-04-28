@@ -24,6 +24,13 @@ def skill_text() -> str:
     return SKILL_SRC.read_text(encoding="utf-8")
 
 
+def _step2_block(text: str) -> str:
+    """Return the slice of SKILL.md covering Step 2 only."""
+    start = text.index("### Step 2:")
+    end = text.index("### Step 3:", start)
+    return text[start:end]
+
+
 def _step6_block(text: str) -> str:
     """Return the slice of SKILL.md covering Step 6 only."""
     start = text.index("### Step 6:")
@@ -51,6 +58,91 @@ def _step8_block(text: str) -> str:
     return text[start:end]
 
 
+class TestStep2StateYamlMerge:
+    """Step 2 SETUP must MERGE state.yaml, not overwrite it.
+
+    The /spec phase writes classification, phase_2_75_metrics, and
+    author_role into state.yaml. Step 2 of /build was clobbering those by
+    overwriting the file from scratch on entry. The fix: read existing
+    state.yaml first, preserve every top-level key, add or update a
+    'build:' block.
+    """
+
+    def test_step2_describes_reading_existing_state_yaml(
+        self, skill_text: str
+    ) -> None:
+        block = _step2_block(skill_text)
+        lowered = block.lower()
+        # Must explicitly read existing state if present before writing.
+        assert (
+            "read existing" in lowered
+            or "if present" in lowered
+            or "preserve" in lowered
+            or "merge" in lowered
+        ), (
+            "Step 2 must explicitly read the existing state.yaml (if present) "
+            "and preserve /spec's metadata before writing the build: block"
+        )
+
+    def test_step2_describes_build_block_under_state_yaml(
+        self, skill_text: str
+    ) -> None:
+        """The build-specific fields land under a 'build:' key, not at the
+        top level, so they cannot collide with /spec's keys."""
+        block = _step2_block(skill_text)
+        # Either the literal 'build:' YAML key or a Python dict assignment
+        # like state['build'] = ... must appear.
+        assert (
+            "state['build']" in block
+            or "state[\"build\"]" in block
+            or "build:" in block
+        ), (
+            "Step 2 must place /build's fields under a 'build:' block in "
+            "state.yaml so they do not collide with /spec's top-level keys"
+        )
+
+    def test_step2_preserves_spec_metadata(
+        self, skill_text: str
+    ) -> None:
+        """/spec's metadata (classification, author_role, phase_2_75_metrics)
+        must be preserved by Step 2's merge."""
+        block = _step2_block(skill_text)
+        # The skill must reference at least one of the /spec-owned keys
+        # to make the preservation discipline concrete.
+        lowered = block.lower()
+        assert (
+            "classification" in lowered
+            or "phase_2_75_metrics" in lowered
+            or "author_role" in lowered
+            or "/spec" in block
+            or "spec metadata" in lowered
+        ), (
+            "Step 2 must mention /spec's metadata (classification, "
+            "author_role, phase_2_75_metrics) as the data being preserved "
+            "by the merge"
+        )
+
+    def test_step2_does_not_unconditionally_overwrite_state_yaml(
+        self, skill_text: str
+    ) -> None:
+        """The literal old pattern that overwrote the file unconditionally
+        must be gone."""
+        block = _step2_block(skill_text)
+        # The old shape was a top-level YAML literal (no 'build:' wrapper).
+        # If only that pattern appears with no merge logic, we'd have a
+        # regression. Look for explicit overwrite phrasing being NEGATED.
+        lowered = block.lower()
+        assert (
+            "overwrite" not in lowered
+            or "merge" in lowered
+            or "preserve" in lowered
+            or "do not overwrite" in lowered
+            or "instead of overwriting" in lowered
+        ), (
+            "Step 2 must not describe an unconditional overwrite of state.yaml"
+        )
+
+
 class TestStep6PhaseTags:
     """AC-008, BR-007: phase-N start/done tags on wave entry/exit."""
 
@@ -71,15 +163,28 @@ class TestStep6PhaseTags:
             "wave exit"
         )
 
-    def test_step6_phase_tags_use_git_tags_helper(self, skill_text: str) -> None:
-        """The skill must invoke the git_tags helper rather than raw `git tag`."""
+    def test_step6_phase_tags_use_git_tags_cli(self, skill_text: str) -> None:
+        """The skill must invoke the git_tags.py CLI rather than raw `git tag`
+        or import-style invocation. Helpers are installed under
+        ~/.claude/scripts/, not the user's project, so absolute-path CLI is
+        the only reliable invocation form."""
         block = _step6_block(skill_text)
-        assert "git_tags" in block, (
-            "Step 6 must reference the scripts/git_tags helper (write_tag) "
-            "for phase tag emission"
+        assert (
+            "python3 ~/.claude/scripts/git_tags.py write-tag" in block
+        ), (
+            "Step 6 must invoke 'python3 ~/.claude/scripts/git_tags.py "
+            "write-tag' for phase start/done tags"
         )
-        assert "write_tag" in block, (
-            "Step 6 must call git_tags.write_tag() for phase start/done tags"
+
+    def test_step6_no_longer_uses_python_import_for_git_tags(
+        self, skill_text: str
+    ) -> None:
+        """The legacy `from scripts.git_tags import` invocation must be gone
+        from Step 6."""
+        block = _step6_block(skill_text)
+        assert "from scripts.git_tags import" not in block, (
+            "Step 6 must NOT use 'from scripts.git_tags import' — it only "
+            "resolves inside this checkout. Use the CLI form."
         )
 
     def test_step6_phase_done_is_gated_on_wave_success(
@@ -123,19 +228,44 @@ class TestStep7ReleaseTagAndNotes:
             "Step 7 must describe writing the etc/feature/F<NNN>/release tag"
         )
 
-    def test_step7_release_tag_uses_git_tags_helper(
+    def test_step7_release_tag_uses_git_tags_cli(
         self, skill_text: str
     ) -> None:
         block = _step7_block(skill_text)
-        assert "git_tags" in block and "write_tag" in block, (
-            "Step 7 must call git_tags.write_tag() for the release tag"
+        assert (
+            "python3 ~/.claude/scripts/git_tags.py write-tag" in block
+        ), (
+            "Step 7 must invoke 'python3 ~/.claude/scripts/git_tags.py "
+            "write-tag' for the release tag"
         )
 
-    def test_step7_calls_release_notes_build(self, skill_text: str) -> None:
+    def test_step7_no_longer_uses_python_import_for_git_tags(
+        self, skill_text: str
+    ) -> None:
         block = _step7_block(skill_text)
-        assert "release_notes.build" in block, (
-            "Step 7 must call release_notes.build(feature_dir) to assemble "
-            "the release notes markdown"
+        assert "from scripts.git_tags import" not in block, (
+            "Step 7 must NOT use 'from scripts.git_tags import' — use the "
+            "CLI form instead so the tag write resolves from any working dir"
+        )
+
+    def test_step7_calls_release_notes_build_via_cli(
+        self, skill_text: str
+    ) -> None:
+        block = _step7_block(skill_text)
+        assert (
+            "python3 ~/.claude/scripts/release_notes.py build" in block
+        ), (
+            "Step 7 must invoke 'python3 ~/.claude/scripts/release_notes.py "
+            "build' to assemble the release-notes markdown"
+        )
+
+    def test_step7_no_longer_uses_python_import_for_release_notes(
+        self, skill_text: str
+    ) -> None:
+        block = _step7_block(skill_text)
+        assert "from scripts.release_notes import" not in block, (
+            "Step 7 must NOT use 'from scripts.release_notes import' — it "
+            "only resolves inside this checkout. Use the CLI form."
         )
 
     def test_step7_writes_release_notes_md_to_feature_dir(

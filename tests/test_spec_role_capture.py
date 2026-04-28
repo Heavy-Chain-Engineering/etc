@@ -83,14 +83,72 @@ class TestOtherSanitizationContract:
         )
 
 
-class TestPhase5FeatureIdAllocation:
-    """Phase 5 uses feature_id.allocate_next() to create F<NNN>-<slug> (AC-001, BR-001)."""
+class TestFeatureIdAllocation:
+    """Phase 2 (start) invokes feature_id allocate-next to create F<NNN>-<slug>
+    BEFORE any research, gray-areas, or other directory writes (AC-001, BR-001).
+    """
 
-    def test_phase_5_invokes_allocate_next(self, skill_text: str) -> None:
-        """AC-001 / BR-001: Phase 5 calls scripts/feature_id.allocate_next()."""
-        assert "feature_id.allocate_next" in skill_text or (
-            "allocate_next(" in skill_text
-        ), "Phase 5 must invoke feature_id.allocate_next()"
+    def test_skill_invokes_allocate_next_via_cli(self, skill_text: str) -> None:
+        """AC-001 / BR-001: skill invokes the feature_id.py CLI allocate-next
+        subcommand so it works from any project working tree (helpers are
+        installed under ~/.claude/scripts/, not the user's project)."""
+        assert (
+            "python3 ~/.claude/scripts/feature_id.py allocate-next"
+            in skill_text
+        ), (
+            "skill must invoke the feature_id.py CLI form "
+            "'python3 ~/.claude/scripts/feature_id.py allocate-next' so it "
+            "resolves from any project working directory"
+        )
+
+    def test_skill_no_longer_uses_python_import_for_feature_id(
+        self, skill_text: str
+    ) -> None:
+        """The legacy `from scripts.feature_id import` invocation must be
+        removed — the helpers are installed under ~/.claude/scripts/, not in
+        the user's project, so import-style invocation breaks outside this
+        repo."""
+        assert "from scripts.feature_id import" not in skill_text, (
+            "skill must NOT use 'from scripts.feature_id import' — that path "
+            "only resolves inside this checkout. Use the CLI form instead."
+        )
+
+    def test_skill_documents_capturing_id_and_path_from_cli_stdout(
+        self, skill_text: str
+    ) -> None:
+        """The CLI prints '<feature_id> <feature_path>' on a single line; the
+        skill must document how a runtime conductor parses that output."""
+        # Either an awk-style parse, or an explicit description of the
+        # space-separated stdout contract.
+        lowered = skill_text.lower()
+        has_parse_guidance = (
+            "first token" in lowered
+            or "second token" in lowered
+            or "awk" in lowered
+            or "space-separated" in lowered
+            or "stdout" in lowered
+        )
+        assert has_parse_guidance, (
+            "skill must document how to parse the allocate-next stdout "
+            "(first token = feature_id, second token = feature_path)"
+        )
+
+    def test_allocation_happens_before_phase_2_5_gray_areas(
+        self, skill_text: str
+    ) -> None:
+        """The F<NNN> allocation must occur at the start of Phase 2 — BEFORE
+        Phase 2.5 writes gray-areas.md — so every subdirectory write uses
+        the F<NNN>-<slug> path."""
+        alloc_idx = skill_text.find(
+            "python3 ~/.claude/scripts/feature_id.py allocate-next"
+        )
+        assert alloc_idx != -1, "allocate-next CLI invocation missing"
+        gray_areas_idx = skill_text.find("### Phase 2.5: Gray Area Resolution")
+        assert gray_areas_idx != -1, "Phase 2.5 header missing"
+        assert alloc_idx < gray_areas_idx, (
+            "allocate-next must be invoked BEFORE Phase 2.5 so the gray-areas.md "
+            "write lands under F<NNN>-<slug>/, not a slug-only path"
+        )
 
     def test_phase_5_describes_f_nnn_slug_directory(
         self, skill_text: str
@@ -99,24 +157,17 @@ class TestPhase5FeatureIdAllocation:
         assert "F<NNN>-<slug>" in skill_text or (
             "F<NNN>-{slug}" in skill_text
         ) or ("F<NNN>" in skill_text and "{slug}" in skill_text), (
-            "Phase 5 must describe the F<NNN>-<slug> directory naming"
+            "skill must describe the F<NNN>-<slug> directory naming"
         )
 
     def test_phase_5_no_longer_uses_slug_only_mkdir(
         self, skill_text: str
     ) -> None:
-        """AC-001: replaces the legacy slug-only mkdir with the F-ID allocator.
-
-        We verify the legacy literal `Create feature directory:
-        .etc_sdlc/features/{slug}/` (slug-only, no F-prefix) is gone.
-        """
+        """AC-001: replaces the legacy slug-only mkdir with the F-ID allocator."""
         legacy = "Create feature directory:** `.etc_sdlc/features/{slug}/`"
-        # The exact bolded phrase from the prior skill text. Tolerate either
-        # form (with or without the bold-after-colon) but ensure no
-        # slug-only path appears as the primary directory creation step.
         assert legacy not in skill_text, (
-            "Phase 5 must no longer create a slug-only feature directory; "
-            "it must call feature_id.allocate_next() and use F<NNN>-<slug>"
+            "skill must no longer create a slug-only feature directory; "
+            "it must call feature_id.py allocate-next and use F<NNN>-<slug>"
         )
 
 
@@ -172,7 +223,8 @@ class TestPhase5ValueHypothesisDiscipline:
 
 
 class TestPhase5SpecGitTag:
-    """Phase 5 writes etc/feature/F<NNN>/spec via git_tags.write_tag (AC-007, BR-007)."""
+    """Phase 5 writes etc/feature/F<NNN>/spec via the git_tags.py CLI
+    (AC-007, BR-007)."""
 
     def test_phase_5_writes_spec_git_tag(self, skill_text: str) -> None:
         """AC-007: Phase 5 lays down the etc/feature/F<NNN>/spec git tag."""
@@ -180,11 +232,48 @@ class TestPhase5SpecGitTag:
             "Phase 5 must describe the etc/feature/F<NNN>/spec git tag"
         )
 
-    def test_phase_5_invokes_write_tag(self, skill_text: str) -> None:
-        """AC-007: Phase 5 calls git_tags.write_tag() to create the tag."""
-        assert "git_tags.write_tag" in skill_text or (
-            "write_tag(" in skill_text
-        ), "Phase 5 must invoke git_tags.write_tag()"
+    def test_phase_5_invokes_write_tag_via_cli(self, skill_text: str) -> None:
+        """AC-007: Phase 5 calls the git_tags.py write-tag CLI to create the tag."""
+        assert (
+            "python3 ~/.claude/scripts/git_tags.py write-tag" in skill_text
+        ), (
+            "Phase 5 must invoke 'python3 ~/.claude/scripts/git_tags.py write-tag' "
+            "so the tag write resolves from any project working directory"
+        )
+
+    def test_phase_5_no_longer_uses_python_import_for_git_tags(
+        self, skill_text: str
+    ) -> None:
+        """The legacy `from scripts.git_tags import` form must be removed."""
+        assert "from scripts.git_tags import" not in skill_text, (
+            "Phase 5 must NOT use 'from scripts.git_tags import' — it only "
+            "resolves inside this checkout. Use the CLI form instead."
+        )
+
+
+class TestPhase5ValueHypothesisValidation:
+    """Phase 5 validates value-hypothesis.yaml via the value_hypothesis.py CLI
+    (AC-004, AC-005)."""
+
+    def test_phase_5_invokes_validate_via_cli(self, skill_text: str) -> None:
+        """AC-005: Phase 5 invokes the value_hypothesis.py validate
+        subcommand after writing the YAML, so missing fields are caught."""
+        assert (
+            "python3 ~/.claude/scripts/value_hypothesis.py validate"
+            in skill_text
+        ), (
+            "Phase 5 must invoke 'python3 ~/.claude/scripts/value_hypothesis.py "
+            "validate' against the freshly-written value-hypothesis.yaml"
+        )
+
+    def test_phase_5_no_longer_uses_python_import_for_value_hypothesis(
+        self, skill_text: str
+    ) -> None:
+        """The legacy import-style invocation must be removed."""
+        assert "from scripts.value_hypothesis import" not in skill_text, (
+            "Phase 5 must NOT use 'from scripts.value_hypothesis import' — "
+            "it only resolves inside this checkout. Use the CLI form."
+        )
 
 
 class TestPhase5StateYamlAuthorRole:

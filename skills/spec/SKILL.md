@@ -235,6 +235,39 @@ AskUserQuestion(
 Before writing any PRD content, gather information from three sources. Present
 a research summary to the user before proceeding to spec writing.
 
+**Phase 2 Step 0: Allocate the feature directory (F<NNN>) FIRST.**
+
+Allocate the feature ID at the very start of Phase 2 — BEFORE any research
+runs, BEFORE Phase 2.5 gray-area resolution, and BEFORE any other write under
+`.etc_sdlc/features/`. Every subsequent file write in Phases 2, 2.5, and 5
+lands inside the freshly-allocated `F<NNN>-<slug>/` directory.
+
+Derive the slug from the user's intent (Phase 1 answers) using the same
+kebab-case convention as `scripts/feature_id.py::slugify`. Then invoke the
+allocator CLI:
+
+```
+python3 ~/.claude/scripts/feature_id.py allocate-next .etc_sdlc/features "<slug>"
+```
+
+The CLI prints a single space-separated line to stdout: `<feature_id> <feature_path>`
+(e.g. `F042 .etc_sdlc/features/F042-add-user-auth`). A runtime conductor
+parses the output as follows:
+
+- The **first token** is `<feature_id>` (e.g. `F042`).
+- The **second token** is `<feature_path>` (the freshly-created directory).
+
+Capture both into skill-local state. Reference them throughout the rest of
+the skill as `<feature_id>` and `<feature_path>`. Phase 2.5 writes
+`<feature_path>/gray-areas.md`. Phase 5 writes `<feature_path>/spec.md`,
+`<feature_path>/value-hypothesis.yaml`, `<feature_path>/state.yaml`, and
+`<feature_path>/research/`.
+
+The allocator is POSIX-atomic (BR-003 / AC-002): concurrent /spec
+invocations get distinct IDs. On a non-zero exit code, surface the stderr
+to the user via Pattern B and STOP — Phase 2 cannot proceed without an
+allocated feature directory.
+
 **Dispatch these research tasks in parallel:**
 
 1. **Codebase Exploration** -- Read the existing codebase to understand context:
@@ -288,10 +321,11 @@ a research summary to the user before proceeding to spec writing.
    For each research-fillable gap, record a gray-area entry with
    `decided_by: research` plus a `citation` (file path or URL) and a
    one-line resolution rationale. These entries are written to
-   `.etc_sdlc/features/{slug}/gray-areas.md` during Phase 2.5 using the
-   extended schema. For each unfillable gap, record a gray-area entry
-   with `decided_by: user` and leave it for Phase 2.5 to surface to the
-   user (or for Phase 2.75 to fold into a rejection).
+   `<feature_path>/gray-areas.md` during Phase 2.5 using the extended
+   schema (the F<NNN>-<slug> directory was allocated in Phase 2 Step 0
+   above). For each unfillable gap, record a gray-area entry with
+   `decided_by: user` and leave it for Phase 2.5 to surface to the user
+   (or for Phase 2.75 to fold into a rejection).
 
    The user sees every research fill during Phase 3 section review and
    may override any of them through the normal section-refinement flow.
@@ -395,10 +429,12 @@ provide a custom answer, record it verbatim and continue.
 
 Wait for ALL gray areas to be resolved before proceeding.
 
-Save resolutions to `.etc_sdlc/features/{slug}/gray-areas.md` using the
+Save resolutions to `<feature_path>/gray-areas.md` using the
 **extended schema** (the previous schema is the first four lines; the
 bottom two lines are required for `decided_by: research` entries and
-optional for `decided_by: user` entries):
+optional for `decided_by: user` entries). `<feature_path>` is the
+F<NNN>-<slug> directory allocated in Phase 2 Step 0 — gray-areas.md
+lands directly under it, never under a slug-only path:
 
 ```markdown
 # Gray Areas — Resolved Decisions
@@ -483,7 +519,8 @@ Triggered only when Phase 2.75 classifies the PRD as rejected.
 
 1. Do NOT write `spec.md`. Under no circumstances does the rejection
    path produce a spec file.
-2. Write `.etc_sdlc/features/{slug}/rejected.md` with this layout:
+2. Write `<feature_path>/rejected.md` (the F<NNN>-<slug> directory
+   allocated in Phase 2 Step 0) with this layout:
 
    ```markdown
    # PRD Rejected: {feature slug}
@@ -641,21 +678,16 @@ discipline is **value-hypothesis-first**: `spec.md` is NOT written until
 is AC-005 of the metrics-and-release-notes PRD and is non-negotiable —
 shipping a spec without a hypothesis defeats the outcome-metric layer.
 
-1. **Allocate the feature directory** by calling
-   `feature_id.allocate_next(features_dir, slug)` (from
-   `scripts/feature_id.py`). This returns `(feature_id, feature_path)`
-   where `feature_id` is `"F<NNN>"` (3-digit zero-padded) and
-   `feature_path` is the freshly-created
-   `.etc_sdlc/features/F<NNN>-<slug>/` directory. The allocator is
-   POSIX-atomic via `os.mkdir` with EEXIST retry — concurrent `/spec`
-   invocations get distinct IDs (BR-003 / AC-002). This call REPLACES
-   the legacy slug-only `mkdir` step.
+The feature directory was already allocated in Phase 2 Step 0 via
+`python3 ~/.claude/scripts/feature_id.py allocate-next` — `<feature_id>`
+and `<feature_path>` are in skill-local state. Phase 5 does NOT
+re-allocate; it only writes inside the existing `<feature_path>`.
 
-2. **Build the value-hypothesis dict** with every required field
+1. **Build the value-hypothesis dict** with every required field
    populated. The required fields (BR-005 / AC-004) are:
 
    - `schema_version` — integer, currently `1`
-   - `feature_id` — the `F<NNN>` from step 1
+   - `feature_id` — the `<feature_id>` from Phase 2 Step 0
    - `author_role` — the role captured in Phase 1 (SME, Engineer, PM,
      Designer, or sanitized Other free-form)
    - `who` — target user / cohort the feature serves
@@ -687,47 +719,56 @@ shipping a spec without a hypothesis defeats the outcome-metric layer.
    never written with placeholders — every field is populated before
    the dict is dumped.
 
-3. **Write `value-hypothesis.yaml`** to
-   `.etc_sdlc/features/F<NNN>-<slug>/value-hypothesis.yaml` using
-   `value_hypothesis.dump(path, hypothesis)`. Call
-   `value_hypothesis.validate_schema(hypothesis)` first; if it raises,
-   fix the missing field via the same Pattern B prompt loop and retry.
-   **Do not proceed to step 4 until this file exists and is schema-
-   valid.**
+2. **Write `value-hypothesis.yaml`** to
+   `<feature_path>/value-hypothesis.yaml`. Serialize the dict to YAML
+   and write the file. Then validate it via the CLI:
 
-4. **Write the final PRD** to
-   `.etc_sdlc/features/F<NNN>-<slug>/spec.md`. spec.md MUST NOT be
-   written until value-hypothesis.yaml is complete (AC-005). If the
-   hypothesis prompt loop in steps 2-3 was abandoned for any reason,
-   stop here — do not write spec.md.
+   ```
+   python3 ~/.claude/scripts/value_hypothesis.py validate <feature_path>/value-hypothesis.yaml
+   ```
 
-5. **Copy to `spec/{slug}.md`** for backward compatibility and
+   Exit code 0 means schema-valid. On non-zero exit, the stderr names
+   the missing or malformed field — fix the field via the same Pattern B
+   prompt loop and retry the write + validate cycle. **Do not proceed to
+   step 3 until this file exists and the validate CLI exits 0.**
+
+3. **Write the final PRD** to `<feature_path>/spec.md`. spec.md MUST
+   NOT be written until value-hypothesis.yaml is complete and schema-
+   valid (AC-005). If the hypothesis prompt loop in steps 1-2 was
+   abandoned for any reason, stop here — do not write spec.md.
+
+4. **Copy to `spec/{slug}.md`** for backward compatibility and
    browsability (byte-identical copy of the PRD).
 
-6. **Save research** to `.etc_sdlc/features/F<NNN>-<slug>/research/`
-   (at least one of `codebase.md`, `web.md`, or `antipatterns.md`).
+5. **Save research** to `<feature_path>/research/` (at least one of
+   `codebase.md`, `web.md`, or `antipatterns.md`).
 
-7. **Gray areas** are already saved from Phase 2.5; verify the file
-   landed under `.etc_sdlc/features/F<NNN>-<slug>/gray-areas.md` (if
-   Phase 2.5 wrote it before allocation, move it now).
+6. **Gray areas** are already saved from Phase 2.5 directly under
+   `<feature_path>/gray-areas.md` — Phase 2 Step 0 ran before Phase 2.5,
+   so no path migration is needed.
 
-8. **Append `author_role` to `state.yaml`.** Add or overwrite the
+7. **Append `author_role` to `state.yaml`.** Add or overwrite the
    top-level field `author_role: <captured>` in
-   `.etc_sdlc/features/F<NNN>-<slug>/state.yaml` (the same state.yaml
-   that already records the Phase 2.75 `classification`). Use the
-   sanitized free-form value if the user chose Other.
+   `<feature_path>/state.yaml` (the same state.yaml that already records
+   the Phase 2.75 `classification`). Use the sanitized free-form value
+   if the user chose Other.
 
-9. **Write the spec git tag.** Call
-   `git_tags.write_tag("etc/feature/F<NNN>/spec")` (from
-   `scripts/git_tags.py`) to lay down the canonical spec-finalization
-   tag at the current HEAD commit (BR-007 / AC-007). The helper
-   degrades gracefully on non-git directories or repos with no HEAD —
-   it logs a warning and returns False rather than failing the whole
-   spec.
+8. **Write the spec git tag.** Invoke the git_tags.py CLI to lay down
+   the canonical spec-finalization tag at the current HEAD commit
+   (BR-007 / AC-007). Substitute `<feature_id>` from Phase 2 Step 0:
 
-10. **Remove the draft** from `spec/.drafts/{slug}.md` (if it exists).
+   ```
+   python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/<feature_id>/spec"
+   ```
 
-11. **Report the summary:**
+   The CLI degrades gracefully on non-git directories or repos with no
+   HEAD — it exits 1 with a stderr warning rather than failing the
+   whole spec. Treat exit codes 0 (created) and 1 (degrade) as both
+   acceptable; only an exit code of 2 (hard error) is fatal.
+
+9. **Remove the draft** from `spec/.drafts/{slug}.md` (if it exists).
+
+10. **Report the summary:**
 
 ```
 Feature directory: .etc_sdlc/features/F<NNN>-<slug>/

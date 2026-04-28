@@ -14,6 +14,7 @@ The allocator under test must use POSIX atomic os.mkdir() with EEXIST retry.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -231,3 +232,118 @@ class TestSlugify:
         assert len(result) <= 80
         assert not result.endswith("-")
         assert result  # non-empty
+
+
+# ── CLI subcommand: allocate-next ───────────────────────────────────────
+
+
+_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "feature_id.py"
+
+
+class TestAllocateNextCLI:
+    """Smoke tests for the `allocate-next` CLI subcommand.
+
+    These run via subprocess with ``cwd=tmp_path`` to guarantee no
+    ``scripts/`` directory leaks onto CWD-derived sys.path. Skills
+    invoke this script as ``python3 ~/.claude/scripts/feature_id.py
+    allocate-next ...`` from arbitrary projects, so it must work without
+    being importable as a module.
+    """
+
+    def test_should_allocate_next_via_subprocess_from_unrelated_cwd(
+        self, tmp_path: Path
+    ) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(_SCRIPT_PATH),
+                "allocate-next",
+                str(tmp_path),
+                "my-feature",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode == 0, (
+            f"CLI exited {result.returncode}; stderr={result.stderr!r}"
+        )
+        # Single newline-terminated line: "F001 <path>\n"
+        assert result.stdout.endswith("\n")
+        line = result.stdout.rstrip("\n")
+        assert "\n" not in line  # exactly one line of output
+        assert line.startswith("F001 "), f"unexpected stdout: {result.stdout!r}"
+
+        # The feature path is everything after "F001 "
+        feature_path = Path(line[len("F001 "):])
+        assert feature_path.is_dir(), f"feature dir not created: {feature_path}"
+        assert feature_path.parent == tmp_path
+        assert feature_path.name == "F001-my-feature"
+
+    def test_should_allocate_f002_when_f001_exists(self, tmp_path: Path) -> None:
+        first = subprocess.run(
+            [
+                sys.executable,
+                str(_SCRIPT_PATH),
+                "allocate-next",
+                str(tmp_path),
+                "alpha",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert first.returncode == 0, first.stderr
+        assert first.stdout.startswith("F001 ")
+
+        second = subprocess.run(
+            [
+                sys.executable,
+                str(_SCRIPT_PATH),
+                "allocate-next",
+                str(tmp_path),
+                "beta",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert second.returncode == 0, second.stderr
+        assert second.stdout.startswith("F002 ")
+        line = second.stdout.rstrip("\n")
+        feature_path = Path(line[len("F002 "):])
+        assert feature_path.is_dir()
+        assert feature_path.name == "F002-beta"
+
+    def test_should_exit_nonzero_when_features_dir_parent_missing(
+        self, tmp_path: Path
+    ) -> None:
+        # Construct a path whose parent does not exist. mkdir(parents=True)
+        # would normally create it, so we force a real failure by pointing
+        # at a path under an existing FILE — that makes the parent
+        # un-creatable (cannot mkdir under a regular file).
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("blocking file\n")
+        impossible_features_dir = blocker / "features"
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(_SCRIPT_PATH),
+                "allocate-next",
+                str(impossible_features_dir),
+                "x",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode != 0
+        assert result.stderr.strip(), "expected a non-empty stderr message"

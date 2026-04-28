@@ -105,20 +105,36 @@ class TestThreeLayerAggregation:
         )
 
     def test_skill_names_process_source_git_tags(self, skill_text: str) -> None:
-        """AC-012: process layer derives from git tags via list_etc_tags."""
-        # The reader is named explicitly so /metrics doesn't fabricate one.
+        """AC-012: process layer derives from git tags via the git_tags.py CLI.
+
+        The skill must invoke the CLI (works from any project) instead of
+        the import-style form (only resolves inside this checkout).
+        """
         assert "git_tags" in skill_text, (
             "SKILL.md must reference scripts/git_tags as the process-layer reader"
         )
-        assert "list_etc_tags" in skill_text, (
-            "SKILL.md must call git_tags.list_etc_tags() for process metrics"
+        assert (
+            "python3 ~/.claude/scripts/git_tags.py list-etc-tags" in skill_text
+        ), (
+            "SKILL.md must invoke 'python3 ~/.claude/scripts/git_tags.py "
+            "list-etc-tags' for process metrics"
+        )
+
+    def test_skill_no_longer_uses_python_import_for_git_tags(
+        self, skill_text: str
+    ) -> None:
+        """The legacy `from scripts.git_tags import` form must be gone."""
+        assert "from scripts.git_tags import" not in skill_text, (
+            "SKILL.md must NOT use 'from scripts.git_tags import' — the "
+            "helpers are installed under ~/.claude/scripts/, not the user's "
+            "project. Use the CLI form."
         )
 
     def test_skill_names_outcome_source_value_hypothesis(
         self, skill_text: str
     ) -> None:
         """AC-012: outcome layer derives from value-hypothesis.yaml files
-        loaded via scripts/value_hypothesis.load."""
+        loaded via the value_hypothesis.py CLI."""
         assert "value_hypothesis" in skill_text, (
             "SKILL.md must reference scripts/value_hypothesis as the "
             "outcome-layer reader"
@@ -126,28 +142,51 @@ class TestThreeLayerAggregation:
         assert "value-hypothesis.yaml" in skill_text, (
             "SKILL.md must reference value-hypothesis.yaml as the outcome source"
         )
-        # The load function is the canonical entry point.
-        assert re.search(r"value_hypothesis\.py::load|value_hypothesis.*\bload\b",
-                         skill_text), (
-            "SKILL.md must invoke value_hypothesis.load() to read hypotheses"
+        assert (
+            "python3 ~/.claude/scripts/value_hypothesis.py load" in skill_text
+        ), (
+            "SKILL.md must invoke 'python3 ~/.claude/scripts/value_hypothesis.py "
+            "load' to read hypotheses (helpers live at ~/.claude/scripts/, "
+            "not in the user's project)"
+        )
+
+    def test_skill_no_longer_uses_python_import_for_value_hypothesis(
+        self, skill_text: str
+    ) -> None:
+        """The legacy `from scripts.value_hypothesis import` form must be gone."""
+        assert "from scripts.value_hypothesis import" not in skill_text, (
+            "SKILL.md must NOT use 'from scripts.value_hypothesis import' — "
+            "use the CLI form so it resolves from any project working dir"
         )
 
     def test_skill_names_cost_source_telemetry_db(self, skill_text: str) -> None:
-        """AC-012: cost layer derives from .etc_sdlc/telemetry.db via
-        scripts/telemetry.connect + SQL aggregation."""
+        """AC-012: cost layer derives from .etc_sdlc/telemetry.db via the
+        telemetry.py aggregate CLI subcommand."""
         assert "telemetry" in skill_text, (
             "SKILL.md must reference scripts/telemetry as the cost-layer reader"
         )
         assert ".etc_sdlc/telemetry.db" in skill_text, (
             "SKILL.md must reference .etc_sdlc/telemetry.db as the cost-source path"
         )
-        assert "connect" in skill_text, (
-            "SKILL.md must call telemetry.connect(db_path) to open the cost DB"
+        assert (
+            "python3 ~/.claude/scripts/telemetry.py aggregate" in skill_text
+        ), (
+            "SKILL.md must invoke 'python3 ~/.claude/scripts/telemetry.py "
+            "aggregate' to retrieve cost-layer rollups"
         )
         # SQL-driven aggregation is required (vs. cross-derivation from outcome).
         assert "aggregat" in skill_text.lower() or "GROUP BY" in skill_text, (
             "SKILL.md must describe aggregating telemetry events for the cost "
             "layer (e.g. group-by event_type)"
+        )
+
+    def test_skill_no_longer_uses_python_import_for_telemetry(
+        self, skill_text: str
+    ) -> None:
+        """The legacy `from scripts.telemetry import` form must be gone."""
+        assert "from scripts.telemetry import" not in skill_text, (
+            "SKILL.md must NOT use 'from scripts.telemetry import' — use "
+            "the CLI form instead"
         )
 
     def test_skill_forbids_cross_layer_derivation(self, skill_text: str) -> None:
@@ -220,22 +259,22 @@ class TestUnmeasuredAutoTransition:
             "report is computed (AC-014)"
         )
 
-    def test_skill_calls_transition_status_helper(self, skill_text: str) -> None:
-        """The auto-transition uses value_hypothesis.transition_status, not
-        ad-hoc dict mutation, so the BR-011 state machine is enforced."""
+    def test_skill_calls_transition_subcommand_via_cli(
+        self, skill_text: str
+    ) -> None:
+        """The auto-transition uses the value_hypothesis.py transition CLI
+        subcommand so the BR-011 state machine is enforced. The CLI handles
+        load + transition_status + atomic dump in a single invocation; the
+        skill body should describe that CLI call so a runtime conductor can
+        execute it."""
         block = _step1_block(skill_text)
-        assert "transition_status" in block, (
-            "Step 1 must call value_hypothesis.transition_status() so the "
-            "BR-011 state machine governs the pending → unmeasured edge"
-        )
-
-    def test_skill_persists_transition_via_dump(self, skill_text: str) -> None:
-        """The auto-transition is the only write /metrics performs (per
-        SKILL Constraints) and it must call dump() to persist."""
-        block = _step1_block(skill_text)
-        assert "dump" in block, (
-            "Step 1 must call value_hypothesis.dump() to persist the "
-            "pending → unmeasured transition to disk"
+        assert (
+            "python3 ~/.claude/scripts/value_hypothesis.py transition" in block
+        ), (
+            "Step 1 must invoke 'python3 ~/.claude/scripts/value_hypothesis.py "
+            "transition <path> unmeasured' so the BR-011 state machine "
+            "governs the pending → unmeasured edge and the file is rewritten "
+            "atomically by the CLI"
         )
 
 

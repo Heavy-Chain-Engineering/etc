@@ -118,11 +118,19 @@ exceeds `predicted.window_days` MUST be auto-updated to
 `status: unmeasured` BEFORE the report is computed. This is the only
 write `/metrics` performs.
 
+Helpers are invoked via their CLIs at `~/.claude/scripts/`. Import-style
+invocation (`from scripts.X import …`) MUST NOT be used — it only
+resolves inside this checkout, not in arbitrary user projects.
+
 The procedure:
 
-1. Call `scripts/git_tags.py::list_etc_tags()` and build a map
-   `feature_id → release_tag_iso_date` by selecting tags whose
-   `name` ends with `/release` and matches
+1. List the etc/* tags via the git_tags.py CLI:
+   ```
+   python3 ~/.claude/scripts/git_tags.py list-etc-tags
+   ```
+   Each line of stdout is `<tag_name>\t<sha>\t<iso8601_date>` (tab-
+   separated). Build a map `feature_id → release_tag_iso_date` by
+   selecting tags whose `name` ends with `/release` and matches
    `etc/feature/F<NNN>/release`. If the same feature has multiple
    release tags (it should not, by BR-008/AC-010), use the earliest
    one as the window anchor.
@@ -131,29 +139,50 @@ The procedure:
    directories that do NOT match (the 9 grandfathered slug-only
    features per GA-002, plus any non-spec-produced directories) are
    skipped here AND in the outcome layer (AC-016, GA-003).
-3. For each candidate file, call
-   `scripts/value_hypothesis.py::load(path)`. If `load` returns
-   `None` (future schema version), skip — the warning is already
-   logged by the helper. If `load` raises `ValueError`, record the
-   filename and parser message in a deferred-items list and skip.
+3. For each candidate file, invoke the value_hypothesis.py load CLI:
+   ```
+   python3 ~/.claude/scripts/value_hypothesis.py load <path>
+   ```
+   The CLI prints the parsed hypothesis as sorted-key JSON to stdout
+   on exit code 0; parse with
+   `python3 -c "import json, sys; d = json.load(sys.stdin); ..."` or
+   the equivalent. Exit code 1 on stderr means the file failed schema
+   validation OR declared a future schema_version (warn-and-skip);
+   record the filename and stderr message in a deferred-items list
+   and skip.
 4. If the loaded hypothesis has `status == "pending"` and the
    feature has a `release` tag and
    `(now_utc - release_tag_iso_date) > timedelta(days=hypothesis["predicted"]["window_days"])`,
-   call
-   `scripts/value_hypothesis.py::transition_status(d, "unmeasured")`
-   and pass the result to
-   `scripts/value_hypothesis.py::dump(path, updated)`. The
-   `validation` block is left untouched (no measured value, no
-   evidence — that is the entire point of `unmeasured`).
-5. Re-load the file via `load` after the dump so the in-memory copy
-   used by Step 3's outcome aggregation reflects the new status.
+   invoke the value_hypothesis.py transition CLI to atomically rewrite
+   the file:
+   ```
+   python3 ~/.claude/scripts/value_hypothesis.py transition <path> unmeasured
+   ```
+   The CLI handles load + BR-011 state-machine check + atomic dump in
+   a single invocation. Exit code 0 on success; exit code 1 if the
+   transition is rejected (e.g. status is no longer `pending` because
+   another /metrics run already moved it). The `validation` block is
+   left untouched (no measured value, no evidence — that is the entire
+   point of `unmeasured`).
+5. Re-invoke the load CLI on the same path after the transition so
+   the in-memory copy used by Step 3's outcome aggregation reflects
+   the new status.
 
 `now_utc` is derived from `datetime.now(timezone.utc)` at skill entry,
 not per-feature, so the report is internally consistent.
 
 ### Step 2: Process layer — git tags
 
-Render `## Process` from the output of `git_tags.list_etc_tags()`:
+Render `## Process` from the output of the git_tags.py list-etc-tags
+CLI (already invoked in Step 1; reuse that result rather than
+shelling out a second time):
+
+```
+python3 ~/.claude/scripts/git_tags.py list-etc-tags
+```
+
+Each line is `<tag_name>\t<sha>\t<iso8601_date>` (tab-separated).
+Categorize each tag and roll up:
 
 - Total `etc/feature/*` tags by category: `spec`, `build/phase-*/start`,
   `build/phase-*/done`, `release`, `hotfix/H*`. Counts only —
@@ -162,14 +191,16 @@ Render `## Process` from the output of `git_tags.list_etc_tags()`:
   under "In flight" with their feature_id.
 - Features that have any `hotfix/H*` tag are listed under
   "Hotfixes since release" with the count per feature.
-- If `list_etc_tags()` returns `[]`, render the section with the
-  literal note "No `etc/feature/*` tags found (non-git directory,
+- If the CLI prints no lines (empty stdout), render the section with
+  the literal note "No `etc/feature/*` tags found (non-git directory,
   no HEAD commit, or no tagged features yet)." and proceed.
 
 ### Step 3: Outcome layer — value-hypothesis.yaml
 
 Render `## Outcome` from the per-feature hypothesis dicts loaded in
-Step 1. Apply the grandfather skip BEFORE counting (AC-016, GA-003):
+Step 1 via the value_hypothesis.py load CLI (`python3
+~/.claude/scripts/value_hypothesis.py load <path>` — JSON on stdout).
+Apply the grandfather skip BEFORE counting (AC-016, GA-003):
 features whose directory does NOT match `^F\d{3}-` OR which lack a
 `value-hypothesis.yaml` are excluded from every outcome-layer count.
 
@@ -210,21 +241,32 @@ After the table, render:
 
 ### Step 4: Cost layer — telemetry.db
 
-Render `## Cost` from `scripts/telemetry.py::connect(db_path)`. The
-`db_path` is `.etc_sdlc/telemetry.db` resolved relative to the
-current working directory. If the file does not exist, render the
-section with the literal note "No telemetry data: `.etc_sdlc/telemetry.db`
-not found." and proceed. `connect()` will create the file on first
-call; the skill MUST guard with `Path.exists()` before calling
-`connect()` so a missing DB is not silently created by the metrics
+Render `## Cost` from the `telemetry.py aggregate` CLI. The DB path
+is `.etc_sdlc/telemetry.db` resolved relative to the current working
+directory. If the file does not exist, render the section with the
+literal note "No telemetry data: `.etc_sdlc/telemetry.db` not found."
+and proceed. The skill MUST guard with `Path.exists()` before invoking
+`aggregate` so a missing DB is not silently created by the metrics
 read path. Cost data is recorded by other skills, never by `/metrics`.
 
-If the DB exists, run these aggregations against the `events` table:
+If the DB exists, invoke the aggregator (no filters = whole-DB
+aggregation):
+
+```
+python3 ~/.claude/scripts/telemetry.py aggregate --db-path .etc_sdlc/telemetry.db
+```
+
+Stdout is JSON with stable key order. Parse it with
+`python3 -c "import json,sys; d=json.load(sys.stdin); ..."` (or equivalent)
+and render as markdown:
 
 - Total events grouped by `event_type`, ordered by count descending.
-- Total events grouped by `feature_id` (NULL bucket allowed for
-  project-level events), top 10 by count.
-- Date range of events (`MIN(timestamp)` and `MAX(timestamp)`).
+- Total events grouped by `feature_id` (the JSON encodes the
+  project-level NULL bucket as the key `"__null__"` — relabel as
+  `(project-level)` in the markdown).
+- Date range of events (the aggregate output exposes the timestamp
+  range; if the operator needs finer time slicing, re-invoke with
+  `--since <iso8601>`).
 
 Render each aggregation as a small markdown table. Do NOT compute
 synthetic metrics like "tokens per validated hypothesis" — that is

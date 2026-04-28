@@ -18,8 +18,10 @@ ID reuse is not (BR-002).
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
+import sys
 from pathlib import Path
 
 # ── Module constants ────────────────────────────────────────────────────
@@ -132,3 +134,72 @@ def _scan_max_feature_id(features_dir: Path) -> int:
         if value > highest:
             highest = value
     return highest
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────
+
+
+def _cmd_allocate_next(features_dir: str, slug: str) -> int:
+    """Allocate the next F<NNN> directory and print ``<id> <path>`` to stdout.
+
+    Returns a process exit code: 0 on success, non-zero with a stderr
+    message on failure. Skills invoke this as
+    ``python3 scripts/feature_id.py allocate-next <features_dir> <slug>``
+    so the contract is intentionally narrow: one line, space-separated,
+    newline-terminated.
+    """
+    try:
+        feature_id_str, feature_path = allocate_next(Path(features_dir), slug)
+    except FeatureIdExhaustedError as exc:
+        print(f"feature-id exhausted: {exc}", file=sys.stderr)
+        return 2
+    except (OSError, FileNotFoundError, NotADirectoryError) as exc:
+        print(f"failed to allocate feature dir under {features_dir!r}: {exc}",
+              file=sys.stderr)
+        return 1
+
+    print(f"{feature_id_str} {feature_path}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point for the feature_id CLI.
+
+    Subcommands:
+        allocate-next <features_dir> <slug>
+            Allocate the next available F<NNN> directory under
+            ``<features_dir>`` and print ``<feature_id> <feature_path>``
+            to stdout.
+    """
+    parser = argparse.ArgumentParser(
+        prog="feature_id.py",
+        description="Atomic F<NNN> feature-ID allocator.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    alloc = sub.add_parser(
+        "allocate-next",
+        help="Allocate the next F<NNN> feature directory.",
+    )
+    alloc.add_argument(
+        "features_dir",
+        help="Path to the project-scoped features root "
+             "(e.g. .etc_sdlc/features).",
+    )
+    alloc.add_argument(
+        "slug",
+        help="Already-slugified suffix appended to the F-ID directory name.",
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.command == "allocate-next":
+        return _cmd_allocate_next(args.features_dir, args.slug)
+
+    # argparse with required=True should never let us reach here.
+    parser.print_help(sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

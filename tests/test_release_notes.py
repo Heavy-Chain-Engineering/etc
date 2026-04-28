@@ -10,6 +10,7 @@ returns a single markdown roll-up. It does not write to disk.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,6 +18,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
+RELEASE_NOTES_SCRIPT = SCRIPTS_DIR / "release_notes.py"
 
 # Make scripts/ importable (sibling to tests/).
 if str(SCRIPTS_DIR) not in sys.path:
@@ -355,3 +357,79 @@ class TestArgumentValidation:
 
         with pytest.raises(FileNotFoundError):
             release_notes.build(missing)
+
+
+# ── CLI smoke tests ──────────────────────────────────────────────────────
+
+
+class TestCli:
+    """`scripts/release_notes.py build <feature_dir>` must work from any cwd.
+
+    Step 7 of /build invokes this script via subprocess; the previous
+    `from scripts.release_notes import build` form failed when cwd was
+    not the repo root. The CLI fixes that by accepting an absolute (or
+    cwd-relative) feature_dir path and printing the rendered markdown to
+    stdout for the caller to redirect.
+    """
+
+    def test_should_build_via_subprocess_from_unrelated_cwd(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        feature_dir = tmp_path / "F042-metrics-and-release-notes"
+        feature_dir.mkdir()
+        _write_phase_report(
+            feature_dir,
+            1,
+            _example_phase_body(phase_number=1),
+        )
+
+        # cwd is tmp_path — NOT the repo root — to prove the CLI does not
+        # rely on being executed from inside etc-system-engineering.
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(RELEASE_NOTES_SCRIPT),
+                "build",
+                str(feature_dir),
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert completed.returncode == 0, (
+            f"stderr={completed.stderr!r} stdout={completed.stdout!r}"
+        )
+        # The pure builder's output is the contract; just spot-check the
+        # markdown shape the rollup is required to emit (AC-011).
+        assert completed.stdout.startswith("# Release Notes")
+        assert "F042-metrics-and-release-notes" in completed.stdout
+        assert "Phase 1" in completed.stdout
+        assert "build/phase-1/completion-report.md" in completed.stdout
+
+    def test_should_exit_nonzero_when_feature_dir_missing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        missing = tmp_path / "F999-does-not-exist"
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(RELEASE_NOTES_SCRIPT),
+                "build",
+                str(missing),
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert completed.returncode == 1
+        # Diagnostic must name the bad path so the operator can fix it.
+        assert str(missing) in completed.stderr
+        # No partial markdown leaked to stdout on failure.
+        assert completed.stdout == ""

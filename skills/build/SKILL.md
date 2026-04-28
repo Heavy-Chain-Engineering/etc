@@ -166,18 +166,43 @@ Create or verify the feature directory:
   state.yaml           ← pipeline state tracking
 ```
 
-Write `state.yaml`:
-```yaml
-feature: "{slug}"
-spec_path: "{original spec path}"
-current_step: 2
-started_at: "{timestamp}"
-mode: null              # Set after scoring in Step 4
-waves_completed: 0
-total_waves: null
+**MERGE state.yaml; never overwrite.** /spec writes load-bearing
+metadata into state.yaml during Phases 2.75 and 5: `classification`,
+`phase_2_75_metrics`, `author_role`. /build's Step 2 owns its own keys
+under a top-level `build:` block, but every other key MUST be preserved
+verbatim. Read existing state.yaml first; if absent, start with an
+empty dict; then add or update the `build:` block; then write back.
+
+The canonical merge is the following inline Python invocation. Run it
+from the project root with `<state_yaml_path>`, `<slug>`, `<spec_path>`,
+and `<iso8601>` substituted in by the runtime conductor:
+
+```
+python3 -c "
+import yaml
+from pathlib import Path
+p = Path('<state_yaml_path>')
+state = yaml.safe_load(p.read_text()) if p.exists() else {}
+state['build'] = {
+    'feature': '<slug>',
+    'spec_path': '<spec_path>',
+    'current_step': 2,
+    'started_at': '<iso8601>',
+    'mode': None,
+    'waves_completed': 0,
+    'total_waves': None,
+}
+p.write_text(yaml.safe_dump(state, sort_keys=False))
+"
 ```
 
-**On success:** Update `state.yaml`: `current_step: 2`
+Every later state-update step in /build mutates only `state['build'][...]`
+(e.g. `state['build']['current_step'] = 3`); the top-level `classification`,
+`phase_2_75_metrics`, and `author_role` keys written by /spec stay
+untouched throughout the pipeline.
+
+**On success:** Mutate `state['build']['current_step'] = 2` and write the
+merged state back.
 
 ### Step 3: DECOMPOSE (Initial Breakdown)
 
@@ -322,16 +347,21 @@ for the feature so process metrics observe wave entry:
   build does not yet maintain an explicit phase->wave mapping, each
   wave is its own phase. This assumption is documented here so the
   metrics layer can rely on it.)
-- Call `scripts/git_tags.write_tag()` with the name
-  `etc/feature/F<NNN>/build/phase-<N>/start` at the current HEAD via:
+- Invoke the git_tags.py write-tag CLI with the name
+  `etc/feature/F<NNN>/build/phase-<N>/start` at the current HEAD:
   ```
-  python3 -c "from scripts.git_tags import write_tag; \
-    write_tag('etc/feature/F<NNN>/build/phase-<N>/start')"
+  python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/F<NNN>/build/phase-<N>/start"
   ```
-  Substitute `F<NNN>` with the feature ID from `state.yaml` and `<N>`
-  with the wave number. `write_tag` degrades gracefully on non-git
-  directories or repos without a HEAD commit; treat its return value
-  as advisory and continue regardless.
+  Substitute `F<NNN>` with the feature ID from `state.yaml`'s
+  top-level metadata (set by /spec) and `<N>` with the wave number.
+  The CLI degrades gracefully on non-git directories or repos without
+  a HEAD commit (exit code 1 with a stderr warning); treat exit codes
+  0 (created) and 1 (degrade) as both acceptable advisory outcomes
+  and continue. Only exit code 2 (hard error) is a real fault.
+
+  The CLI form is required because the helpers are installed under
+  `~/.claude/scripts/`, not the user's project — `from scripts.git_tags
+  import …` only resolves inside this checkout, so it MUST NOT be used.
 
 For each task in the current wave:
 - Update task status via `python3 ~/.claude/scripts/tasks.py set-status
@@ -371,14 +401,16 @@ do not serialize within a wave.
 Only after step 6c confirms tests pass and no task is escalated — i.e.
 on a successful wave exit — write the phase-done tag and update state:
 
-- Call `scripts/git_tags.write_tag()` with the name
-  `etc/feature/F<NNN>/build/phase-<N>/done` at HEAD via:
+- Invoke the git_tags.py write-tag CLI with the name
+  `etc/feature/F<NNN>/build/phase-<N>/done` at HEAD:
   ```
-  python3 -c "from scripts.git_tags import write_tag; \
-    write_tag('etc/feature/F<NNN>/build/phase-<N>/done')"
+  python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/F<NNN>/build/phase-<N>/done"
   ```
-  Use the same `F<NNN>` and `<N>` values as 6a.
-- Update `state.yaml`: `waves_completed: {N}`
+  Use the same `F<NNN>` and `<N>` values as 6a. Same exit-code
+  semantics as 6a (0 created, 1 degrade, 2 hard fault).
+- Update `state['build']['waves_completed'] = N` in state.yaml using
+  the same merge-preserving read/mutate/write pattern from Step 2;
+  the top-level /spec metadata stays untouched.
 - This enables resume from the last completed wave if session dies.
 
 **Discipline (BR-008, edge case 4):** Tags written by `git_tags.write_tag()`
@@ -457,26 +489,31 @@ successfully at Step 6:
    verification.md written. These two writes are the marker of a
    successful terminal-phase close (BR-009, AC-009, AC-011).
 
-   a. Write the release tag via `scripts/git_tags.write_tag()`:
+   a. Write the release tag via the git_tags.py write-tag CLI:
       ```
-      python3 -c "from scripts.git_tags import write_tag; \
-        write_tag('etc/feature/F<NNN>/release')"
+      python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/F<NNN>/release"
       ```
-      Substitute `F<NNN>` with the feature ID from `state.yaml`.
+      Substitute `F<NNN>` with the feature ID from `state.yaml`. Exit
+      codes follow the same convention as Step 6 (0 created, 1 degrade
+      on non-git/no-HEAD, 2 hard fault).
 
-   b. Build and write `release-notes.md` via `scripts/release_notes.build()`:
+   b. Build and write `release-notes.md` via the release_notes.py build
+      CLI. The CLI prints the rendered markdown to stdout; redirect to
+      the feature directory:
       ```
-      python3 -c "from pathlib import Path; \
-        from scripts.release_notes import build; \
-        feature_dir = Path('.etc_sdlc/features/F<NNN>-<slug>'); \
-        Path(feature_dir / 'release-notes.md').write_text( \
-          build(feature_dir), encoding='utf-8')"
+      python3 ~/.claude/scripts/release_notes.py build .etc_sdlc/features/F<NNN>-<slug> > .etc_sdlc/features/F<NNN>-<slug>/release-notes.md
       ```
+      Substitute `F<NNN>-<slug>` with the actual feature directory name.
       The result lands at
       `.etc_sdlc/features/F<NNN>-<slug>/release-notes.md` and rolls up
       PRD title and ID, phases closed, per-phase AC pass/fail summary
       citing each completion-report path, deferred items, and known
       limitations.
+
+      The CLI form is required for the same reason as the git_tags.py
+      invocations: helpers live at `~/.claude/scripts/`, not the user's
+      project, so import-style invocation (`from scripts.release_notes
+      import build`) MUST NOT be used.
 
    **Discipline (edge case 4).** On mid-build failure — an escalated
    wave or a failing test at Step 6c, or a NON-COMPLIANT spec-enforcer

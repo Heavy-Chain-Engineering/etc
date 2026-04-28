@@ -14,14 +14,27 @@ Public surface:
     aggregate(conn, filter) -> dict[str, int]
     TelemetrySchemaError  (raised on schema-rejection)
 
+CLI surface (for hooks / consumers that cannot import this module):
+    python3 telemetry.py record <event_type> [--feature-id F]
+                                              [--payload JSON_STR]
+                                              [--db-path PATH]
+    python3 telemetry.py aggregate [--feature-id F] [--event-type E]
+                                   [--since TS] [--db-path PATH]
+    Default DB path is `.etc_sdlc/telemetry.db` resolved against CWD,
+    matching the import API and the /metrics consumer contract.
+
 stdlib only — no third-party dependencies (per spec "Technical Constraints").
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sqlite3
+import sys
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final, Protocol
 
@@ -381,3 +394,217 @@ def _count_total(
     sql = f"SELECT COUNT(*) FROM events{where_clause}"
     row = conn.execute(sql, params).fetchone()
     return int(row[0]) if row is not None else 0
+
+
+# ── CLI ────────────────────────────────────────────────────────────────
+
+DEFAULT_DB_RELATIVE: Final[Path] = Path(".etc_sdlc") / "telemetry.db"
+
+
+def _default_db_path() -> Path:
+    """Resolve the default DB path against the current working directory.
+
+    Computed lazily (per call) so tests / subprocess invocations from
+    arbitrary CWDs produce the right path even when this module is
+    imported once and reused.
+    """
+    return Path.cwd() / DEFAULT_DB_RELATIVE
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Define the CLI grammar.
+
+    Subcommands are ``record`` and ``aggregate``. ``--db-path`` is
+    available on both and falls back to ``CWD/.etc_sdlc/telemetry.db``.
+    Unknown flags exit non-zero with a stderr message — argparse's
+    default behavior is exactly what we want here.
+    """
+    parser = argparse.ArgumentParser(
+        prog="telemetry.py",
+        description="SQLite WAL telemetry sink for the etc harness.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    rec = sub.add_parser(
+        "record",
+        help="Insert one event into the telemetry DB.",
+    )
+    rec.add_argument(
+        "event_type",
+        help=(
+            "Controlled enum value. Allowed: "
+            + ", ".join(sorted(ALLOWED_EVENT_TYPES))
+        ),
+    )
+    rec.add_argument(
+        "--feature-id",
+        default=None,
+        help="Optional feature identifier (e.g. F042).",
+    )
+    rec.add_argument(
+        "--payload",
+        default="{}",
+        help="JSON-encoded payload object. Defaults to '{}'.",
+    )
+    rec.add_argument(
+        "--db-path",
+        type=Path,
+        default=None,
+        help="Override the default .etc_sdlc/telemetry.db location.",
+    )
+
+    agg = sub.add_parser(
+        "aggregate",
+        help="Print event aggregations as stable-key-ordered JSON.",
+    )
+    agg.add_argument("--feature-id", default=None)
+    agg.add_argument("--event-type", default=None)
+    agg.add_argument(
+        "--since",
+        default=None,
+        help="ISO-8601 timestamp (inclusive lower bound).",
+    )
+    agg.add_argument("--db-path", type=Path, default=None)
+
+    return parser
+
+
+def _resolve_db_path(override: Path | None) -> Path:
+    """Pick the DB path: explicit override or CWD-relative default."""
+    return override if override is not None else _default_db_path()
+
+
+def _build_event_from_cli(
+    event_type: str, feature_id: str | None, payload_json: str
+) -> dict[str, Any]:
+    """Translate CLI args into the dict shape ``record()`` expects.
+
+    ``event_id`` is generated server-side because the CLI is the
+    server: callers (hooks) don't carry UUIDs around. The schema
+    contract still requires the field, so we synthesize it here.
+    """
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError as exc:
+        msg = f"--payload is not valid JSON: {exc.msg}"
+        raise ValueError(msg) from exc
+    if not isinstance(payload, dict):
+        msg = (
+            f"--payload must decode to a JSON object, "
+            f"got {type(payload).__name__}"
+        )
+        raise ValueError(msg)
+
+    return {
+        "event_id": str(uuid.uuid4()),
+        "feature_id": feature_id,
+        "event_type": event_type,
+        "timestamp": datetime.now(timezone.utc)
+        .strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        "payload": payload,
+        "schema_version": SCHEMA_VERSION,
+    }
+
+
+def _cli_record(args: argparse.Namespace) -> int:
+    """Run the ``record`` subcommand. Returns the process exit code."""
+    try:
+        event = _build_event_from_cli(
+            args.event_type, args.feature_id, args.payload
+        )
+    except ValueError as exc:
+        print(f"telemetry: {exc}", file=sys.stderr)
+        return 2
+
+    db_path = _resolve_db_path(args.db_path)
+    try:
+        conn = connect(db_path)
+    except (sqlite3.Error, OSError) as exc:
+        print(f"telemetry: failed to open DB {db_path}: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        try:
+            record(conn, event)
+        except TelemetrySchemaError as exc:
+            print(f"telemetry: schema rejection: {exc}", file=sys.stderr)
+            return 2
+        except sqlite3.Error as exc:
+            print(f"telemetry: write failed: {exc}", file=sys.stderr)
+            return 1
+    finally:
+        conn.close()
+    return 0
+
+
+def _build_filter_from_cli(args: argparse.Namespace) -> dict[str, str]:
+    """Project CLI flags into the ``aggregate(filter)`` dict shape.
+
+    Only flags the user actually supplied are forwarded — empty / None
+    values are dropped so ``aggregate()`` treats them as "no filter"
+    rather than literal-string matches against empty columns.
+    """
+    filt: dict[str, str] = {}
+    if args.feature_id is not None:
+        filt["feature_id"] = args.feature_id
+    if args.event_type is not None:
+        filt["event_type"] = args.event_type
+    if args.since is not None:
+        filt["since"] = args.since
+    return filt
+
+
+def _cli_aggregate(args: argparse.Namespace) -> int:
+    """Run the ``aggregate`` subcommand. Returns the process exit code."""
+    db_path = _resolve_db_path(args.db_path)
+    try:
+        conn = connect(db_path)
+    except (sqlite3.Error, OSError) as exc:
+        print(f"telemetry: failed to open DB {db_path}: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        try:
+            result = aggregate(conn, _build_filter_from_cli(args))
+        except ValueError as exc:
+            print(f"telemetry: invalid filter: {exc}", file=sys.stderr)
+            return 2
+    finally:
+        conn.close()
+
+    # by_feature_id may contain a None key (project-level events). JSON
+    # cannot represent None object keys, so coerce to a sentinel string
+    # — the consumer (/metrics) expects a string-keyed dict on stdout.
+    by_feature_serializable = {
+        ("__null__" if k is None else str(k)): v
+        for k, v in result["by_feature_id"].items()
+    }
+    payload = {
+        "by_event_type": result["by_event_type"],
+        "by_feature_id": by_feature_serializable,
+        "total_events": result["total_events"],
+    }
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point for ``python telemetry.py …``.
+
+    Returns the process exit code so unit tests can drive the CLI
+    in-process if desired; the ``__main__`` block forwards the return
+    value to ``sys.exit``.
+    """
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+    if args.command == "record":
+        return _cli_record(args)
+    if args.command == "aggregate":
+        return _cli_aggregate(args)
+    # argparse's required=True on the subparser prevents reaching here.
+    parser.error(f"unknown command: {args.command}")  # pragma: no cover
+    return 2  # pragma: no cover
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -19,11 +19,14 @@ raises ValueError with a descriptive message.
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODULE_PATH = REPO_ROOT / "scripts" / "value_hypothesis.py"
@@ -359,3 +362,209 @@ class TestTransitionStatus:
 
         with pytest.raises(ValueError, match="status"):
             vh.transition_status(hypothesis, "in_orbit")
+
+
+# CLI smoke tests — F1.4: skills (/spec, /metrics) need to invoke
+# value_hypothesis from arbitrary working directories. The CLI must work
+# without `cd`-ing into etc-system-engineering and without making
+# `scripts/` an importable package.
+
+
+class TestCommandLineInterface:
+    """End-to-end subprocess tests of the value_hypothesis.py CLI.
+
+    These tests run the script as `python value_hypothesis.py <subcmd>`
+    from a tmp_path cwd to mirror how skills will invoke it at runtime.
+    They guard the contract that no Python import path tricks are
+    required by callers.
+    """
+
+    def test_should_validate_via_subprocess_from_unrelated_cwd(
+        self, tmp_path: Path
+    ) -> None:
+        yaml_path = tmp_path / "value-hypothesis.yaml"
+        yaml_path.write_text(
+            yaml.safe_dump(_valid_hypothesis(), sort_keys=False),
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "validate", str(yaml_path)],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"expected exit 0; got {result.returncode}; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+
+    def test_should_exit_nonzero_when_validation_fails_via_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        yaml_path = tmp_path / "value-hypothesis.yaml"
+        bad = _valid_hypothesis()
+        # Drop a required field — validate_schema must reject and the CLI
+        # must surface the field name on stderr.
+        del bad["how_we_know"]
+        yaml_path.write_text(
+            yaml.safe_dump(bad, sort_keys=False), encoding="utf-8"
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "validate", str(yaml_path)],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1, (
+            f"expected exit 1 on validation failure; got {result.returncode}; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "how_we_know" in result.stderr, (
+            f"stderr should name the missing field; got {result.stderr!r}"
+        )
+
+    def test_should_load_and_print_json_via_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        yaml_path = tmp_path / "value-hypothesis.yaml"
+        hypothesis = _valid_hypothesis()
+        yaml_path.write_text(
+            yaml.safe_dump(hypothesis, sort_keys=False), encoding="utf-8"
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "load", str(yaml_path)],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"expected exit 0; got {result.returncode}; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        parsed = json.loads(result.stdout)
+        assert parsed == hypothesis
+        # Stable, sorted-key output — first non-whitespace key in the
+        # printed JSON should be the alphabetically smallest field.
+        first_key_line = next(
+            line for line in result.stdout.splitlines() if ":" in line
+        )
+        assert first_key_line.lstrip().startswith('"author_role"'), (
+            f"expected sorted keys; first key line was {first_key_line!r}"
+        )
+
+    def test_should_transition_atomically_via_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        yaml_path = tmp_path / "value-hypothesis.yaml"
+        yaml_path.write_text(
+            yaml.safe_dump(_valid_hypothesis(), sort_keys=False),
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "transition",
+                str(yaml_path),
+                "validated",
+                "--measured-value",
+                "45",
+                "--evidence",
+                "https://example.com/report.pdf",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"expected exit 0; got {result.returncode}; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+
+        # File should now have status: validated and the supplied
+        # validation block.
+        on_disk = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        assert on_disk["status"] == "validated"
+        assert on_disk["validation"]["measured_value"] == 45
+        assert (
+            on_disk["validation"]["evidence"]
+            == "https://example.com/report.pdf"
+        )
+
+        # No leftover .tmp files in the target directory.
+        leftovers = [p.name for p in tmp_path.iterdir() if p.name != yaml_path.name]
+        assert not leftovers, (
+            f"atomic write must leave no temp files behind; found {leftovers}"
+        )
+
+    def test_should_exit_nonzero_when_transition_is_illegal_via_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        """Illegal transitions must be rejected with non-zero exit and a
+        diagnostic on stderr — guards BR-011 at the CLI boundary."""
+        yaml_path = tmp_path / "value-hypothesis.yaml"
+        already_validated = _valid_hypothesis()
+        already_validated["status"] = "validated"
+        yaml_path.write_text(
+            yaml.safe_dump(already_validated, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "transition",
+                str(yaml_path),
+                "invalidated",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode != 0
+        assert "transition" in result.stderr.lower()
+
+    def test_should_exit_nonzero_when_yaml_file_missing_via_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        missing = tmp_path / "nope.yaml"
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "validate", str(missing)],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1
+        assert "not found" in result.stderr.lower()
+
+    def test_should_exit_nonzero_when_subcommand_unknown_via_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "frobnicate"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode != 0
+        assert result.stderr.strip(), "expected a diagnostic on stderr"

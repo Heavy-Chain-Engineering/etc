@@ -17,8 +17,10 @@ rather than raising.
 
 from __future__ import annotations
 
+import argparse
 import logging
 import subprocess
+import sys
 
 LOGGER = logging.getLogger(__name__)
 
@@ -119,3 +121,81 @@ def list_etc_tags() -> list[tuple[str, str, str]]:
         name, sha, date = parts
         triples.append((name, sha, date))
     return triples
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────
+#
+# Skills (/spec, /build, /hotfix) invoke git_tags.py via absolute path so
+# they work from any working directory — `from scripts.git_tags import ...`
+# only resolves inside this checkout. The CLI mirrors the public API:
+#
+#     python3 .../scripts/git_tags.py write-tag <name> [--ref REF]
+#     python3 .../scripts/git_tags.py list-etc-tags
+#
+# Exit codes for `write-tag`:
+#     0 — tag created
+#     1 — graceful-degrade failure (non-git dir, no-HEAD repo, git tag rc≠0)
+#     2 — hard error (unexpected exception)
+# `list-etc-tags` always exits 0; empty list yields no output.
+
+
+def _cmd_write_tag(args: argparse.Namespace) -> int:
+    """Run `write_tag` and translate its bool return into a process exit code."""
+    try:
+        ok = write_tag(args.name, args.ref)
+    except Exception as exc:  # pragma: no cover — hard error path
+        print(f"error: write_tag raised: {exc}", file=sys.stderr)
+        return 2
+    if not ok:
+        print(
+            f"error: failed to write tag {args.name!r} "
+            "(not a git repo, no HEAD commit, or git tag failed)",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+def _cmd_list_etc_tags(_args: argparse.Namespace) -> int:
+    """Print each etc/* tag as `<name>\\t<sha>\\t<date>`."""
+    for name, sha, date in list_etc_tags():
+        print(f"{name}\t{sha}\t{date}")
+    return 0
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="git_tags.py",
+        description="Append-only git tag helper for the etc/feature/* namespace.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_write = sub.add_parser(
+        "write-tag",
+        help="Create a git tag pointing at REF (default HEAD).",
+    )
+    p_write.add_argument("name", help="Tag name, e.g. etc/feature/F001/spec")
+    p_write.add_argument(
+        "--ref",
+        default="HEAD",
+        help="Git ref the tag should point at (default: HEAD)",
+    )
+    p_write.set_defaults(func=_cmd_write_tag)
+
+    p_list = sub.add_parser(
+        "list-etc-tags",
+        help="List etc/* tags as tab-separated <name>\\t<sha>\\t<date> lines.",
+    )
+    p_list.set_defaults(func=_cmd_list_etc_tags)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

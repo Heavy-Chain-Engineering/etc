@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -263,3 +264,78 @@ class TestImmutability:
             assert token not in source, (
                 f"git_tags.py source must not invoke destructive git command: {token}"
             )
+
+
+class TestCli:
+    """Smoke tests for the argparse CLI added by Remediation F1.2.
+
+    The CLI must work when invoked from any cwd (so /spec, /build, /hotfix
+    skills can call ``python3 <abs path>/git_tags.py write-tag ...`` without
+    needing to be inside the etc-system-engineering checkout).
+    """
+
+    def test_should_write_tag_via_subprocess_from_unrelated_cwd(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        repo = tmp_path / "repo"
+        _init_repo_with_commit(repo)
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "write-tag", "etc/test/abc"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, (
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "etc/test/abc" in _list_tags(repo)
+
+    def test_should_exit_one_when_not_a_git_repo(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        non_git = tmp_path / "plain"
+        non_git.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "write-tag", "etc/test/xyz"],
+            cwd=str(non_git),
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 1
+        assert result.stderr.strip() != ""
+
+    def test_should_list_etc_tags_via_subprocess(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        repo = tmp_path / "repo"
+        _init_repo_with_commit(repo)
+        _git(repo, "tag", "etc/feature/F001/spec")
+        _git(repo, "tag", "etc/feature/F001/release")
+        _git(repo, "tag", "v9.9.9")  # non-etc tag must be filtered out
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "list-etc-tags"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, (
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        assert len(lines) == 2
+        for line in lines:
+            parts = line.split("\t")
+            assert len(parts) == 3, f"expected 3 tab-separated fields, got: {line!r}"
+            name, sha, _date = parts
+            assert name.startswith("etc/feature/F001/")
+            assert len(sha) == 40
+            assert all(c in "0123456789abcdef" for c in sha)

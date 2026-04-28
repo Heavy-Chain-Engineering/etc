@@ -697,3 +697,266 @@ class TestAggregateInvalidFilter:
         finally:
             conn.close()
         assert "bogus" in str(exc_info.value)
+
+
+# ── CLI smoke tests ────────────────────────────────────────────────────
+
+
+import subprocess  # noqa: E402
+
+TELEMETRY_SCRIPT = SCRIPTS_DIR / "telemetry.py"
+
+
+def _run_cli(
+    args: list[str], cwd: Path
+) -> subprocess.CompletedProcess[str]:
+    """Invoke scripts/telemetry.py as a subprocess from an arbitrary CWD.
+
+    The whole point of the CLI is to be invokable from outside this
+    repo (hooks, /metrics consumer), so the test always passes an
+    absolute path to the script and a tmp_path CWD that is unrelated
+    to the repo root.
+    """
+    return subprocess.run(
+        [sys.executable, str(TELEMETRY_SCRIPT), *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+class TestCli:
+    def test_should_record_then_aggregate_via_subprocess_from_unrelated_cwd(
+        self, tmp_path: Path
+    ) -> None:
+        # Two records, then aggregate — DB path defaults to
+        # .etc_sdlc/telemetry.db relative to the CWD we run from.
+        rec1 = _run_cli(
+            [
+                "record",
+                "spec_started",
+                "--feature-id",
+                "F001",
+                "--payload",
+                json.dumps({"note": "first"}),
+            ],
+            cwd=tmp_path,
+        )
+        assert rec1.returncode == 0, (
+            f"first record failed: stderr={rec1.stderr!r}"
+        )
+
+        rec2 = _run_cli(
+            [
+                "record",
+                "spec_completed",
+                "--feature-id",
+                "F001",
+                "--payload",
+                json.dumps({"note": "second"}),
+            ],
+            cwd=tmp_path,
+        )
+        assert rec2.returncode == 0, (
+            f"second record failed: stderr={rec2.stderr!r}"
+        )
+
+        # DB must live under .etc_sdlc/ relative to the CWD we ran from.
+        assert (tmp_path / ".etc_sdlc" / "telemetry.db").exists()
+
+        agg = _run_cli(["aggregate"], cwd=tmp_path)
+        assert agg.returncode == 0, f"aggregate failed: stderr={agg.stderr!r}"
+
+        result = json.loads(agg.stdout)
+        assert result["total_events"] == 2
+        assert result["by_event_type"] == {
+            "spec_started": 1,
+            "spec_completed": 1,
+        }
+        assert result["by_feature_id"] == {"F001": 2}
+
+    def test_should_apply_filters_via_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        # Mix of feature_ids and event_types; filter by each in turn.
+        events = [
+            ("spec_started", "F001"),
+            ("spec_completed", "F001"),
+            ("spec_started", "F002"),
+            ("agent_invoked", "F002"),
+        ]
+        for event_type, feature_id in events:
+            result = _run_cli(
+                [
+                    "record",
+                    event_type,
+                    "--feature-id",
+                    feature_id,
+                    "--payload",
+                    "{}",
+                ],
+                cwd=tmp_path,
+            )
+            assert result.returncode == 0, (
+                f"record {event_type}/{feature_id} failed: "
+                f"stderr={result.stderr!r}"
+            )
+
+        # Filter by feature_id.
+        f1 = _run_cli(
+            ["aggregate", "--feature-id", "F001"], cwd=tmp_path
+        )
+        assert f1.returncode == 0, f1.stderr
+        f1_result = json.loads(f1.stdout)
+        assert f1_result["total_events"] == 2
+        assert f1_result["by_feature_id"] == {"F001": 2}
+
+        # Filter by event_type.
+        ev = _run_cli(
+            ["aggregate", "--event-type", "spec_started"], cwd=tmp_path
+        )
+        assert ev.returncode == 0, ev.stderr
+        ev_result = json.loads(ev.stdout)
+        assert ev_result["total_events"] == 2
+        assert ev_result["by_event_type"] == {"spec_started": 2}
+
+        # Combine: feature_id + event_type narrows to a single row.
+        both = _run_cli(
+            [
+                "aggregate",
+                "--feature-id",
+                "F002",
+                "--event-type",
+                "agent_invoked",
+            ],
+            cwd=tmp_path,
+        )
+        assert both.returncode == 0, both.stderr
+        both_result = json.loads(both.stdout)
+        assert both_result["total_events"] == 1
+        assert both_result["by_event_type"] == {"agent_invoked": 1}
+        assert both_result["by_feature_id"] == {"F002": 1}
+
+    def test_should_exit_nonzero_on_invalid_event_type(
+        self, tmp_path: Path
+    ) -> None:
+        result = _run_cli(
+            [
+                "record",
+                "not_a_real_event_type",
+                "--feature-id",
+                "F001",
+                "--payload",
+                "{}",
+            ],
+            cwd=tmp_path,
+        )
+        assert result.returncode != 0, (
+            "record with unknown event_type must exit non-zero"
+        )
+        # The stderr message must name the violation so the operator
+        # (or hook) can act on it without re-running with --verbose.
+        assert "not_a_real_event_type" in result.stderr
+
+    def test_should_exit_nonzero_on_malformed_payload_json(
+        self, tmp_path: Path
+    ) -> None:
+        result = _run_cli(
+            [
+                "record",
+                "spec_started",
+                "--feature-id",
+                "F001",
+                "--payload",
+                "{not valid json",
+            ],
+            cwd=tmp_path,
+        )
+        assert result.returncode != 0
+        assert result.stderr.strip(), "must emit a stderr message"
+
+    def test_should_exit_nonzero_on_unknown_filter_key(
+        self, tmp_path: Path
+    ) -> None:
+        # Aggregate exposes only feature_id / event_type / since via
+        # flags, so this is a parser-level rejection.
+        result = _run_cli(
+            ["aggregate", "--bogus-flag", "x"], cwd=tmp_path
+        )
+        assert result.returncode != 0
+        assert result.stderr.strip()
+
+    def test_should_aggregate_empty_db_with_zero_counts(
+        self, tmp_path: Path
+    ) -> None:
+        # Aggregating against a never-written DB must yield the empty
+        # shape — not a "DB not found" error — because /metrics treats
+        # the empty case as "no telemetry yet" rather than a fault.
+        result = _run_cli(["aggregate"], cwd=tmp_path)
+        assert result.returncode == 0, result.stderr
+        parsed = json.loads(result.stdout)
+        assert parsed == {
+            "by_event_type": {},
+            "by_feature_id": {},
+            "total_events": 0,
+        }
+
+    def test_should_honor_explicit_db_path_flag(
+        self, tmp_path: Path
+    ) -> None:
+        # --db-path overrides the .etc_sdlc/telemetry.db default; useful
+        # for hooks that maintain their own sink locations.
+        custom_db = tmp_path / "custom" / "telemetry.db"
+        rec = _run_cli(
+            [
+                "record",
+                "agent_invoked",
+                "--feature-id",
+                "F042",
+                "--payload",
+                json.dumps({"agent": "backend-developer"}),
+                "--db-path",
+                str(custom_db),
+            ],
+            cwd=tmp_path,
+        )
+        assert rec.returncode == 0, rec.stderr
+        assert custom_db.exists()
+        # Default-path DB must NOT exist — record honored the override.
+        assert not (tmp_path / ".etc_sdlc" / "telemetry.db").exists()
+
+        agg = _run_cli(
+            ["aggregate", "--db-path", str(custom_db)], cwd=tmp_path
+        )
+        assert agg.returncode == 0, agg.stderr
+        result = json.loads(agg.stdout)
+        assert result["total_events"] == 1
+        assert result["by_event_type"] == {"agent_invoked": 1}
+
+    def test_should_emit_stable_key_order_in_aggregate_json(
+        self, tmp_path: Path
+    ) -> None:
+        # Stable key ordering matters for diffs and snapshot tests in
+        # the consumer.
+        rec = _run_cli(
+            [
+                "record",
+                "spec_started",
+                "--feature-id",
+                "F001",
+                "--payload",
+                "{}",
+            ],
+            cwd=tmp_path,
+        )
+        assert rec.returncode == 0
+        agg = _run_cli(["aggregate"], cwd=tmp_path)
+        assert agg.returncode == 0
+        # json.loads + json.dumps with sort_keys must round-trip
+        # to identical text iff the producer used sort_keys=True.
+        parsed = json.loads(agg.stdout)
+        re_dumped = json.dumps(parsed, sort_keys=True)
+        # The producer's output must equal sort_keys round-trip
+        # (modulo trailing whitespace/newlines).
+        assert agg.stdout.strip() == re_dumped
