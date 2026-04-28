@@ -615,6 +615,16 @@ skills:
     usage: "/hotfix \"<short description of incident>\""
     source: skills/hotfix/SKILL.md
 
+  metrics:
+    name: "metrics"
+    description: >
+      Non-interactive three-layer metrics report. Reads git tags (process),
+      value-hypothesis.yaml files (outcome), and .etc_sdlc/telemetry.db
+      (cost), then emits a markdown report to stdout with the headline
+      "% hypothesis-validated" broken down by author role.
+    usage: "/metrics"
+    source: skills/metrics/SKILL.md
+
   implement:
     name: "implement"
     description: >

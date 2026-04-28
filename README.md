@@ -150,6 +150,13 @@ sub-subtasks, until every leaf is implementable. Enables arbitrary scale.
 **`/postmortem`** — When bugs escape, traces them to root cause and appends
 prevention rules to `.etc_sdlc/antipatterns.md`. The system learns from mistakes.
 
+**`/metrics`** — Weekly outcome-metrics report (process / outcome / cost layers,
+broken out by author role). Reads git lifecycle tags, `value-hypothesis.yaml`
+files written at `/spec` time, and the per-project telemetry DB; emits a
+self-contained markdown report to stdout. Non-interactive and anti-Goodhart by
+construction: the harness writes the source data automatically, so the numbers
+cannot be hand-curated.
+
 ## SDLC-as-Code
 
 The entire harness is defined in a single YAML file:
@@ -248,7 +255,7 @@ hooks/                     10 hook scripts
   reinject-context.sh        Restores context after compaction
   mark-dirty.sh              Tracks which files changed (breadcrumb for CI)
 
-skills/                    10 skills
+skills/                    11 skills
   init-project/SKILL.md      /init-project — tiered repo bootstrap (tooling, DOMAIN.md, docs, roles)
   build/SKILL.md             /build — the conductor: full pipeline from spec to verified code
   hotfix/SKILL.md            /hotfix — incident response lane: file, dispatch constrained subagent, suggest postmortem
@@ -259,6 +266,7 @@ skills/                    10 skills
   tasks/SKILL.md             /tasks — native task tracker (list, next, board, tree, waves, create, bulk-create)
   postmortem/SKILL.md        /postmortem — trace escaped bugs, build antipatterns knowledge
   checkpoint/SKILL.md        /checkpoint — save session state before compaction
+  metrics/SKILL.md           /metrics — weekly outcome-metrics report (process / outcome / cost layers, broken out by author role)
 
 templates/                 4 artifact templates
   adr.md.tmpl                Architecture Decision Record

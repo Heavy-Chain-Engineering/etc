@@ -424,7 +424,40 @@ On escalation, SKIP Phase 5's postmortem suggestion. Escalations go straight to 
 
 ### Phase 5: Completion and Postmortem Suggestion (BR-010)
 
-Immediately after the subagent reports `status: completed`, invoke `AskUserQuestion` with the three postmortem options:
+Immediately after the subagent reports `status: completed`, write the audit tag (BR-007 item 5) before prompting for the postmortem.
+
+#### Phase 5.0: Audit Tag (BR-007 item 5)
+
+Per the metrics-and-release-notes spec (BR-007), every hotfix completion must lay down a git tag of the form `etc/feature/F<NNN>/hotfix/H<MMM>` where `F<NNN>` is the feature ID the hotfix targets (3-digit zero-padded) and `H<MMM>` is the hotfix sequence number local to that feature directory (also 3-digit zero-padded). The tag is the audit-trail anchor for process-layer metrics.
+
+Resolve the two IDs in this order:
+
+1. **Feature ID (`F<NNN>`).** Read the `target_feature_id` field from the incident's YAML frontmatter if the subagent populated it; otherwise re-read the operator's `/hotfix {description}` argument and the incident's `target` field for an explicit `F<NNN>` token (regex `\bF\d{3}\b`). If neither yields an ID, the hotfix is not feature-scoped — log a warning and SKIP the tag write. Continue to Phase 5.1; tag-skip is non-fatal.
+2. **Hotfix ID (`H<MMM>`).** Compute `H<MMM>` as `max(existing H-IDs in tags matching refs/tags/etc/feature/F<NNN>/hotfix/H*) + 1`, zero-padded to 3 digits. If no prior hotfix tag exists for this feature, use `H001`. Use `git for-each-ref refs/tags/etc/feature/F<NNN>/hotfix/` to enumerate.
+
+Write the tag via the `scripts.git_tags.write_tag()` helper. The helper handles non-git directories and no-HEAD repos gracefully (returns False, logs a warning) per its public contract:
+
+```python
+from scripts.git_tags import write_tag
+tag_name = f"etc/feature/{feature_id}/hotfix/{hotfix_id}"
+ok = write_tag(tag_name)  # returns False on non-git / no-HEAD / git failure
+```
+
+Equivalently, you may shell out:
+
+```
+git tag etc/feature/F042/hotfix/H001 HEAD
+```
+
+Tag failure is **non-fatal**. If `write_tag` returns False or the shell `git tag` exits non-zero, log a warning Pattern B notice and continue to Phase 5.1. Do NOT abort the skill, do NOT roll back the incident's `status: completed`, do NOT retry. Per BR-008, tags are append-only — there is no delete/retag/force-update path; a missed tag is missed.
+
+On success, also update the incident's YAML frontmatter with the new tag name in a `hotfix_tag` field (read-parse-mutate-write atomic flow). This makes the tag discoverable from the incident file even if the operator later filters tags by namespace.
+
+After the tag-write attempt (success or skip), proceed to Phase 5.1.
+
+#### Phase 5.1: Postmortem Prompt
+
+Invoke `AskUserQuestion` with the three postmortem options:
 
 ```
 AskUserQuestion(

@@ -315,6 +315,24 @@ For each wave, in order:
 **6a. Dispatch wave N (Agent-tool rules from the Subagent Dispatch
 section above apply absolutely):**
 
+Before dispatching any subagent for wave N, write the phase-start tag
+for the feature so process metrics observe wave entry:
+
+- Treat the current wave as phase-N for tag-naming purposes. (If the
+  build does not yet maintain an explicit phase->wave mapping, each
+  wave is its own phase. This assumption is documented here so the
+  metrics layer can rely on it.)
+- Call `scripts/git_tags.write_tag()` with the name
+  `etc/feature/F<NNN>/build/phase-<N>/start` at the current HEAD via:
+  ```
+  python3 -c "from scripts.git_tags import write_tag; \
+    write_tag('etc/feature/F<NNN>/build/phase-<N>/start')"
+  ```
+  Substitute `F<NNN>` with the feature ID from `state.yaml` and `<N>`
+  with the wave number. `write_tag` degrades gracefully on non-git
+  directories or repos without a HEAD commit; treat its return value
+  as advisory and continue regardless.
+
 For each task in the current wave:
 - Update task status via `python3 ~/.claude/scripts/tasks.py set-status
   --id {task_id} --status in_progress`
@@ -341,12 +359,34 @@ do not serialize within a wave.
 **6c. Verify wave:**
 - Run tests: `python3 -m pytest --tb=short -q`
 - If tests fail: STOP. Report the failure. Do NOT proceed to next wave.
+  **Do not write the phase-N/done tag.** The phase-N/start tag from
+  step 6a remains in place — it is append-only and records that the
+  wave was attempted. Earlier successful phase tags also remain.
 - If any task status is `escalated`: STOP. Report the escalation to
-  the user.
+  the user. **Do not write the phase-N/done tag.** The phase-N/start
+  tag remains. Earlier successful phase tags are kept (no rollback).
 
-**6d. Checkpoint:**
+**6d. Checkpoint and phase-done tag:**
+
+Only after step 6c confirms tests pass and no task is escalated — i.e.
+on a successful wave exit — write the phase-done tag and update state:
+
+- Call `scripts/git_tags.write_tag()` with the name
+  `etc/feature/F<NNN>/build/phase-<N>/done` at HEAD via:
+  ```
+  python3 -c "from scripts.git_tags import write_tag; \
+    write_tag('etc/feature/F<NNN>/build/phase-<N>/done')"
+  ```
+  Use the same `F<NNN>` and `<N>` values as 6a.
 - Update `state.yaml`: `waves_completed: {N}`
 - This enables resume from the last completed wave if session dies.
+
+**Discipline (BR-008, edge case 4):** Tags written by `git_tags.write_tag()`
+are append-only. The harness never deletes, retags, or force-updates a
+tag it has written. On any failure inside step 6c, the phase-N/done tag
+is NOT written for the failing wave; phase-N/start tags and any
+phase-M/start|done tags from earlier successful waves remain (preserved).
+Resume continues from the last successfully completed wave.
 
 **6e. Proceed to next wave or finish.**
 
@@ -363,7 +403,8 @@ The pipeline is paused. Options:
 
 ### Step 7: VERIFY (Final)
 
-After all waves complete:
+After all waves complete — i.e. the terminal phase has been closed
+successfully at Step 6:
 
 1. Run full CI: tests + coverage + types (if applicable) + lint (if applicable)
 2. Run invariant checks: `INVARIANTS.md` verify commands
@@ -376,7 +417,9 @@ After all waves complete:
    ```
    If the spec-enforcer returns NON-COMPLIANT, the build is NOT done.
    Route the violations back to the responsible task owners for remediation
-   before proceeding to Step 8.
+   before proceeding to Step 8. **Do not write the release tag or
+   release-notes.md** while remediation is outstanding — release artifacts
+   are gated on a successful terminal-phase close.
 4. Write `.etc_sdlc/features/{slug}/verification.md`:
 
 ```markdown
@@ -407,6 +450,43 @@ After all waves complete:
 {list of all files created or modified across all tasks}
 ```
 
+5. **Write the release tag and release-notes.md (terminal phase close).**
+
+   This step runs ONLY after items 1–4 above have all succeeded — full
+   CI passing, invariants verified, spec-enforcer COMPLIANT, and
+   verification.md written. These two writes are the marker of a
+   successful terminal-phase close (BR-009, AC-009, AC-011).
+
+   a. Write the release tag via `scripts/git_tags.write_tag()`:
+      ```
+      python3 -c "from scripts.git_tags import write_tag; \
+        write_tag('etc/feature/F<NNN>/release')"
+      ```
+      Substitute `F<NNN>` with the feature ID from `state.yaml`.
+
+   b. Build and write `release-notes.md` via `scripts/release_notes.build()`:
+      ```
+      python3 -c "from pathlib import Path; \
+        from scripts.release_notes import build; \
+        feature_dir = Path('.etc_sdlc/features/F<NNN>-<slug>'); \
+        Path(feature_dir / 'release-notes.md').write_text( \
+          build(feature_dir), encoding='utf-8')"
+      ```
+      The result lands at
+      `.etc_sdlc/features/F<NNN>-<slug>/release-notes.md` and rolls up
+      PRD title and ID, phases closed, per-phase AC pass/fail summary
+      citing each completion-report path, deferred items, and known
+      limitations.
+
+   **Discipline (edge case 4).** On mid-build failure — an escalated
+   wave or a failing test at Step 6c, or a NON-COMPLIANT spec-enforcer
+   result at Step 7 item 3 — neither the release tag nor
+   release-notes.md is written. Skip both. Phase start/done tags
+   written by earlier successful waves remain in place; they are
+   append-only and are not rolled back. Re-run `/build --resume` after
+   remediation; Steps 7.5a and 7.5b run only on the successful
+   terminal-phase close.
+
 ### Step 8: REPORT
 
 Present final summary to user:
@@ -433,10 +513,15 @@ Present final summary to user:
 
 ### Artifacts
   .etc_sdlc/features/{slug}/
-    spec.md           — the PRD
+    spec.md            — the PRD
     tasks/             — {N} task files
     verification.md    — quality report
     state.yaml         — pipeline state
+    release-notes.md   — roll-up of phases closed, AC pass/fail, deferred items
+
+  Git tags written under refs/tags/etc/feature/F<NNN>/:
+    build/phase-<N>/start, build/phase-<N>/done — one pair per wave
+    release tag: etc/feature/F<NNN>/release      — terminal phase close
 
 ### Deferred Items
 {anything escalated or out of scope}

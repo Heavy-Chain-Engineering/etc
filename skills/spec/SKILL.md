@@ -135,7 +135,31 @@ The five questions, in order:
 5. Render: `\n\n---\n\n**▶ Your answer needed:** Are there any hard constraints? Deadlines, tech stack limits, compliance regimes, performance floors?`
    Wait.
 
-Do NOT proceed until the user has answered all five. If any answer is
+6. Render the author-role question using Pattern B. The question lists
+   the five role options inline so the user can answer with one of them
+   or with a free-form value:
+
+   ```
+
+   ---
+
+   **▶ Your answer needed:** What's your role? Choose one: SME, Engineer, PM, Designer, or Other (free-form — describe in your own words).
+
+   ```
+
+   Capture the answer for later writes (Phase 5 appends it to
+   `state.yaml.author_role` and `value-hypothesis.yaml.author_role`).
+
+   **"Other" sanitization contract.** When the user picks "Other" with a
+   free-form value, the captured string is sanitized before any later
+   write. The contract: cap the value at 64 characters (truncate excess)
+   and strip every control-character codepoint (anything matching the
+   regex `[\x00-\x1f\x7f]`). Sanitization happens at the capture site so
+   every downstream consumer (state.yaml, value-hypothesis.yaml,
+   /metrics) sees the same clean value. This matches PRD security item 8
+   (free-form input sanitization).
+
+Do NOT proceed until the user has answered all six. If any answer is
 vague, ask a follow-up using the same Pattern B marker:
 
 ```
@@ -611,23 +635,110 @@ Iterate until all items pass.
 
 ### Phase 5: Output
 
-Once the Definition of Ready passes:
+Once the Definition of Ready passes, execute these steps in order. The
+discipline is **value-hypothesis-first**: `spec.md` is NOT written until
+`value-hypothesis.yaml` exists with every required field populated. This
+is AC-005 of the metrics-and-release-notes PRD and is non-negotiable —
+shipping a spec without a hypothesis defeats the outcome-metric layer.
 
-1. **Create feature directory:** `.etc_sdlc/features/{slug}/`
-2. **Write the final PRD** to `.etc_sdlc/features/{slug}/spec.md`
-3. **Copy to spec/{slug}.md** for backward compatibility and browsability
-4. **Save research** to `.etc_sdlc/features/{slug}/research/`
-5. **Gray areas** are already saved from Phase 2.5
-6. **Remove the draft** from `spec/.drafts/{slug}.md` (if it exists)
-7. **Report the summary:**
+1. **Allocate the feature directory** by calling
+   `feature_id.allocate_next(features_dir, slug)` (from
+   `scripts/feature_id.py`). This returns `(feature_id, feature_path)`
+   where `feature_id` is `"F<NNN>"` (3-digit zero-padded) and
+   `feature_path` is the freshly-created
+   `.etc_sdlc/features/F<NNN>-<slug>/` directory. The allocator is
+   POSIX-atomic via `os.mkdir` with EEXIST retry — concurrent `/spec`
+   invocations get distinct IDs (BR-003 / AC-002). This call REPLACES
+   the legacy slug-only `mkdir` step.
+
+2. **Build the value-hypothesis dict** with every required field
+   populated. The required fields (BR-005 / AC-004) are:
+
+   - `schema_version` — integer, currently `1`
+   - `feature_id` — the `F<NNN>` from step 1
+   - `author_role` — the role captured in Phase 1 (SME, Engineer, PM,
+     Designer, or sanitized Other free-form)
+   - `who` — target user / cohort the feature serves
+   - `current_cost` — the baseline pain in human terms (what is hard or
+     impossible today)
+   - `predicted` — mapping with `metric`, `direction`
+     (`increase` | `decrease`), and `threshold` (numeric)
+   - `how_we_know` — the measurement plan (how we will tell whether the
+     prediction held)
+   - `status` — initial value `"pending"`
+   - `validation` — initial value
+     `{measured_at: null, measured_value: null, evidence: null}`
+
+   Try to infer `who`, `current_cost`, `predicted`, and `how_we_know`
+   from the PRD prose (Summary, Scope, Acceptance Criteria) where they
+   appear unambiguously. For every required field that cannot be
+   inferred, prompt the user via Pattern B, ONE FIELD AT A TIME:
+
+   ```
+
+   ---
+
+   **▶ Your answer needed:** value-hypothesis `who` — who is the target user / cohort this feature is for?
+
+   ```
+
+   Repeat for `current_cost`, `predicted` (ask for metric, direction,
+   and threshold separately), and `how_we_know` as needed. The file is
+   never written with placeholders — every field is populated before
+   the dict is dumped.
+
+3. **Write `value-hypothesis.yaml`** to
+   `.etc_sdlc/features/F<NNN>-<slug>/value-hypothesis.yaml` using
+   `value_hypothesis.dump(path, hypothesis)`. Call
+   `value_hypothesis.validate_schema(hypothesis)` first; if it raises,
+   fix the missing field via the same Pattern B prompt loop and retry.
+   **Do not proceed to step 4 until this file exists and is schema-
+   valid.**
+
+4. **Write the final PRD** to
+   `.etc_sdlc/features/F<NNN>-<slug>/spec.md`. spec.md MUST NOT be
+   written until value-hypothesis.yaml is complete (AC-005). If the
+   hypothesis prompt loop in steps 2-3 was abandoned for any reason,
+   stop here — do not write spec.md.
+
+5. **Copy to `spec/{slug}.md`** for backward compatibility and
+   browsability (byte-identical copy of the PRD).
+
+6. **Save research** to `.etc_sdlc/features/F<NNN>-<slug>/research/`
+   (at least one of `codebase.md`, `web.md`, or `antipatterns.md`).
+
+7. **Gray areas** are already saved from Phase 2.5; verify the file
+   landed under `.etc_sdlc/features/F<NNN>-<slug>/gray-areas.md` (if
+   Phase 2.5 wrote it before allocation, move it now).
+
+8. **Append `author_role` to `state.yaml`.** Add or overwrite the
+   top-level field `author_role: <captured>` in
+   `.etc_sdlc/features/F<NNN>-<slug>/state.yaml` (the same state.yaml
+   that already records the Phase 2.75 `classification`). Use the
+   sanitized free-form value if the user chose Other.
+
+9. **Write the spec git tag.** Call
+   `git_tags.write_tag("etc/feature/F<NNN>/spec")` (from
+   `scripts/git_tags.py`) to lay down the canonical spec-finalization
+   tag at the current HEAD commit (BR-007 / AC-007). The helper
+   degrades gracefully on non-git directories or repos with no HEAD —
+   it logs a warning and returns False rather than failing the whole
+   spec.
+
+10. **Remove the draft** from `spec/.drafts/{slug}.md` (if it exists).
+
+11. **Report the summary:**
 
 ```
-Feature directory: .etc_sdlc/features/{slug}/
-  spec.md         — the PRD
-  gray-areas.md   — N resolved decisions
-  research/       — codebase + web findings
+Feature directory: .etc_sdlc/features/F<NNN>-<slug>/
+  spec.md                  — the PRD
+  value-hypothesis.yaml    — outcome contract (BR-005)
+  state.yaml               — classification + author_role
+  gray-areas.md            — N resolved decisions
+  research/                — codebase + web findings
 
 Also written to: spec/{slug}.md
+Tag written:     etc/feature/F<NNN>/spec
 
 Definition of Ready: PASSED
 - [N] acceptance criteria
@@ -637,7 +748,7 @@ Definition of Ready: PASSED
 - [N] files in scope
 
 Ready to build:
-  /build .etc_sdlc/features/{slug}/spec.md
+  /build .etc_sdlc/features/F<NNN>-<slug>/spec.md
 ```
 
 ## PRD Output Format

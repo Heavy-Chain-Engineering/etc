@@ -18,13 +18,18 @@ Usage:
     python3 tasks.py create --task-id ID --title T --agent A --file F --ac C [...]
     python3 tasks.py bulk-create [--feature NAME]
         [--json JSON | --json-file PATH] [--allow-existing]
+    python3 tasks.py validate FEATURE_ID --measured VALUE --evidence PATH_OR_URL
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
 import re
 import sys
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -947,6 +952,293 @@ def cmd_bulk_create(root: Path) -> None:
             print(f"    {rel}")
 
 
+# ── validate subcommand (AC-013, BR-011) ────────────────────────────────
+
+FEATURE_ID_PATTERN = re.compile(r"^F\d{3}$")
+URL_PREFIXES = ("http://", "https://")
+LEGAL_DIRECTIONS = frozenset({"increase", "decrease"})
+
+
+class ValidateError(ValueError):
+    """Raised when validate-subcommand input or state is bad."""
+
+
+def _parse_validate_argv(argv: list[str]) -> tuple[str, str, str]:
+    """Parse ``validate FEATURE_ID --measured V --evidence E`` flags.
+
+    Returns ``(feature_id, measured_raw, evidence_raw)``. Caller is
+    responsible for further validation of the values.
+    """
+    if not argv:
+        raise ValidateError("missing feature_id (expected F<NNN>)")
+
+    feature_id = argv[0]
+    measured: str | None = None
+    evidence: str | None = None
+
+    i = 1
+    while i < len(argv):
+        flag = argv[i]
+        if flag == "--measured":
+            if i + 1 >= len(argv):
+                raise ValidateError("flag --measured requires a value")
+            measured = argv[i + 1]
+            i += 2
+        elif flag == "--evidence":
+            if i + 1 >= len(argv):
+                raise ValidateError("flag --evidence requires a value")
+            evidence = argv[i + 1]
+            i += 2
+        else:
+            raise ValidateError(f"unknown flag: {flag}")
+
+    if measured is None:
+        raise ValidateError("missing required flag: --measured")
+    if evidence is None:
+        raise ValidateError("missing required flag: --evidence")
+
+    return feature_id, measured, evidence
+
+
+def _parse_measured(raw: str) -> int | float:
+    """Parse ``--measured`` as int or float; reject everything else.
+
+    Integers are returned as ``int``; values containing a decimal point or
+    exponent are returned as ``float``. Hex, leading ``+``, ``inf``, and
+    ``nan`` are rejected explicitly to keep the on-disk representation
+    boring.
+    """
+    text = raw.strip()
+    if not text:
+        raise ValidateError("--measured must be a numeric value (int or float)")
+
+    # Reject inf/nan/hex/octal/binary literals that float() would otherwise eat.
+    lowered = text.lower().lstrip("+-")
+    if lowered in {"inf", "infinity", "nan"} or lowered.startswith(("0x", "0o", "0b")):
+        raise ValidateError(
+            f"--measured value {raw!r} is not a finite numeric (int or float)"
+        )
+
+    if "." in text or "e" in lowered:
+        try:
+            return float(text)
+        except ValueError as exc:
+            raise ValidateError(
+                f"--measured value {raw!r} is not numeric (int or float)"
+            ) from exc
+
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise ValidateError(
+            f"--measured value {raw!r} is not numeric (int or float)"
+        ) from exc
+
+
+def _canonicalize_evidence(raw: str, project_root: Path) -> str:
+    """Return the canonical evidence string.
+
+    URLs starting with ``http://`` or ``https://`` are returned unchanged.
+    Everything else is treated as a filesystem path: resolved via
+    ``Path.resolve()`` against ``project_root`` for relative paths, then
+    confined to the project working tree. Symbolic links are followed by
+    ``resolve()``; the post-resolution path is the boundary check, so
+    links pointing outside the tree are rejected.
+    """
+    if raw.startswith(URL_PREFIXES):
+        return raw
+
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+
+    try:
+        resolved = candidate.resolve()
+        root_resolved = project_root.resolve()
+    except OSError as exc:
+        raise ValidateError(f"failed to resolve evidence path {raw!r}: {exc}") from exc
+
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError as exc:
+        raise ValidateError(
+            f"--evidence path {raw!r} resolves outside the project tree "
+            f"({resolved}); refusing to record"
+        ) from exc
+
+    return str(resolved)
+
+
+def _find_value_hypothesis(project_root: Path, feature_id: str) -> Path:
+    """Locate the value-hypothesis.yaml for ``feature_id``.
+
+    Searches ``.etc_sdlc/features/<feature_id>-*/`` for the canonical
+    file. Returns the first match (feature IDs are unique by BR-002).
+    """
+    features_dir = project_root / ".etc_sdlc" / "features"
+    if not features_dir.is_dir():
+        raise ValidateError(
+            f"value-hypothesis.yaml not found for {feature_id}: "
+            f".etc_sdlc/features directory does not exist under {project_root}"
+        )
+
+    matches = sorted(features_dir.glob(f"{feature_id}-*"))
+    for candidate in matches:
+        target = candidate / "value-hypothesis.yaml"
+        if target.is_file():
+            return target
+
+    raise ValidateError(
+        f"value-hypothesis.yaml not found for {feature_id} "
+        f"(searched {features_dir}/{feature_id}-*/value-hypothesis.yaml)"
+    )
+
+
+def _decide_status(
+    measured: int | float, direction: str, threshold: int | float
+) -> str:
+    """Return ``validated`` if the measured value crosses the threshold.
+
+    ``decrease``: validated when ``measured <= threshold``.
+    ``increase``: validated when ``measured >= threshold``.
+    """
+    if direction == "decrease":
+        return "validated" if measured <= threshold else "invalidated"
+    if direction == "increase":
+        return "validated" if measured >= threshold else "invalidated"
+    raise ValidateError(
+        f"value-hypothesis predicted.direction must be 'increase' or "
+        f"'decrease'; got {direction!r}"
+    )
+
+
+def _atomic_write_yaml(target: Path, payload: dict) -> None:
+    """Write YAML atomically: temp file in same dir, fsync, rename.
+
+    On any failure the temp file is unlinked. The original ``target`` is
+    only ever replaced via ``os.replace`` (atomic on POSIX).
+    """
+    body = yaml.safe_dump(payload, sort_keys=False, default_flow_style=False)
+
+    target_dir = target.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=str(target_dir)
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(body)
+            handle.flush()
+            os.fsync(handle.fileno())
+        # Path.replace is atomic on POSIX and Windows for same-volume moves.
+        tmp_path.replace(target)
+    except OSError:
+        # Best-effort cleanup; original target is untouched because the
+        # rename never completed.
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _load_value_hypothesis_module() -> object:
+    """Import scripts/value_hypothesis.py without making scripts a package."""
+    module_path = Path(__file__).resolve().parent / "value_hypothesis.py"
+    spec = importlib.util.spec_from_file_location("value_hypothesis", module_path)
+    if spec is None or spec.loader is None:
+        msg = f"cannot load value_hypothesis module at {module_path}"
+        raise ValidateError(msg)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("value_hypothesis", module)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _extract_direction_and_threshold(
+    hypothesis: dict, target: Path
+) -> tuple[str, int | float]:
+    """Pull and type-check ``predicted.direction`` / ``predicted.threshold``."""
+    predicted = hypothesis.get("predicted") or {}
+    direction = predicted.get("direction")
+    threshold = predicted.get("threshold")
+    if direction not in LEGAL_DIRECTIONS:
+        raise ValidateError(
+            f"{target} predicted.direction must be 'increase' or 'decrease'; "
+            f"got {direction!r}"
+        )
+    if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
+        raise ValidateError(
+            f"{target} predicted.threshold must be numeric; got "
+            f"{threshold!r} ({type(threshold).__name__})"
+        )
+    return direction, threshold
+
+
+def cmd_validate(
+    root: Path, feature_id: str, measured: str, evidence: str
+) -> None:
+    """Implement ``tasks.py validate`` (AC-013).
+
+    Updates the matching value-hypothesis.yaml: sets ``status`` per
+    ``predicted.direction`` and the measured threshold, fills the
+    ``validation`` block, and writes atomically.
+    """
+    if not FEATURE_ID_PATTERN.match(feature_id):
+        raise ValidateError(
+            f"feature_id {feature_id!r} does not match ^F\\d{{3}}$ "
+            f"(expected F<NNN>, e.g. F042)"
+        )
+
+    measured_value = _parse_measured(measured)
+    evidence_canonical = _canonicalize_evidence(evidence, root)
+    target = _find_value_hypothesis(root, feature_id)
+
+    vh = _load_value_hypothesis_module()
+    hypothesis = vh.load(target)  # type: ignore[attr-defined]
+    if hypothesis is None:
+        # load() returned None → unsupported future schema_version.
+        raise ValidateError(
+            f"{target} has an unsupported schema_version; refusing to write"
+        )
+
+    direction, threshold = _extract_direction_and_threshold(hypothesis, target)
+    new_status = _decide_status(measured_value, direction, threshold)
+
+    evidence_block = {
+        "measured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "measured_value": measured_value,
+        "evidence": evidence_canonical,
+    }
+    updated = vh.transition_status(  # type: ignore[attr-defined]
+        hypothesis, new_status, evidence_block
+    )
+
+    try:
+        _atomic_write_yaml(target, updated)
+    except OSError as exc:
+        print(f"  Error: failed to write {target}: {exc}")
+        sys.exit(1)
+
+    try:
+        rel = target.relative_to(root)
+    except ValueError:
+        rel = target
+    print(f"  {feature_id}: status → {new_status} ({rel})")
+
+
+def _dispatch_validate(root: Path) -> None:
+    """argv parser + cmd_validate caller, with consistent error exit."""
+    try:
+        feature_id, measured, evidence = _parse_validate_argv(sys.argv[2:])
+        cmd_validate(root, feature_id, measured, evidence)
+    except ValidateError as exc:
+        print(f"  Error: {exc}")
+        sys.exit(1)
+
+
 def main() -> None:
     root = Path.cwd()
 
@@ -1009,11 +1301,13 @@ def main() -> None:
         cmd_create(root)
     elif command == "bulk-create":
         cmd_bulk_create(root)
+    elif command == "validate":
+        _dispatch_validate(root)
     else:
         print(f"Unknown command: {command}")
         print(
             "Commands: list, next, status, board, set-status, deps, score, "
-            "tree, waves, ready-to-decompose, create, bulk-create"
+            "tree, waves, ready-to-decompose, create, bulk-create, validate"
         )
         sys.exit(1)
 
