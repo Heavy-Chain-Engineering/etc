@@ -255,7 +255,7 @@ hooks/                     10 hook scripts
   reinject-context.sh        Restores context after compaction
   mark-dirty.sh              Tracks which files changed (breadcrumb for CI)
 
-skills/                    11 skills
+skills/                    12 skills
   init-project/SKILL.md      /init-project — tiered repo bootstrap (tooling, DOMAIN.md, docs, roles)
   build/SKILL.md             /build — the conductor: full pipeline from spec to verified code
   hotfix/SKILL.md            /hotfix — incident response lane: file, dispatch constrained subagent, suggest postmortem
@@ -264,7 +264,8 @@ skills/                    11 skills
   implement/SKILL.md         /implement — scale-adaptive dispatch (QUICK/STANDARD/DEEP)
   pull-tickets/SKILL.md      /pull-tickets — closed-loop ticket pipeline (Linear → PRD → build → PR)
   tasks/SKILL.md             /tasks — native task tracker (list, next, board, tree, waves, create, bulk-create)
-  postmortem/SKILL.md        /postmortem — trace escaped bugs, build antipatterns knowledge
+  postmortem/SKILL.md        /postmortem — trace escaped bugs (per-project), build antipatterns knowledge
+  harness-feedback/SKILL.md  /harness-feedback — capture cross-project process lessons that should propagate back to the etc harness
   checkpoint/SKILL.md        /checkpoint — save session state before compaction
   metrics/SKILL.md           /metrics — weekly outcome-metrics report (process / outcome / cost layers, broken out by author role)
 

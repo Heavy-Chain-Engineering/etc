@@ -680,6 +680,21 @@ skills:
         description: "Analyze and reorganize board without building — score complexity, map dependencies, decompose epics"
         on_failure: "N/A — triage is non-destructive, always succeeds"
 
+  harness-feedback:
+    name: "harness-feedback"
+    description: >
+      User-invokable cross-project lesson capture. Takes a process
+      failure observed in any project (research inversion, wasted
+      time, manual workaround, framework surprise, near-miss gate,
+      repeated mistake) and emits a structured `📬 Harness feedback`
+      block per standards/process/harness-feedback-loop.md. Refuses
+      vague reflections at the rubric level. When invoked inside the
+      etc repo, can route the block directly to a /spec brief instead
+      of requiring copy-paste. Distinct from /postmortem (per-project
+      shipped bugs) — see the cross-skill contract in the SKILL.md.
+    usage: "/harness-feedback [\"<one-line observation>\"]"
+    source: skills/harness-feedback/SKILL.md
+
 # ─── Standards ───���───────────────────────────────────────────────────────
 # Engineering standards passed through to dist/standards/.
 # These are read by agents and referenced in hook prompts.
