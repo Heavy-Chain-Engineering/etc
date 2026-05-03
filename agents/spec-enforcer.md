@@ -39,11 +39,11 @@ You operate under a strict tool budget. Exceeding it means you emit `INSUFFICIEN
 
 | Tool       | Max calls |
 |------------|-----------|
-| Read       | 6         |
-| Grep       | 6         |
-| Glob       | 3         |
+| Read       | 8         |
+| Grep       | 8         |
+| Glob       | 4         |
 | Bash       | 2         |
-| **Total**  | **12 across all tools, hard cap** |
+| **Total**  | **16 across all tools, hard cap** |
 
 Anti-loop rules (non-negotiable):
 - **No "let me check one more file."** When you find a violation, that AC is decided — move on; do not search for corroborating evidence.
@@ -73,6 +73,40 @@ For each acceptance criterion, determine:
 - **NOT_SATISFIED** — the deliverable does not implement this, or implements it incorrectly. Cite what's expected vs what's actual.
 - **NOT_APPLICABLE** — this criterion is not relevant to the current deliverable/task scope.
 - **INSUFFICIENT_EVIDENCE** — one targeted check did not yield a clear verdict; do not keep searching.
+
+### Step 2a: User-Flow Sentence Detection
+
+For every AC, check whether the text contains the canonical prefix pattern `As ` followed (later in the same sentence) by `, navigate from`. Detected ACs trigger the three-tier reachability evidence check in Step 2b. Non-detected ACs follow the existing per-AC evaluation flow above (SATISFIED / NOT_SATISFIED / NOT_APPLICABLE / INSUFFICIENT_EVIDENCE) unchanged.
+
+The full evidence taxonomy, signal lists, and per-form contracts are defined in `standards/process/user-flow-completeness.md` (the Reachability Evidence section). Reference that document by path; do not duplicate its contracts in this agent body.
+
+### Step 2b: Three-Tier Reachability Evidence Check
+
+For each AC detected in Step 2a, attempt to find evidence in the following order, stopping at the first form found:
+
+1. **Form 1: E2E test.** Grep deliverable test files (paths matching `*test*` or `*spec*`, outside vitest unit-test paths) for the `{parent route}` literal; among hits, check for the `{affordance label}` substring. Hit = SATISFIED, `evidence: <test_file_path>: <quoted line>`.
+2. **Form 2: Static nav-graph reference.** Grep all files outside the AC's own component dir for the `{affordance label}` substring OR the `{parent route}` substring. Hit = SATISFIED, `evidence: <file_path>:<line>: <quoted match>`.
+3. **Form 3: Manual reachability proof.** Look for `surface_status: reachable_manual` or `manual_reachability_proof` records in the deliverable (the AC body, the spec.md Edge Cases section, or sibling proof artifacts). Found = SATISFIED, `evidence: <artifact_path> @ <ISO8601> by <operator_name>` recorded verbatim.
+
+Verdict mapping for detected ACs:
+- Zero forms found → NOT_SATISFIED, `evidence: "no reachability evidence: AC carries User-flow sentence but no E2E test, static reference, or manual proof was found"`.
+- Attempted-but-inconclusive (e.g., partial grep match, manual proof with missing metadata) → INSUFFICIENT_EVIDENCE per the existing schema.
+
+See `standards/process/user-flow-completeness.md` (Reachability Evidence section) for the full evidence-form contracts and rationale.
+
+### Step 2c: Reachability Evidence Recording Rules
+
+The following rules govern how detected ACs' reachability evidence is recorded into the per-AC `evidence` string field. They are non-negotiable and apply in addition to the per-form contracts in Step 2b.
+
+**Operator-name sanitization (Form 3 manual proofs).** When recording the operator name from a manual reachability proof into the `evidence` field, sanitize the input verbatim:
+- Strip every control-character codepoint (regex `[\x00-\x1f\x7f]`).
+- Cap the operator-name string at 64 characters (truncate excess).
+
+This mirrors the `/spec` Phase 1 "Other" sanitization contract and prevents log-injection or CSV-injection attacks against downstream auditing tools that may parse the JSON output.
+
+**No automatic Read of artifact paths (Form 3 manual proofs).** For Form 3 (manual reachability proof) evidence, record the artifact path string verbatim into the `evidence` field. **MUST NOT** invoke `Read` on the artifact file. Treat the path as a human-reviewable reference, not as a runtime-fetched resource. This prevents directory traversal exploits where a hostile AC names `/etc/passwd`, `~/.aws/credentials`, or other sensitive files outside the project tree.
+
+**Legacy-AC fall-through (BR-010 / AC16).** ACs that do NOT contain a User-flow sentence (canonical prefix `As ` + `, navigate from`) are not subject to the reachability evidence check. They pass through the existing per-AC evaluation flow above unchanged. This is the forward-only contract: pre-F001 specs and ACs explicitly marked `surface_status: backend_only` continue to evaluate without modification.
 
 ### Step 3: Emit JSON
 

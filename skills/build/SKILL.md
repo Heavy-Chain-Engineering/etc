@@ -444,7 +444,7 @@ successfully at Step 6:
    ```
    Agent({
      subagent_type: "spec-enforcer",
-     prompt: "Verify the deliverables for feature '{slug}' against the PRD at {spec_path}. Check every acceptance criterion. Report COMPLIANT or NON-COMPLIANT with evidence."
+     prompt: "Verify the deliverables for feature '{slug}' against the PRD at {spec_path}. Check every acceptance criterion. For any AC containing a User-flow sentence (canonical prefix 'As {role}, navigate from'), additionally require reachability evidence per `standards/process/user-flow-completeness.md` (Reachability Evidence section). Acceptable evidence forms in preference order: E2E test that walks the navigation path, static nav-graph reference grep proof, or manual reachability proof. A unit test that imports the target component directly is necessary but NOT sufficient for a user-facing AC. Report COMPLIANT or NON-COMPLIANT with evidence."
    })
    ```
    If the spec-enforcer returns NON-COMPLIANT, the build is NOT done.
