@@ -74,6 +74,21 @@ The following rules are non-negotiable:
   on that file was 3 months ago" is.
 - See standards/process/research-discipline.md for the full rule and
   the origin story.
+
+### User-Flow Completeness for User-Facing ACs
+- Every user-facing AC in a /spec PRD must include a "User flow" sentence
+  in the canonical form: "As {role}, navigate from {parent route} via
+  {affordance label}, complete {happy path}, observe {outcome}."
+- The rule applies at AC authorship time. /spec Phase 3 auto-detects
+  user-facing ACs (by route paths, UI nouns, and user verbs) and elicits
+  the User-flow sentence per AC — author may accept, refine, or mark
+  the AC backend-only.
+- Phase 4 Definition of Ready warns when any user-facing AC lacks the
+  sentence and gates with a YES/NO prompt. Selecting YES records a
+  surface_status: deferred line per offending AC so future readers can
+  audit the deferral. The gate does not hard-block.
+- Forward-only: legacy specs are unaffected until resumed under /spec.
+See standards/process/user-flow-completeness.md for the full rule.
 CONTEXT
 
 # Inject active task context if available

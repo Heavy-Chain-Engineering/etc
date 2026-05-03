@@ -590,6 +590,107 @@ Write sections in this order:
 7. **Security Considerations**
 8. **Module Structure**
 
+#### Section #4 (Acceptance Criteria) — Additional Steps
+
+For Section #4 only, insert the following steps **between** printing the
+initial AC draft (step 1 above) and invoking the section-approval
+`AskUserQuestion` (step 2 above). These steps do not apply to any other
+section.
+
+**Step 4a: Auto-detect user-facing ACs.**
+
+After producing the initial AC draft, scan each AC for user-facing
+signals per `standards/process/user-flow-completeness.md`. Classify
+every AC as `user-facing` or `backend-only` using the signal lists and
+conflict-default rule documented in that standard (do NOT duplicate the
+signal lists inline here — the standard is the single source of truth).
+
+**Step 4b: Idempotency check.**
+
+Before prompting per AC, check whether the AC already begins with the
+canonical prefix `As {role}, navigate from` (or otherwise contains a
+complete User-flow sentence matching that form). If it does, the AC is
+already compliant — skip the per-AC elicitation prompt for that AC and
+record it as `surface_status: compliant`. This ensures re-running `/spec`
+on a fully-compliant spec adds nothing and prompts for nothing on this
+dimension.
+
+**Step 4c: Per-AC User-flow sentence elicitation.**
+
+For each AC classified `user-facing` AND not already compliant (per
+Step 4b), present the AC alongside a *prefilled draft* User-flow sentence
+inferred from surrounding PRD prose. Use these inference sources to
+construct the draft:
+
+- `{role}` — the AC's grammatical subject or the PRD's stated user persona
+- `{parent route}` — Module Structure entries or adjacent ACs that name a route
+- `{affordance label}` — UI nouns mentioned in the AC text
+- `{happy path}` — the AC's success criterion
+- `{outcome}` — the AC's measurable claim
+
+Print the AC and the draft sentence as status output (this is the
+context the user reads before answering), then immediately invoke
+`AskUserQuestion` (Pattern A):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "AC-N: accept, refine, or mark not-user-facing?",
+    header: "AC-N surface",
+    multiSelect: false,
+    options: [
+      {
+        label: "Accept the draft User-flow sentence (Recommended)",
+        description: "The prefilled sentence is appended verbatim to AC-N in the final spec."
+      },
+      {
+        label: "Refine — I have changes",
+        description: "I'll ask what to change via a Pattern B follow-up, revise the draft, and re-present this picker."
+      },
+      {
+        label: "Mark this AC not-user-facing",
+        description: "Record surface_status: backend_only for AC-N. No User-flow sentence is required."
+      }
+    ]
+  }]
+)
+```
+
+**If the user picks "Refine — I have changes"**, dispatch a Pattern B
+free-form follow-up using the visual marker:
+
+```
+
+---
+
+**▶ Your answer needed:** What would you change about the User-flow sentence for AC-N? Name specific edits to {role}, {parent route}, {affordance label}, {happy path}, or {outcome}.
+
+```
+
+Incorporate the response, update the draft sentence, then re-invoke the
+`AskUserQuestion` above with the revised draft. Repeat until the user
+accepts or marks not-user-facing.
+
+**If the user picks "Accept the draft User-flow sentence (Recommended)"**,
+append the sentence verbatim to its parent AC in the spec body.
+
+**If the user picks "Mark this AC not-user-facing"**, record
+`surface_status: backend_only` inline on that AC — no User-flow sentence
+is added.
+
+**Step 4d: Free-form input sanitization.**
+
+Per the Security Considerations for this feature (F001), Pattern B
+refinement input flows verbatim into `spec.md`. Apply the same
+sanitization contract used elsewhere in this skill: strip every
+control-character codepoint (regex `[\x00-\x1f\x7f]`) and cap the
+User-flow sentence at 512 characters (truncate excess). Sanitization
+happens at the capture site, before the sentence is appended to the AC.
+
+**After completing Steps 4a–4d for all user-facing ACs**, proceed to the
+standard section-approval `AskUserQuestion` (step 2 of the outer loop)
+to get final approval on the entire Acceptance Criteria section.
+
 For each section, after printing the draft, invoke this template
 (substituting the section name into `header`, `question`, and the
 option descriptions):
@@ -644,10 +745,87 @@ is buildable:
 
 - [ ] Specific enough to implement without ambiguity
 - [ ] Names concrete files, modules, endpoints
-- [ ] Has measurable acceptance criteria
+- [ ] Has measurable acceptance criteria. Every user-facing AC also includes a User-flow sentence per `standards/process/user-flow-completeness.md`.
 - [ ] Scope boundaries are clear
 - [ ] Edge cases documented
 - [ ] Security considerations addressed
+
+#### User-Flow Gate (BR-004, AC7)
+
+After evaluating the six DoR items above, run the user-flow gate.
+
+**Enumerate offending ACs.** Collect every AC that Phase 3 Section #4
+flagged as user-facing (i.e., not recorded as `surface_status: backend_only`
+and not recorded as `surface_status: compliant`) and that does not yet
+contain an accepted User-flow sentence. These are the offending ACs.
+
+**If no offending ACs exist**, the gate passes silently — proceed to the
+"If all items pass" / "If any items fail" iteration logic below.
+
+**If one or more offending ACs exist**, first emit a prose status block
+(NOT a question) enumerating each by number. For example:
+
+```
+User-flow gate — missing User-flow sentences:
+  AC-3: "User sees the confirmation modal after submit" — no User-flow sentence authored
+  AC-7: "Clicking Save navigates to the dashboard" — no User-flow sentence authored
+```
+
+Then immediately invoke Pattern A:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "User-facing ACs are missing User-flow sentences. Continue without them?",
+    header: "User-flow gate",
+    multiSelect: false,
+    options: [
+      {
+        label: "No, fix the missing sentences first (Recommended)",
+        description: "Return to Phase 3 Section #4 and complete the per-AC elicitation for each offending AC. The DoR check re-runs after edits."
+      },
+      {
+        label: "Yes, ship without — these surfaces are intentionally deferred",
+        description: "Append a `surface_status: deferred` line per offending AC to the Edge Cases section. The deferral is recorded in spec.md so future readers can audit. Proceed to Phase 5."
+      }
+    ]
+  }]
+)
+```
+
+**Gate is a WARN, not a hard-block.** Backend-only surfaces and
+intentionally-unreleased features are legitimate reasons to proceed without
+User-flow sentences. The YES selection is recorded for audit, not silently
+swallowed.
+
+**Deferral path (BR-004, AC8).** When the author selects "Yes, ship without
+— these surfaces are intentionally deferred", the skill MUST append one line
+per offending AC to the spec's Edge Cases section before proceeding to
+Phase 5. The line format is:
+
+```
+- AC-<N> surface_status: deferred — User-flow sentence not authored at spec time.
+```
+
+For example, if AC-3 and AC-7 were offending, append to Edge Cases:
+
+```
+- AC-3 surface_status: deferred — User-flow sentence not authored at spec time.
+- AC-7 surface_status: deferred — User-flow sentence not authored at spec time.
+```
+
+These lines are the audit trail. Future readers can locate them in the
+Edge Cases section and add User-flow sentences when the surface is actually
+wired up.
+
+**Forward-only behavior (BR-007).** Legacy specs — those whose `spec.md`
+predates this rule — are NOT auto-modified. When `/spec` resumes on a
+legacy feature directory, Phase 3 detection runs on whatever ACs exist in
+the current draft. If detection flags ACs as user-facing, the author retains
+the per-AC dismissal options (Step 4c) AND the Phase 4 deferral gate as
+their escape hatch. No existing `spec.md` content is modified without
+explicit author action via one of those two paths. The phase gate never
+inserts, edits, or deletes content in a legacy spec silently.
 
 **If all items pass:** Tell the user the spec is ready and proceed to output.
 
