@@ -27,7 +27,7 @@ import yaml
 
 def load_spec(spec_path: str) -> dict:
     """Load and validate the SDLC specification."""
-    with open(spec_path) as f:
+    with open(spec_path, encoding="utf-8") as f:
         spec = yaml.safe_load(f)
 
     required_sections = ["version", "defaults", "gates"]
@@ -177,7 +177,7 @@ tools: [{', '.join(tools)}]
             content += f"- {c}\n"
 
     out_path = agents_dir / f"{agent_name}.md"
-    out_path.write_text(content)
+    out_path.write_text(content, encoding="utf-8")
 
 
 def compile_skills(dist_dir: Path, repo_root: Path) -> None:
@@ -348,7 +348,7 @@ After all tasks complete:
 
     skill_dir = skills_dir / "implement"
     skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(content)
+    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
 
 
 def generate_generic_skill(skill_def: dict[str, Any], skill_name: str, skills_dir: Path) -> None:
@@ -364,7 +364,7 @@ description: {skill_def.get('description', '').strip()}
 """
     skill_dir = skills_dir / skill_name
     skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(content)
+    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
 
 
 def compile_standards(spec: dict, dist_dir: Path, repo_root: Path) -> None:
@@ -404,7 +404,7 @@ def compile_sdlc_tracker(spec: dict, dist_dir: Path, repo_root: Path) -> None:
             "dod": [{"item": item, "done": False} for item in dod_items],
         }
 
-    with open(sdlc_dir / "dod-templates.json", "w") as f:
+    with open(sdlc_dir / "dod-templates.json", "w", encoding="utf-8") as f:
         json.dump(dod_templates, f, indent=2)
         f.write("\n")
 
@@ -464,7 +464,7 @@ def validate_concepts(repo_root: Path) -> int:
     invariant_files = list(repo_root.rglob("INVARIANTS.md"))
 
     for inv_file in invariant_files:
-        text = inv_file.read_text()
+        text = inv_file.read_text(encoding="utf-8")
         # Find all CONCEPT entries
         concept_pattern = re.compile(
             r"^##\s+(CONCEPT-\d+):\s*(.+)$", re.MULTILINE
@@ -562,7 +562,7 @@ def audit_enforcement(repo_root: Path) -> int:
             continue
         for md_file in sorted(standards_dir.glob("*.md")):
             all_md_files.append(md_file)
-            content = md_file.read_text()
+            content = md_file.read_text(encoding="utf-8")
             file_has_annotation = False
 
             for match in enforce_pattern.finditer(content):
@@ -665,7 +665,7 @@ def main() -> None:
     # Compile each section
     print("  Compiling gates → settings-hooks.json + hook scripts...")
     hooks_config = compile_gates(spec, dist_dir, repo_root)
-    with open(dist_dir / "settings-hooks.json", "w") as f:
+    with open(dist_dir / "settings-hooks.json", "w", encoding="utf-8") as f:
         json.dump(hooks_config, f, indent=2)
         f.write("\n")
 
@@ -712,7 +712,7 @@ def main() -> None:
         concept_count = 0
         for inv_file in repo_root.rglob("INVARIANTS.md"):
             import re
-            concept_count += len(re.findall(r"^##\s+CONCEPT-\d+:", inv_file.read_text(), re.MULTILINE))
+            concept_count += len(re.findall(r"^##\s+CONCEPT-\d+:", inv_file.read_text(encoding="utf-8"), re.MULTILINE))
         print(f"    {concept_count} CONCEPT entries validated")
 
     # Summary

@@ -14,6 +14,30 @@ info()  { echo -e "  ${GREEN}✓${NC} $1"; }
 warn()  { echo -e "  ${YELLOW}⚠${NC} $1"; }
 error() { echo -e "  ${RED}✗${NC} $1"; }
 
+# Convert a Git-Bash/MSYS2/Cygwin POSIX-style path to a Windows-native
+# path when running under those shell environments. uname -s returns
+# MINGW64_NT-* / MSYS_NT-* / CYGWIN_NT-* on Git-Bash / MSYS2 / Cygwin
+# respectively; on macOS (Darwin), Linux, and WSL (Linux), the case
+# statement falls through to the wildcard branch and the input is
+# returned unchanged. cygpath ships with all three Windows shell
+# environments by default.
+_to_native_path() {
+    local path="$1"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            if ! command -v cygpath &> /dev/null; then
+                error "cygpath utility not found on Windows shell — Git Bash install may be incomplete"
+                error "Install Git for Windows from https://git-scm.com/download/win"
+                exit 1
+            fi
+            cygpath -w "$path"
+            ;;
+        *)
+            printf '%s' "$path"
+            ;;
+    esac
+}
+
 echo ""
 echo -e "${BOLD}etc — Engineering Team, Codified${NC}"
 echo "Installing coding harness..."
@@ -147,14 +171,14 @@ merge_settings() {
     python3 -c "
 import json
 
-with open('$SETTINGS') as f:
+with open('$(_to_native_path "$SETTINGS")') as f:
     settings = json.load(f)
-with open('$HOOKS_TEMPLATE') as f:
+with open('$(_to_native_path "$HOOKS_TEMPLATE")') as f:
     template = json.load(f)
 
 settings['hooks'] = template['hooks']
 
-with open('$SETTINGS', 'w') as f:
+with open('$(_to_native_path "$SETTINGS")', 'w') as f:
     json.dump(settings, f, indent=2)
     f.write('\n')
 "
@@ -223,7 +247,7 @@ echo ""
 echo "  Hook events wired:"
 HOOK_EVENTS=$(python3 -c "
 import json
-with open('$HOOKS_TEMPLATE') as f:
+with open('$(_to_native_path "$HOOKS_TEMPLATE")') as f:
     hooks = json.load(f).get('hooks', {})
 for event, groups in hooks.items():
     count = sum(len(g.get('hooks', [])) for g in groups)
