@@ -363,6 +363,150 @@ for the feature so process metrics observe wave entry:
   `~/.claude/scripts/`, not the user's project — `from scripts.git_tags
   import …` only resolves inside this checkout, so it MUST NOT be used.
 
+**6a.5: Detect user-facing tasks and auto-add parent wiring files
+(per `standards/process/user-flow-completeness.md` — Dispatch-time
+Wiring Contract section).**
+
+Before dispatching each task in this wave, scan the task's
+`acceptance_criteria` field (only — not `requires_reading`, not the
+task description) for the canonical User-flow sentence prefix: the
+literal substring `As ` followed (later in the same sentence, before
+the next sentence terminator) by the literal substring `, navigate
+from`. A task is user-facing for the purposes of this step iff at
+least one of its ACs contains that prefix pair.
+
+- **Detected tasks** trigger the auto-add heuristic below.
+- **Non-detected tasks** dispatch through the existing flow at 6a
+  unchanged — no heuristic, no clause injection, no operator prompt.
+  The wiring check fires forward-only on User-flow-sentenced ACs (per
+  F001 BR-007); legacy specs and backend-only ACs pass through.
+
+For each detected user-facing task, run the four-tier auto-add
+heuristic in the preference order defined by the Dispatch-time Wiring
+Contract section of `standards/process/user-flow-completeness.md`:
+
+1. **Tier 1 — Sidebar-nav config files** (e.g., `**/layout/sidebar-nav.*`,
+   `**/nav/sidebar.*`).
+2. **Tier 2 — Parent-route files** matching the new component's route
+   prefix (e.g., new file at `routes/_auth/admin/orgs/new/...` →
+   parent at `routes/_auth/admin/orgs/index.*`).
+3. **Tier 3 — Barrel exports** (`index.ts`, `index.tsx`, `mod.rs`)
+   that already export sibling components in the same directory.
+4. **Tier 4 — Settings-rail / tab-array config files** matching
+   `**/tabs/*` or `**/settings/*` config patterns.
+
+Stop at the first tier that returns one or more candidates; do not
+continue to lower tiers once a tier has matched. The full pattern
+definitions, signal lists, and matching rules live in the standards
+doc — do NOT duplicate them here. Use `Glob` and `Grep` against the
+deliverable directory tree (the user's project, not the etc repo) to
+materialize candidates, and verify each candidate exists on disk
+before treating it as a match.
+
+Resolution outcomes:
+
+- **Exactly one strong candidate.** Auto-add the candidate path to
+  the task's `files_in_scope`. If the task YAML is the source of
+  truth, persist via `python3 ~/.claude/scripts/tasks.py` (matching
+  the existing CLI conventions used elsewhere in Step 6); if the
+  dispatcher is operating on in-memory task state, mutate the
+  in-memory list. Idempotency: if the candidate is already present
+  in `files_in_scope`, skip the add (no-op) and proceed. Note the
+  addition in a status message before dispatching, e.g., `Auto-added
+  'frontend/src/components/layout/sidebar-nav.tsx' to task
+  003.files_in_scope as parent wiring file (Tier 1, sidebar-nav)`.
+  Then proceed to the per-task dispatch below.
+- **Zero candidates.** Fall through to the operator-prompt fallback
+  (sub-step 6a.6, owned by sibling task 002.002). Do not dispatch
+  the task until the operator-prompt outcome is recorded.
+- **Multiple plausible candidates with comparable confidence**
+  (more than one match in the same heuristic tier with no clear
+  winner). Fall through to the operator-prompt fallback (sub-step
+  6a.6).
+
+The standards doc is the single source of truth for the heuristic
+preference order, the signal list, and the operator-prompt structure.
+This skill body cites it by path; consult the Dispatch-time Wiring
+Contract section of `standards/process/user-flow-completeness.md`
+for the full rule.
+
+**6a.6: Operator-prompt fallback for ambiguous heuristic results
+(per `standards/process/user-flow-completeness.md` — Dispatch-time
+Wiring Contract section, Operator-Prompt Fallback subsection).**
+
+If sub-step 6a.5 returned zero candidates OR multiple candidates with
+no clear winner (more than one match in the same heuristic tier with
+comparable confidence), the dispatcher MUST resolve the ambiguity by
+prompting the operator via Pattern A (`AskUserQuestion`) per
+`standards/process/interactive-user-input.md`. Do NOT bury this
+question in prose; do NOT guess past the ambiguity; do NOT dispatch
+the task until the operator's selection is recorded.
+
+Forward-only reminder: this fallback fires ONLY for tasks whose AC
+contained the canonical User-flow sentence prefix detected in 6a.5.
+ACs without User-flow sentences pass through dispatch unchanged — no
+heuristic, no operator prompt, no clause appended (per BR-007 + AC18).
+
+Invoke `AskUserQuestion` with the question text naming the task ID
+and the User-flow sentence's `{parent route}` value, and with one
+option per heuristic candidate plus an explicit "intentionally
+orphaned" deferral option. The "None of the above — let me name a
+custom parent file" path uses `AskUserQuestion`'s automatic Other
+escape hatch (do NOT add an explicit "Other" option — the tool
+provides it). Example shape:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Task 003 creates a user-facing surface; its User-flow sentence references parent route '/admin/orgs'. Which file wires the new surface into the parent navigation graph?",
+    header: "Parent wire",
+    multiSelect: false,
+    options: [
+      {
+        label: "frontend/src/components/layout/sidebar-nav.tsx (Recommended)",
+        description: "Tier-1 sidebar-nav config candidate from the heuristic. Adds this path to files_in_scope and dispatches normally."
+      },
+      {
+        label: "frontend/src/routes/_auth/admin/orgs/index.tsx",
+        description: "Tier-2 parent-route candidate. Adds this path to files_in_scope and dispatches normally."
+      },
+      {
+        label: "Skip — this surface is intentionally orphaned",
+        description: "Records `surface_status: deferred` on the task YAML and dispatches without a parent file. Use when the surface is not yet user-reachable by design."
+      }
+    ]
+  }]
+)
+```
+
+Post-prompt action:
+
+- **Operator selected a candidate file** (one of the heuristic options
+  OR a custom path entered via `AskUserQuestion`'s automatic Other
+  escape hatch). Record the selection in the task's `files_in_scope`
+  via `python3 ~/.claude/scripts/tasks.py` (or in-memory mutation if
+  the dispatcher is operating on in-memory task state), then proceed
+  to the per-task dispatch loop below. Operator-supplied custom paths
+  are sanitized per the rule defined in the standards doc — do NOT
+  duplicate the sanitization regex inline; consult the Dispatch-time
+  Wiring Contract section of
+  `standards/process/user-flow-completeness.md` for the full
+  operator-supplied path sanitization contract.
+- **Operator selected "Skip — intentionally orphaned"**. Record
+  `surface_status: deferred` as a top-level line on the task YAML
+  (via `tasks.py` or in-memory mutation), then proceed to the
+  per-task dispatch loop. The dispatched agent still receives the
+  wiring-contract clause in its prompt (see below) so it understands
+  that wiring is part of the deliverable; the deferral is an audited
+  exception, not a silent skip.
+
+After the operator-prompt outcome is recorded, dispatch proceeds at
+the existing per-task loop below. The standards doc owns the full
+contract for the prompt structure, the candidate-set construction,
+the operator-supplied-path sanitization rule, and the deferral
+recording format — see the Operator-Prompt Fallback subsection of
+`standards/process/user-flow-completeness.md`.
+
 For each task in the current wave:
 - Update task status via `python3 ~/.claude/scripts/tasks.py set-status
   --id {task_id} --status in_progress`
@@ -372,6 +516,24 @@ For each task in the current wave:
   `files_in_scope` paths, the acceptance criteria, and the instruction
   "Dispatch hooks will enforce TDD, invariants, required reading, and
   phase gate — do not circumvent them."
+- For User-flow-sentenced tasks (those detected at sub-step 6a.5), the
+  prompt MUST also include the wiring-contract clause from
+  `standards/process/user-flow-completeness.md` (Dispatch-time Wiring
+  Contract section, "The Wiring Contract" subsection), appended
+  verbatim as a blockquote so the dispatched agent reads it as part
+  of its onboarding context. The clause body is:
+
+  > Your task creates a user-facing surface (route/modal/tab/sidebar entry/wizard step) per the User-flow sentence in your AC. The surface is NOT done until it is wired into the parent navigation graph in the SAME commit as the new surface. Your `files_in_scope` includes the parent wiring file at `<path>` for this purpose. Before reporting success, run `grep -rn "<your-route-or-component-name>" <project>/frontend/src` (or the equivalent for your stack) and confirm at least one parent surface references it via `<Link>`, `<Tab>`, sidebar-config entry, or equivalent. If the parent file does not contain a working reference after your edits, do not report success. See `standards/process/user-flow-completeness.md` (Dispatch-time Wiring Contract section) for the full rule.
+
+  Substitute `<path>` with the parent wiring file path resolved at
+  6a.5 (auto-add) or 6a.6 (operator selection). For tasks marked
+  `surface_status: deferred` at 6a.6, the clause is still appended
+  (the agent must understand wiring is part of the deliverable even
+  when no parent file is in scope) and `<path>` is rendered as
+  `(deferred — no parent file in scope; escalate if you discover the
+  surface needs to be wired)`. ACs without User-flow sentences pass
+  through dispatch unchanged: no clause appended, no operator prompt
+  fired, prompt content matches the pre-edit shape byte-equivalently.
 - You MUST NOT read, edit, or write any file listed in the task's
   `files_in_scope` in your own context. That work belongs to the
   dispatched subagent.
