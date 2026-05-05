@@ -570,6 +570,73 @@ on a successful wave exit — write the phase-done tag and update state:
   ```
   Use the same `F<NNN>` and `<N>` values as 6a. Same exit-code
   semantics as 6a (0 created, 1 degrade, 2 hard fault).
+
+**6d.5: Write per-phase completion report.**
+
+After the phase-done tag is written and before the waves_completed
+state update, write a per-phase completion-report.md so
+`scripts/release_notes.py` can roll it up at terminal close (Step 7.5b).
+The completion-report.md lands at
+`<feature_path>/build/phase-<N>/completion-report.md` and is the
+canonical audit-trail artifact for this wave's outcome.
+
+**Trigger condition:** matches the phase-done tag — only on successful
+wave exit (Step 6c tests passed, no task escalated). Failed phases
+produce no report; the absence of phase-N/done plus the absence of
+completion-report.md is the existing failure signal.
+
+**Source the report's content from the wave's task YAMLs:**
+
+- `prd-title`: read the first `# PRD: <title>` heading from
+  `<feature_path>/spec.md`. Fall back to the feature directory slug
+  if no `# PRD:` heading is present.
+- `prd-id`: read `feature_id` from `<feature_path>/state.yaml`. Fall
+  back to the feature directory name (e.g., `F005-build-completion-
+  reports`) if the field is absent.
+- `ac-passed`: collect every `acceptance_criteria` entry from each
+  task YAML in `<feature_path>/tasks/` whose `status` is `completed`
+  and whose phase membership corresponds to wave N. Because the
+  phase-done tag is gated on successful wave exit, every AC in the
+  wave's task list is treated as passed at write time. Concatenate
+  into a temp file (one AC per line); pass via `--ac-passed-file`.
+- `ac-failed`: empty (the wave passed Step 6c verification before
+  reaching 6d.5; no failed ACs land in this report). Pass an empty
+  temp file via `--ac-failed-file`.
+- `deferred`: collect any `surface_status: deferred` markers from
+  the wave's task YAMLs (introduced by F003 — see
+  `standards/process/user-flow-completeness.md`'s Operator-Prompt
+  Fallback subsection). Concatenate into a temp file; pass via
+  `--deferred-file`. If none found, write an empty file (the helper
+  emits `- (none)` automatically).
+- `limitations`: default to an empty file. The helper emits
+  `- (none)`. The operator can hand-amend the resulting
+  completion-report.md after write if known limitations should be
+  recorded; the amendment lands in release-notes.md at Step 7.5b.
+
+**Invoke the helper:**
+
+```
+python3 ~/.claude/scripts/completion_report.py write \
+    --feature-dir "<feature_path>" \
+    --phase <N> \
+    --prd-title "<prd-title>" \
+    --prd-id "<prd-id>" \
+    --ac-passed-file "<temp-file-of-ac-list>" \
+    --ac-failed-file "<empty-temp-file>" \
+    --deferred-file "<temp-file-of-deferred-list>" \
+    --limitations-file "<empty-temp-file>"
+```
+
+The CLI form is required because the helper lives at
+`~/.claude/scripts/`, not the user's project — `from
+scripts.completion_report import write` would only resolve inside
+this etc checkout, so it MUST NOT be used.
+
+Exit codes follow the F004 + git_tags + value_hypothesis convention
+(0 created, 1 hard fault). On exit code 1, the conductor surfaces
+stderr to the operator and STOPS — completion-report.md must exist
+before advancing to 6d's waves_completed update.
+
 - Update `state['build']['waves_completed'] = N` in state.yaml using
   the same merge-preserving read/mutate/write pattern from Step 2;
   the top-level /spec metadata stays untouched.
