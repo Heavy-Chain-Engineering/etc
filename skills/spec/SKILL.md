@@ -550,7 +550,48 @@ Triggered only when Phase 2.75 classifies the PRD as rejected.
 3. Mirror any `decided_by: research` fills into the rejection report so
    the human does not have to redo research when resubmitting the
    refined PRD.
-4. Surface the rejection to the user using Pattern B (the visual
+4. **Move the rejected feature directory to `.etc_sdlc/rejections/`.**
+   After `rejected.md` is fully written (including the research-fill
+   mirror in step 3), relocate the entire feature directory — including
+   `rejected.md`, `gray-areas.md`, any partial `value-hypothesis.yaml`,
+   and the `research/` subtree — to the rejections location. Use
+   `git mv` so the rename is canonical in the index (a plain `mv`
+   followed by `git add` loses the rename through git's similarity
+   heuristic). Invoke via `subprocess.run` with an argv list, never a
+   shell string, so operator-controlled feature slugs cannot inject
+   shell metacharacters:
+
+   ```python
+   from pathlib import Path
+   import subprocess, sys
+
+   rejections_root = Path(".etc_sdlc/rejections")
+   rejections_root.mkdir(parents=True, exist_ok=True)
+
+   target = rejections_root / f"F{nnn:03d}-{slug}"
+   result = subprocess.run(
+       ["git", "mv", str(feature_path), str(target)],
+       capture_output=True,
+       text=True,
+   )
+   if result.returncode != 0:
+       sys.stderr.write(
+           f"git mv failed: {feature_path} -> {target}\n"
+           f"git stderr: {result.stderr}"
+       )
+       sys.exit(1)
+   ```
+
+   The `mkdir(parents=True, exist_ok=True)` call is race-safe and
+   creates the `.etc_sdlc/rejections/` parent the first time the
+   rejection flow ever fires. On `git mv` failure (target already
+   exists, git refuses for any reason), exit non-zero with a stderr
+   message that names the source path, the target path, and git's
+   stderr verbatim — no silent swallow. After this step the feature
+   directory lives at `.etc_sdlc/rejections/F<NNN>-<slug>/` and is no
+   longer under `.etc_sdlc/features/active/`.
+
+5. Surface the rejection to the user using Pattern B (the visual
    marker), because the message is a status/error announcement, not a
    question. Name the rejected file path and the next action:
 
@@ -563,7 +604,7 @@ Triggered only when Phase 2.75 classifies the PRD as rejected.
 
    ```
 
-5. Exit the skill. Do not proceed to Phase 3, Phase 4, or Phase 5. The
+6. Exit the skill. Do not proceed to Phase 3, Phase 4, or Phase 5. The
    feature directory will contain `rejected.md` but NOT `spec.md`; the
    two files are mutually exclusive.
 
@@ -949,12 +990,16 @@ re-allocate; it only writes inside the existing `<feature_path>`.
 10. **Report the summary:**
 
 ```
-Feature directory: .etc_sdlc/features/F<NNN>-<slug>/
+Feature directory: .etc_sdlc/features/active/F<NNN>-<slug>/
   spec.md                  — the PRD
   value-hypothesis.yaml    — outcome contract (BR-005)
   state.yaml               — classification + author_role
   gray-areas.md            — N resolved decisions
   research/                — codebase + web findings
+
+(New features land under features/active/. On /build terminal close
+the directory is `git mv`'d to features/shipped/; rejected specs are
+`git mv`'d to .etc_sdlc/rejections/.)
 
 Also written to: spec/{slug}.md
 Tag written:     etc/feature/F<NNN>/spec
@@ -967,7 +1012,7 @@ Definition of Ready: PASSED
 - [N] files in scope
 
 Ready to build:
-  /build .etc_sdlc/features/F<NNN>-<slug>/spec.md
+  /build .etc_sdlc/features/active/F<NNN>-<slug>/spec.md
 ```
 
 ## PRD Output Format

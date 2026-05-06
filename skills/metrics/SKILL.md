@@ -101,7 +101,7 @@ rule (AC-014) is read from each hypothesis's own
 | Layer   | Source                                          | Reader                                |
 |---------|-------------------------------------------------|---------------------------------------|
 | Process | git tags under `refs/tags/etc/feature/...`      | `scripts/git_tags.py::list_etc_tags`  |
-| Outcome | `.etc_sdlc/features/F<NNN>-<slug>/value-hypothesis.yaml` | `scripts/value_hypothesis.py::load`   |
+| Outcome | `<resolve_feature_path(F<NNN>)>/value-hypothesis.yaml` (resolved across `features/F<NNN>-<slug>/` legacy flat, `features/active/F<NNN>-<slug>/`, `features/shipped/F<NNN>-<slug>/`, and `rejections/F<NNN>-<slug>/` per F009 BR-003) | `scripts/feature_id.py::resolve_feature_path` then `scripts/value_hypothesis.py::load`   |
 | Cost    | `.etc_sdlc/telemetry.db`                        | `scripts/telemetry.py::connect` + SQL |
 
 Per BR-010, the three layers do NOT cross-derive. Outcome counts are
@@ -134,11 +134,19 @@ The procedure:
    `etc/feature/F<NNN>/release`. If the same feature has multiple
    release tags (it should not, by BR-008/AC-010), use the earliest
    one as the window anchor.
-2. Glob `.etc_sdlc/features/F<NNN>-<slug>/value-hypothesis.yaml`.
-   Use the F-ID regex `^F\d{3}-` to identify candidate directories;
-   directories that do NOT match (the 9 grandfathered slug-only
-   features per GA-002, plus any non-spec-produced directories) are
-   skipped here AND in the outcome layer (AC-016, GA-003).
+2. Locate each feature's `value-hypothesis.yaml` via the canonical
+   resolver `scripts/feature_id.py::resolve_feature_path(feature_id,
+   etc_sdlc_root)`, which checks the four lifecycle locations in
+   priority order (legacy flat `features/F<NNN>-<slug>/`,
+   `features/active/F<NNN>-<slug>/`,
+   `features/shipped/F<NNN>-<slug>/`,
+   `rejections/F<NNN>-<slug>/`) per F009 BR-003 and returns the first
+   hit. The candidate file is `resolve_feature_path("F<NNN>",
+   Path(".etc_sdlc")) / "value-hypothesis.yaml"`. Use the F-ID regex
+   `^F\d{3}-` to identify candidate feature IDs; directories that do
+   NOT match (the 9 grandfathered slug-only features per GA-002, plus
+   any non-spec-produced directories) are skipped here AND in the
+   outcome layer (AC-016, GA-003).
 3. For each candidate file, invoke the value_hypothesis.py load CLI:
    ```
    python3 ~/.claude/scripts/value_hypothesis.py load <path>

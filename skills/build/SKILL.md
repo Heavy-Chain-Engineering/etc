@@ -730,28 +730,77 @@ successfully at Step 6:
       CLI. The CLI prints the rendered markdown to stdout; redirect to
       the feature directory:
       ```
-      python3 ~/.claude/scripts/release_notes.py build .etc_sdlc/features/F<NNN>-<slug> > .etc_sdlc/features/F<NNN>-<slug>/release-notes.md
+      python3 ~/.claude/scripts/release_notes.py build .etc_sdlc/features/active/F<NNN>-<slug> > .etc_sdlc/features/active/F<NNN>-<slug>/release-notes.md
       ```
-      Substitute `F<NNN>-<slug>` with the actual feature directory name.
+      Substitute `F<NNN>-<slug>` with the actual feature directory
+      name. This step runs BEFORE the active→shipped move at sub-step
+      c, so the path under `features/active/` is the correct source.
       The result lands at
-      `.etc_sdlc/features/F<NNN>-<slug>/release-notes.md` and rolls up
-      PRD title and ID, phases closed, per-phase AC pass/fail summary
-      citing each completion-report path, deferred items, and known
-      limitations.
+      `.etc_sdlc/features/active/F<NNN>-<slug>/release-notes.md` and
+      rolls up PRD title and ID, phases closed, per-phase AC pass/fail
+      summary citing each completion-report path, deferred items, and
+      known limitations.
 
       The CLI form is required for the same reason as the git_tags.py
       invocations: helpers live at `~/.claude/scripts/`, not the user's
       project, so import-style invocation (`from scripts.release_notes
       import build`) MUST NOT be used.
 
+   c. **Move the feature directory from `active/` to `shipped/`** (F009
+      BR-005). After the release tag and release-notes.md are written
+      and persisted under `features/active/F<NNN>-<slug>/`, the feature
+      transitions to its terminal audit-frozen state by relocating the
+      entire directory tree under `features/shipped/`.
+
+      First, ensure the `features/shipped/` parent exists. The
+      conductor MUST create it idempotently before invoking `git mv`:
+      ```python
+      from pathlib import Path
+      Path(".etc_sdlc/features/shipped").mkdir(parents=True, exist_ok=True)
+      ```
+
+      Then perform the rename via `git mv`. The argv-style invocation
+      is mandatory — never a shell string — so operator-controlled
+      feature slugs cannot inject shell metacharacters:
+      ```python
+      import subprocess
+      result = subprocess.run(
+          ["git", "mv",
+           ".etc_sdlc/features/active/F<NNN>-<slug>",
+           ".etc_sdlc/features/shipped/F<NNN>-<slug>"],
+          capture_output=True, text=True,
+      )
+      ```
+
+      `git mv` is required (NOT `mv` + `git add`): it makes the rename
+      canonical in the index so `git log --follow` traces the directory
+      history through the transition. Substitute `F<NNN>-<slug>` with
+      the actual feature directory name from `state.yaml`.
+
+      **Failure semantics (edge case 6).** If `git mv` exits non-zero —
+      most commonly because `features/shipped/F<NNN>-<slug>/` already
+      exists and git refuses to clobber it — /build aborts with exit
+      code 1 and surfaces git's stderr verbatim to the operator. The
+      release tag from sub-step a and the release-notes.md from
+      sub-step b have ALREADY been written and are NOT rolled back;
+      both are append-only / on-disk artifacts of the successful
+      terminal-phase close.
+
+      **Discipline.** On Step 7.5c failure, the operator must remediate
+      manually (rm the conflicting target under `features/shipped/`,
+      then retry the mv) before re-running `/build --resume`. The
+      conductor does not retry automatically — silent recovery from a
+      pre-existing target would mask operator state the harness cannot
+      validate.
+
    **Discipline (edge case 4).** On mid-build failure — an escalated
    wave or a failing test at Step 6c, or a NON-COMPLIANT spec-enforcer
    result at Step 7 item 3 — neither the release tag nor
-   release-notes.md is written. Skip both. Phase start/done tags
-   written by earlier successful waves remain in place; they are
-   append-only and are not rolled back. Re-run `/build --resume` after
-   remediation; Steps 7.5a and 7.5b run only on the successful
-   terminal-phase close.
+   release-notes.md is written, and the active→shipped move is NOT
+   attempted. Skip all three. Phase start/done tags written by earlier
+   successful waves remain in place; they are append-only and are not
+   rolled back. Re-run `/build --resume` after remediation; sub-steps
+   a, b, and c run only on the successful terminal-phase close.
 
 ### Step 8: REPORT
 
@@ -778,7 +827,9 @@ Present final summary to user:
 {summary per task}
 
 ### Artifacts
-  .etc_sdlc/features/{slug}/
+  .etc_sdlc/features/shipped/F<NNN>-<slug>/   — terminal audit-frozen location
+                                                (moved from features/active/ at
+                                                Step 7 sub-step c via `git mv`)
     spec.md            — the PRD
     tasks/             — {N} task files
     verification.md    — quality report
