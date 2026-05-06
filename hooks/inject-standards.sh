@@ -89,6 +89,21 @@ The following rules are non-negotiable:
   audit the deferral. The gate does not hard-block.
 - Forward-only: legacy specs are unaffected until resumed under /spec.
 See standards/process/user-flow-completeness.md for the full rule.
+
+### Stub-Marker Grep Contract for spec-enforcer
+- spec-enforcer runs a verify-time stub-marker grep on every cited evidence
+  file of a SATISFIED AC. Hits downgrade the verdict to INSUFFICIENT_EVIDENCE;
+  the post-pass only DOWNGRADES, never promotes.
+- Universal hard-fail patterns (case-sensitive): feature-id-prefixed TODO
+  (e.g., \`TODO(F007-001)\`), \`FIXME\`, \`XXX\`. Any match overrides SATISFIED.
+- Universal warning patterns (case-insensitive): \`stub until task N\`,
+  \`placeholder until task N\`, \`until task N lands\`. Any match downgrades
+  with a "warning-class" evidence note.
+- Per-project hard-fail tokens live in \`.etc_sdlc/stub-tokens.txt\` (one
+  regex per line, \`#\` for comments, blank lines skipped, hard-fail semantics).
+- Files whose paths contain \`tests/\`, \`__tests__/\`, \`.test.\`, or \`.spec.\`
+  are skipped entirely (no grep run, no hits recorded).
+See standards/process/stub-marker-grep.md for the full contract.
 CONTEXT
 
 # Inject active task context if available

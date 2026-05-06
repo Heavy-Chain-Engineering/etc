@@ -186,6 +186,7 @@ a contextual menu), two patterns are acceptable:
 - `hooks/inject-standards.sh` — injects a summary of this rule into every
   subagent's onboarding context (section: User-Flow Completeness for
   User-Facing ACs).
+- `standards/process/stub-marker-grep.md` — stub-detection defense (F007), companion to the user-flow completeness defense.
 
 ## Reachability Evidence
 

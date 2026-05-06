@@ -250,18 +250,27 @@ def test_agent_documents_user_flow_sentence_detection(agent_dist_text: str) -> N
     )
 
 
-def test_agent_budget_is_16(agent_dist_text: str) -> None:
-    """AC8: dist/agents/spec-enforcer.md declares a hard tool budget total of
-    16 calls. The literal string '16 across all tools' appears verbatim in
-    the Tool Budget section, and the prior '12 across all tools' string
-    does NOT survive anywhere in the file.
+def test_agent_budget_is_20(agent_dist_text: str) -> None:
+    """AC8 (post-F007): dist/agents/spec-enforcer.md declares a hard tool
+    budget total of 20 calls. F007's BR-007 bumped the total from 16 → 20
+    (Grep 8 → 12) to accommodate Step 2d's per-cited-file stub-marker grep.
+    The literal string '20 across all tools' appears verbatim in the Tool
+    Budget section; the prior F002-era '16 across all tools' literal does
+    NOT survive anywhere in the file (catches stale post-F007 backsliding);
+    the pre-F002 '12 across all tools' literal also does NOT survive
+    (preserves the original stale-budget regression check).
     """
-    assert "16 across all tools" in agent_dist_text, (
-        "compiled agent missing bumped budget token: '16 across all tools'"
+    assert "20 across all tools" in agent_dist_text, (
+        "compiled agent missing bumped budget token: '20 across all tools'"
+    )
+    assert "16 across all tools" not in agent_dist_text, (
+        "compiled agent still contains stale budget token: "
+        "'16 across all tools' (F007 should have replaced all occurrences "
+        "with '20 across all tools')"
     )
     assert "12 across all tools" not in agent_dist_text, (
         "compiled agent still contains stale budget token: "
-        "'12 across all tools' (Wave 0 should have removed all occurrences)"
+        "'12 across all tools' (pre-F002 budget should never reappear)"
     )
 
 
