@@ -147,7 +147,127 @@ def get_leaf_tasks(all_tasks: list[dict]) -> list[dict]:
     return [t for t in all_tasks if t.get("task_id") not in parent_ids]
 
 
-def compute_waves(tasks: list[dict]) -> dict[int, list[dict]]:
+# ── F008: implicit-dependency phrasings ─────────────────────────────────
+#
+# Three case-insensitive regex patterns scan ``context`` and
+# ``acceptance_criteria`` for phrasings that imply a hard dependency edge
+# the planner would otherwise miss. See spec/wave-planner-implicit-deps.md
+# (BR-002) for the authoritative list.
+
+_IMPLICIT_DEP_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"stub\s+until\s+task\s+([0-9]+)", re.IGNORECASE),
+    re.compile(r"placeholder\s+for\s+task\s+([0-9]+)", re.IGNORECASE),
+    re.compile(r"until\s+task\s+([0-9]+)\s+lands", re.IGNORECASE),
+)
+
+# Control-character strip used by both the stderr fail-fast message and
+# the cmd_waves note printer. Mirrors F003 (operator path sanitization)
+# and F007 (matched-line sanitization). See spec Security Considerations
+# items 3 and 4.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+_PHRASE_MAX_LEN = 256
+
+
+def _sanitize_phrase(phrase: str) -> str:
+    """Strip control characters and cap length for terminal-safe printing."""
+    cleaned = _CONTROL_CHARS_RE.sub("", phrase)
+    if len(cleaned) > _PHRASE_MAX_LEN:
+        cleaned = cleaned[:_PHRASE_MAX_LEN]
+    return cleaned
+
+
+def _scannable_fields(task: dict) -> list[tuple[str, str]]:
+    """Return ``(source_field, text)`` tuples for the two scanned fields."""
+    fields: list[tuple[str, str]] = [("context", task.get("context") or "")]
+    for idx, ac in enumerate(task.get("acceptance_criteria") or []):
+        if isinstance(ac, str):
+            fields.append((f"acceptance_criteria[{idx}]", ac))
+    return fields
+
+
+def _scan_implicit_deps(
+    tasks: list[dict],
+) -> tuple[list[dict], list[tuple[str, str, str, str]]]:
+    """Scan ``context`` and ``acceptance_criteria`` for implicit deps.
+
+    For each task and each pattern in ``_IMPLICIT_DEP_PATTERNS``, scan the
+    ``context`` string and every entry in ``acceptance_criteria``. When a
+    pattern matches, append the captured task ID to the source task's
+    ``dependencies`` list IN-MEMORY (no disk writes). The captured ID must
+    correspond to an existing ``task_id`` in ``tasks`` — otherwise call
+    ``sys.exit(1)`` with a stderr message naming the source task, the
+    missing reference, and the matched phrase verbatim (sanitized).
+
+    Returns a 2-tuple ``(augmented_tasks, promoted_edges)`` where
+    ``promoted_edges`` is a de-duplicated list of
+    ``(source_task_id, target_task_id, matched_phrase, source_field)``
+    tuples for downstream printing by ``cmd_waves``.
+    """
+    known_task_ids = {t.get("task_id") for t in tasks if t.get("task_id")}
+    promoted_edges: list[tuple[str, str, str, str]] = []
+    seen_edges: set[tuple[str, str, str, str]] = set()
+
+    for task in tasks:
+        source_id = task.get("task_id") or ""
+        for source_field, text in _scannable_fields(task):
+            _scan_field(
+                task,
+                source_id,
+                source_field,
+                text,
+                known_task_ids,
+                promoted_edges,
+                seen_edges,
+            )
+
+    return tasks, promoted_edges
+
+
+def _scan_field(
+    task: dict,
+    source_id: str,
+    source_field: str,
+    text: str,
+    known_task_ids: set,
+    promoted_edges: list[tuple[str, str, str, str]],
+    seen_edges: set[tuple[str, str, str, str]],
+) -> None:
+    """Run every implicit-dep pattern against one field's text.
+
+    Mutates ``task["dependencies"]`` in-place and appends to
+    ``promoted_edges`` / ``seen_edges`` for caller-visible state.
+    Calls ``sys.exit(1)`` on the first match referencing an unknown
+    task ID.
+    """
+    for pattern in _IMPLICIT_DEP_PATTERNS:
+        for match in pattern.finditer(text):
+            captured_id = match.group(1)
+            matched_phrase = _sanitize_phrase(match.group(0))
+
+            if captured_id not in known_task_ids:
+                sys.stderr.write(
+                    f"error: task {source_id} references task "
+                    f"{captured_id} via phrase \"{matched_phrase}\" "
+                    f"but no such task exists in this feature.\n"
+                )
+                sys.exit(1)
+
+            deps = task.get("dependencies")
+            if deps is None:
+                deps = []
+                task["dependencies"] = deps
+            if captured_id not in deps:
+                deps.append(captured_id)
+
+            edge = (source_id, captured_id, matched_phrase, source_field)
+            if edge not in seen_edges:
+                seen_edges.add(edge)
+                promoted_edges.append(edge)
+
+
+def compute_waves(
+    tasks: list[dict],
+) -> tuple[dict[int, list[dict]], list[tuple[str, str, str, str]]]:
     """Group pending leaf tasks into execution waves by dependency.
 
     Wave 0: tasks with no unmet dependencies
@@ -156,7 +276,14 @@ def compute_waves(tasks: list[dict]) -> dict[int, list[dict]]:
     Already-completed and decomposed tasks never appear in any wave, but
     their task_ids are pre-populated into ``satisfied_ids`` so pending tasks
     that depend on them are scheduled in Wave 0 instead of waiting forever.
+
+    Before wave-packing, ``_scan_implicit_deps`` walks each task's
+    ``context`` and ``acceptance_criteria`` for stub/placeholder phrasings
+    (F008) and promotes any captured task IDs into the source task's
+    ``dependencies`` in-memory. The promoted-edge tuples are returned
+    alongside the wave map so the caller can surface them to operators.
     """
+    tasks, promoted_edges = _scan_implicit_deps(tasks)
     leaf_tasks = get_leaf_tasks(tasks)
 
     # Pre-populate: anything already completed or decomposed counts as satisfied
@@ -202,7 +329,7 @@ def compute_waves(tasks: list[dict]) -> dict[int, list[dict]]:
         remaining = still_remaining
         wave_num += 1
 
-    return waves
+    return waves, promoted_edges
 
 
 # ── Commands ─────────────────────────────────────────────────────────────
@@ -427,11 +554,19 @@ def cmd_waves(root: Path, feature: str | None = None) -> None:
     file as a pending task from feature B.
     """
     tasks = load_all_tasks(root, feature=feature)
-    waves = compute_waves(tasks)
+    waves, promoted_edges = compute_waves(tasks)
 
     if not waves:
         print("No tasks found.")
         return
+
+    # F008: surface promoted implicit-dep edges before the first wave block.
+    for source_id, target_id, matched_phrase, source_field in promoted_edges:
+        safe_phrase = _sanitize_phrase(matched_phrase)
+        print(
+            f"  note: promoted task {source_id} → task {target_id} "
+            f"(matched: \"{safe_phrase}\" in {source_id}.{source_field})"
+        )
 
     for wave_num, wave_tasks in sorted(waves.items()):
         # Check file-set overlap within wave
