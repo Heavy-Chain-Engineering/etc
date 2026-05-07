@@ -102,10 +102,25 @@ UNFILLABLE_GAP_REJECT_CAP      = 3      # > this many unfillable gaps → reject
 ## Usage
 
 ```
-/spec "Add user authentication"     -- start fresh from a one-liner
-/spec                               -- resume most recent draft from spec/.drafts/
-/spec spec/draft-auth.md            -- refine an existing draft
+/spec "Add user authentication"                        -- start fresh from a one-liner
+/spec                                                  -- resume most recent draft from spec/.drafts/
+/spec spec/draft-auth.md                               -- refine an existing draft
+/spec --include-architect "Add user authentication"    -- chain /architect after /spec succeeds
 ```
+
+**`--include-architect` solo-flag (F006 BR-010).** When the flag is
+present AND `/spec` succeeds at Phase 5 (DoR passed,
+value-hypothesis.yaml is schema-valid, the Phase 2.75 classification is
+not `rejected`), `/spec` auto-invokes `/architect` via the Skill tool
+with the just-written `<feature_path>/spec.md` as input. The chain runs
+**in the same `/spec` session** — same auth context, NOT a subprocess
+invocation. `/architect` runs its own 5 phases and produces `design.md`
+plus 1-N ADRs under `docs/adrs/`. The two phases produce two separate
+Phase 2.75 classifications and two separate git-tag pairs
+(`etc/feature/F<NNN>/spec` and `etc/feature/F<NNN>/architect/{start,done}`).
+When the flag is absent, the Phase 5 auto-detect picker (see Workflow >
+Phase 5) is the operator's chance to opt into the same chain
+interactively.
 
 ## Workflow
 
@@ -429,12 +444,15 @@ provide a custom answer, record it verbatim and continue.
 
 Wait for ALL gray areas to be resolved before proceeding.
 
-Save resolutions to `<feature_path>/gray-areas.md` using the
-**extended schema** (the previous schema is the first four lines; the
-bottom two lines are required for `decided_by: research` entries and
-optional for `decided_by: user` entries). `<feature_path>` is the
-F<NNN>-<slug> directory allocated in Phase 2 Step 0 — gray-areas.md
-lands directly under it, never under a slug-only path:
+Save resolutions to `<feature_path>/gray-areas-spec.md` (NEW features
+post-F006) using the **extended schema** (the previous schema is the
+first four lines; the bottom two lines are required for
+`decided_by: research` entries and optional for `decided_by: user`
+entries). `<feature_path>` is the F<NNN>-<slug> directory allocated in
+Phase 2 Step 0 — `gray-areas-spec.md` lands directly under it, never
+under a slug-only path. Forward-only: F001-F009 retain the legacy
+`gray-areas.md` filename and are not migrated. Per F006 BR-009 the
+new naming applies only to features authored AFTER F006 ships:
 
 ```markdown
 # Gray Areas — Resolved Decisions
@@ -627,9 +645,13 @@ Write sections in this order:
 3. **Requirements (BR-NNN)**
 4. **Acceptance Criteria**
 5. **Edge Cases**
-6. **Technical Constraints**
-7. **Security Considerations**
-8. **Module Structure**
+
+`/spec` authors intent only. Architectural sections — Technical
+Constraints, Security Considerations, Module Structure, Architecture
+overview, Data model, API contracts, Trade-offs — belong to `/architect`
+(see F006). When the accumulated ACs imply engineering work, Phase 5
+surfaces a Pattern A picker recommending `/architect` (see "Phase 5
+auto-detect of engineering implications" below).
 
 #### Section #4 (Acceptance Criteria) — Additional Steps
 
@@ -782,14 +804,16 @@ section, so the user can resume in a new session.
 
 After all sections are written and approved, run the Definition of Ready
 checklist. This is the same checklist `/implement` uses to decide whether a PRD
-is buildable:
+is buildable. Architectural items (concrete module structure, technical
+constraints, security considerations) are NOT in /spec's DoR — they
+belong to /architect's DoR (see F006 BR-001). /spec's DoR validates
+intent only:
 
 - [ ] Specific enough to implement without ambiguity
-- [ ] Names concrete files, modules, endpoints
+- [ ] Names concrete files where given (intent-level, not architectural module structure)
 - [ ] Has measurable acceptance criteria. Every user-facing AC also includes a User-flow sentence per `standards/process/user-flow-completeness.md`.
 - [ ] Scope boundaries are clear
 - [ ] Edge cases documented
-- [ ] Security considerations addressed
 
 #### User-Flow Gate (BR-004, AC7)
 
@@ -876,13 +900,13 @@ them before finalizing:
 ```
 Definition of Ready check found gaps:
 
-- [ ] Names concrete files, modules, endpoints
-  Gap: The Module Structure section says "relevant API files" but doesn't
-  name specific files. Which files will be created or modified?
+- [ ] Names concrete files where given
+  Gap: AC-3 says "the auth endpoint" but never names the route or
+  handler file. Which file or route does AC-3 actually mean?
 
-- [ ] Security considerations addressed
-  Gap: This feature handles user input but has no mention of input
-  validation or injection prevention. Should we add that?
+- [ ] Edge cases documented
+  Gap: The Edge Cases section is empty. Name at least one failure mode
+  per user-facing AC.
 
 Let's resolve these before finalizing.
 ```
@@ -902,13 +926,92 @@ The feature directory was already allocated in Phase 2 Step 0 via
 and `<feature_path>` are in skill-local state. Phase 5 does NOT
 re-allocate; it only writes inside the existing `<feature_path>`.
 
+#### Phase 5 auto-detect of engineering implications (F006 BR-002)
+
+BEFORE Step 1 (the value-hypothesis dict build), scan the accumulated
+ACs for engineering-signal tokens. Surface a Pattern A picker
+recommending `/architect` when any signal fires.
+
+**Engineering-signal token list (the documented signals; matching is
+ALL-of-set, not any-of-set — any single hit is sufficient):**
+
+- **File paths** — match the regex `[a-z][a-z0-9_/.-]+\.(py|ts|tsx|md|sh|yaml|yml)`.
+- **Identifier + import/use/extend verbs** — a camelCase or snake_case
+  identifier paired with `import`, `from`, `use`, `uses`, `extend`,
+  `extends`, `subclass`, `implements`, or `inherits`.
+- **HTTP method tokens** — `GET`, `POST`, `PUT`, `DELETE`, `PATCH`
+  paired with `/api/` or any URL-route pattern.
+- **DB schema language** — `table`, `column`, `index`, `migration`,
+  `schema`, `alter`.
+- **User-flow sentence** — any AC that carries the canonical prefix
+  `As {role}, navigate from` per F001 BR-002. The presence of a
+  user-flow sentence implies a user-facing surface and therefore
+  engineering work.
+
+If at least one signal fires across the AC set, surface this
+`AskUserQuestion` (Pattern A) before Step 1:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Engineering implications detected — run /architect now?",
+    header: "Run /architect?",
+    multiSelect: false,
+    options: [
+      {
+        label: "Yes — chain /architect now (Recommended)",
+        description: "After /spec finishes (Steps 1-9 below), auto-invoke /architect via the Skill tool with the just-written spec.md. Same session, same auth context."
+      },
+      {
+        label: "Yes, but later",
+        description: "Record the recommendation in state.yaml. /architect can be run manually later; /build will warn but proceed if design.md is absent."
+      },
+      {
+        label: "This is non-engineering",
+        description: "Skip /architect entirely. /build will still warn at Step 1c when it sees engineering-signal tokens but proceed regardless."
+      },
+      {
+        label: "Yes, and mark design mandatory",
+        description: "Chain /architect AND record that /build must HARD-fail without design.md. Stricter coupling for this feature only."
+      }
+    ]
+  }]
+)
+```
+
+If NO signals fire, skip the picker entirely and proceed to Step 1. The
+`spec_phase.architect_recommendation` field is recorded as
+`not_applicable` in that case.
+
+**Recording the answer.** The selection is captured into skill-local
+state and written into `state.yaml` at Step 7 below under
+`spec_phase.architect_recommendation`. Allowed values:
+
+- `chain_now` — the chain runs at the end of Phase 5 (Step 10 below).
+- `chain_later` — operator runs `/architect` manually.
+- `non_engineering` — the chain is suppressed; /build warns but
+  proceeds.
+- `chain_now_design_mandatory` — chain runs AND
+  `spec_phase.design_mandatory = true` is recorded; /build will
+  HARD-fail when design.md is absent.
+- `not_applicable` — no engineering signals fired.
+
+The picker is INFORMATIONAL with a load-bearing side effect — it
+chooses whether `/architect` is auto-invoked at the end of Phase 5.
+The downstream behavior matches the `--include-architect` flag (see
+the Usage section).
+
 1. **Build the value-hypothesis dict** with every required field
    populated. The required fields (BR-005 / AC-004) are:
 
    - `schema_version` — integer, currently `1`
    - `feature_id` — the `<feature_id>` from Phase 2 Step 0
-   - `author_role` — the role captured in Phase 1 (SME, Engineer, PM,
-     Designer, or sanitized Other free-form)
+   - `spec_author_role` — the role captured in Phase 1 (SME, Engineer,
+     PM, Designer, or sanitized Other free-form). For NEW features
+     (post-F006) write `spec_author_role`, NOT the legacy `author_role`.
+     The schema validator at `scripts/value_hypothesis.py` accepts both
+     shapes (per F006 BR-007); F001-F009 keep the legacy `author_role`
+     unchanged.
    - `who` — target user / cohort the feature serves
    - `current_cost` — the baseline pain in human terms (what is hard or
      impossible today)
@@ -963,14 +1066,37 @@ re-allocate; it only writes inside the existing `<feature_path>`.
    `codebase.md`, `web.md`, or `antipatterns.md`).
 
 6. **Gray areas** are already saved from Phase 2.5 directly under
-   `<feature_path>/gray-areas.md` — Phase 2 Step 0 ran before Phase 2.5,
-   so no path migration is needed.
+   `<feature_path>/gray-areas-spec.md` (NEW features post-F006). Phase 2
+   Step 0 ran before Phase 2.5, so no path migration is needed.
+   Forward-only: F001-F009 keep the legacy `gray-areas.md` filename
+   (no rename), per F006 BR-009.
 
-7. **Append `author_role` to `state.yaml`.** Add or overwrite the
-   top-level field `author_role: <captured>` in
-   `<feature_path>/state.yaml` (the same state.yaml that already records
-   the Phase 2.75 `classification`). Use the sanitized free-form value
-   if the user chose Other.
+7. **Write the `spec_phase` block to `state.yaml`** using the
+   merge-preserve pattern (F006 BR-008). Read the existing state.yaml
+   into a dict, then mutate ONLY the `spec_phase` block; preserve every
+   other top-level key (`build`, `architect_phase` if a prior
+   `/architect` run exists, etc.) verbatim. Write the merged dict back.
+
+   The `spec_phase` block schema:
+
+   ```yaml
+   spec_phase:
+     classification: <well-specified | research-assisted | rejected>
+     phase_2_75_metrics:
+       fill_ratio: <float>
+       unfillable_gap_count: <int>
+       gaps_filled_by_research: <int>
+       gaps_filled_by_user: <int>
+     architect_recommendation: <chain_now | chain_later | non_engineering | chain_now_design_mandatory | not_applicable>
+     design_mandatory: <true | false>     # true ONLY when architect_recommendation == chain_now_design_mandatory
+     spec_author_role: <captured value>   # SME | Engineer | PM | Designer | sanitized free-form
+     completed_at: <ISO-8601 UTC timestamp>
+   ```
+
+   Forward-only: F001-F009 retain top-level `classification` and
+   top-level `author_role` fields and continue to work unchanged. The
+   `state.yaml` consumer (`/build` Step 1a) reads `spec_phase.*` first
+   and falls back to top-level fields for legacy features.
 
 8. **Write the spec git tag.** Invoke the git_tags.py CLI to lay down
    the canonical spec-finalization tag at the current HEAD commit
@@ -992,9 +1118,9 @@ re-allocate; it only writes inside the existing `<feature_path>`.
 ```
 Feature directory: .etc_sdlc/features/active/F<NNN>-<slug>/
   spec.md                  — the PRD
-  value-hypothesis.yaml    — outcome contract (BR-005)
-  state.yaml               — classification + author_role
-  gray-areas.md            — N resolved decisions
+  value-hypothesis.yaml    — outcome contract (BR-005, spec_author_role)
+  state.yaml               — spec_phase block (classification + recommendation)
+  gray-areas-spec.md       — N resolved decisions (NEW features post-F006)
   research/                — codebase + web findings
 
 (New features land under features/active/. On /build terminal close
@@ -1007,13 +1133,40 @@ Tag written:     etc/feature/F<NNN>/spec
 Definition of Ready: PASSED
 - [N] acceptance criteria
 - [N] entries in the Edge Cases section
-- [N] security considerations
 - [N] gray areas resolved
 - [N] files in scope
 
 Ready to build:
   /build .etc_sdlc/features/active/F<NNN>-<slug>/spec.md
 ```
+
+11. **Auto-invoke `/architect` when the chain is requested
+    (F006 BR-010).** The chain runs when EITHER of these conditions
+    holds:
+
+    - The `--include-architect` solo-flag was passed at invocation
+      (see the Usage section).
+    - The Phase 5 auto-detect picker recorded
+      `spec_phase.architect_recommendation` as `chain_now` or
+      `chain_now_design_mandatory`.
+
+    When the chain is requested AND Phase 5 succeeded (DoR passed,
+    value-hypothesis.yaml validated, classification != `rejected`),
+    invoke `/architect` via the Skill tool with the just-written
+    `<feature_path>/spec.md` as input. The chain runs IN THE SAME
+    `/spec` SESSION — same auth context, NOT a subprocess invocation.
+    `/architect` runs its own 5 phases and writes `design.md`,
+    `gray-areas-architect.md`, ADRs under `docs/adrs/`, its own
+    `architect_phase` block in `state.yaml`, and the
+    `architect_author_role` field in the existing
+    `value-hypothesis.yaml`.
+
+    Two separate Phase 2.75 classifications result (one for /spec, one
+    for /architect). Two separate git tag pairs are laid down.
+
+    When the chain is NOT requested (`chain_later`, `non_engineering`,
+    or `not_applicable`), Phase 5 ends after Step 10 — the operator
+    runs `/architect` manually if and when they choose.
 
 ## PRD Output Format
 

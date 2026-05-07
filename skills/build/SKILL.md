@@ -154,6 +154,73 @@ bars. If the user is in a conversation and asks you to build something
 casually, suggest they run `/spec` first to formalize the request before
 invoking `/build`.
 
+**Step 1c: Engineering-implication detection (design.md soft-coupling check).**
+
+This sub-step is additive on top of Steps 1a–1b and runs AFTER Step 1b
+has resolved (whether via the /spec rubber-stamp path or the inline DoR
+check). It implements the soft default declared by F006 GA-008: `/spec`
+and `/architect` are coupled by recommendation, not by hard requirement,
+so `/build` warns when engineering work appears unaccompanied by a
+design but does NOT block.
+
+**Detection.** Scan `spec.md` for engineering-signal tokens (the same
+list documented in F006 BR-002 for /spec's Phase 5 auto-detect):
+
+- **File paths** matching the regex `[a-z][a-z0-9_/.-]+\.(py|ts|tsx|md|sh|yaml|yml)`
+  (case-sensitive on the extension).
+- **Identifier patterns** — camelCase or snake_case identifiers paired
+  with `import`, `use`, `extend`, or equivalent verbs in the same
+  sentence.
+- **HTTP method tokens** (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`)
+  appearing alongside `/api/` substrings or route patterns.
+- **DB schema language** — the literal tokens `table`, `column`,
+  `index`, or `migration` appearing in a structural context (not in
+  prose like "table of contents").
+- **User-flow sentences** matching F001's canonical prefix pair (`As `
+  followed later in the same sentence by `, navigate from`).
+
+**Presence check.** Look for `design.md` in the same feature directory
+that contains the spec.md being built (i.e.,
+`.etc_sdlc/features/{slug}/design.md`).
+
+**Decision matrix:**
+
+- **Engineering signals present AND `design.md` absent.** Default
+  outcome: emit the soft warning below to stderr and PROCEED to Step 2.
+  Step 1c is non-blocking under the soft default.
+
+  Emit this EXACT warning text to stderr (the test contract greps for
+  the verbatim string — do not paraphrase, reflow, or otherwise mutate
+  it):
+
+  ```
+  WARNING: spec.md implies engineering work but design.md is absent. Consider running /architect first. Proceeding with build using spec.md alone.
+  ```
+
+- **Engineering signals present AND `design.md` absent AND
+  `state.yaml.spec_phase.architect_recommendation == "yes-and-mark-design-mandatory"`.**
+  The operator opted into stricter coupling at /spec's Phase 5
+  auto-detect (per F006 BR-002). Step 1c HARD-fails: STOP, do not
+  proceed to Step 2, and report:
+
+  > Spec was marked design-mandatory at /spec time but design.md is absent.
+  > Run /architect on this feature, then re-invoke /build.
+
+- **Engineering signals present AND `design.md` present.** No warning;
+  proceed to Step 2. Step 6 dispatch will include design.md content
+  alongside spec.md (see Step 6).
+- **No engineering signals detected.** No warning; proceed to Step 2.
+  /build does not require design.md for non-engineering features.
+
+**Forward-only posture.** Step 1c fires for every spec, including
+F001-F009 legacy specs that predate the /architect skill. On those
+specs, the warning is cosmetic — the operator is informed but build
+proceeds as before (per F006 edge case 9). The hard-fail variant
+above triggers only when /spec wrote the explicit
+`yes-and-mark-design-mandatory` recommendation into state.yaml; legacy
+state.yaml files without a `spec_phase` block fall through to the soft
+warning path.
+
 ### Step 2: SETUP
 
 Determine the feature slug from the spec title (lowercase, hyphens).
@@ -516,6 +583,22 @@ For each task in the current wave:
   `files_in_scope` paths, the acceptance criteria, and the instruction
   "Dispatch hooks will enforce TDD, invariants, required reading, and
   phase gate — do not circumvent them."
+- **spec.md + design.md briefing context (F006 BR-005).** The
+  briefing prompt's spec-content section embeds the contents of
+  `.etc_sdlc/features/{slug}/spec.md` so the dispatched subagent has
+  the intent in front of it. When
+  `.etc_sdlc/features/{slug}/design.md` ALSO exists in the same
+  feature directory (i.e., the feature went through /architect per
+  F006), the orchestrator MUST additionally embed design.md's
+  contents alongside spec.md in the briefing prompt — clearly
+  delimited so the subagent can tell which artifact is which (intent
+  vs. architecture). Both artifacts are read-at-dispatch-time so the
+  subagent sees the latest committed versions. When design.md is
+  absent, the prompt embeds spec.md alone (the legacy F001-F009 shape
+  and the soft-default path from Step 1c). The rest of the per-task
+  briefing structure — task YAML path, requires_reading,
+  files_in_scope, acceptance criteria, and the hooks reminder — is
+  unchanged by this rule.
 - For User-flow-sentenced tasks (those detected at sub-step 6a.5), the
   prompt MUST also include the wiring-contract clause from
   `standards/process/user-flow-completeness.md` (Dispatch-time Wiring

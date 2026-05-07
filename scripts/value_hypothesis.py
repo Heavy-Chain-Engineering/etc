@@ -7,13 +7,22 @@ used by `tasks.py validate` and the `/metrics` skill.
 Schema (v1):
     schema_version: int (currently 1)
     feature_id:     str
-    author_role:    str  (SME | Engineer | PM | Designer | Other:<free-form>)
+    author_role:    str  (legacy F001-F009; SME | Engineer | PM | Designer
+                          | Other:<free-form>)
+    spec_author_role:      str  (F010+; F006 BR-007 dual-role schema)
+    architect_author_role: str  (F010+; F006 BR-007, optional)
     who:            str  (target user / cohort)
     current_cost:   str  (baseline pain in human terms)
     predicted:      mapping (metric, direction, threshold, window_days)
     how_we_know:    str  (measurement plan)
     status:         str  (pending | validated | invalidated | unmeasured)
     validation:     mapping {measured_at, measured_value, evidence}
+
+Per F006 BR-007, at least ONE of ``author_role`` or ``spec_author_role``
+must be present; ``architect_author_role`` is independently optional.
+Unknown top-level fields are rejected. All three author-role variants
+are sanitized at load time (cap 64 chars, strip control chars
+``[\\x00-\\x1f\\x7f]``) per the F001 sanitization contract.
 
 Status state machine (BR-011):
     pending -> validated
@@ -66,6 +75,27 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "status",
     "validation",
 )
+
+# F006 BR-007: optional author-role fields for the new dual-role schema.
+# At least one of {author_role, spec_author_role} must be present;
+# architect_author_role is independently optional.
+_AUTHOR_ROLE_FIELDS: frozenset[str] = frozenset(
+    {"author_role", "spec_author_role", "architect_author_role"}
+)
+
+# All top-level field names the validator recognises. Anything outside
+# this set is rejected (Security Considerations item 6 of F006).
+_KNOWN_FIELDS: frozenset[str] = frozenset(REQUIRED_FIELDS) | _AUTHOR_ROLE_FIELDS
+
+# F001 sanitization contract: cap free-form author-role values at 64
+# characters and strip every control-character codepoint matching the
+# regex ``[\x00-\x1f\x7f]``. Implemented via str.translate to keep this
+# module dependency-free (no new imports beyond the existing stdlib +
+# yaml set).
+_AUTHOR_ROLE_MAX_LEN: int = 64
+_CONTROL_CHAR_TRANSLATION: dict[int, None] = {
+    code: None for code in (*range(0x00, 0x20), 0x7F)
+}
 
 LEGAL_STATUSES: frozenset[str] = frozenset(
     {"pending", "validated", "invalidated", "unmeasured"}
@@ -132,6 +162,11 @@ def load(path: Path) -> dict[str, Any] | None:
         )
         return None
 
+    # F006 BR-007 + F001 sanitization contract. Apply at the input-handling
+    # site so downstream consumers (validator, /metrics, /spec) see clean
+    # values regardless of which author-role field(s) are present.
+    _sanitize_author_role_fields(parsed)
+
     validate_schema(parsed)
     return parsed
 
@@ -152,7 +187,7 @@ def dump(path: Path, hypothesis: dict[str, Any]) -> None:
 
 
 def validate_schema(d: dict[str, Any]) -> None:
-    """Enforce BR-005: every required field is present and status is legal.
+    """Enforce BR-005 (required fields) and F006 BR-007 (dual author-role).
 
     Also enforces that ``predicted`` is a mapping containing a positive
     integer ``window_days``. The /metrics skill reads
@@ -160,22 +195,47 @@ def validate_schema(d: dict[str, Any]) -> None:
     ``pending → unmeasured`` auto-transition (AC-014); a hypothesis that
     passes this validator must therefore guarantee the field is usable.
 
+    F006 BR-007: ``author_role`` is no longer strictly required. The rule
+    is now "at least one of ``{author_role, spec_author_role}`` must be
+    present"; ``architect_author_role`` is independently optional. Any
+    top-level field outside the documented set is rejected (Security
+    Considerations item 6 of F006).
+
     Args:
         d: Hypothesis dict to validate.
 
     Raises:
         ValueError: If `d` is not a mapping, a required field is missing,
-            `status` is not one of the legal values, `predicted` is not
-            a mapping, or `predicted.window_days` is missing, of the
-            wrong type, or non-positive.
+            neither ``author_role`` nor ``spec_author_role`` is present,
+            an unknown top-level field is present, ``status`` is not one
+            of the legal values, ``predicted`` is not a mapping, or
+            ``predicted.window_days`` is missing, of the wrong type, or
+            non-positive.
     """
-    if not isinstance(d, dict):
-        msg = f"value-hypothesis must be a mapping; got {type(d).__name__}"
-        raise ValueError(msg)
+    if not isinstance(d, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+        msg = f"value-hypothesis must be a mapping; got {type(d).__name__}"  # pyright: ignore[reportUnreachable]
+        raise ValueError(msg)  # pyright: ignore[reportUnreachable]
 
-    missing = [field for field in REQUIRED_FIELDS if field not in d]
+    # author_role is in REQUIRED_FIELDS for backward compat with the
+    # public tuple, but per F006 BR-007 it satisfies the missing-field
+    # check via either author_role OR spec_author_role.
+    missing = [
+        field
+        for field in REQUIRED_FIELDS
+        if field != "author_role" and field not in d
+    ]
+    if "author_role" not in d and "spec_author_role" not in d:
+        missing.append("author_role")
     if missing:
         msg = f"value-hypothesis missing required field(s): {', '.join(missing)}"
+        raise ValueError(msg)
+
+    unknown = sorted(set(d.keys()) - _KNOWN_FIELDS)
+    if unknown:
+        msg = (
+            f"value-hypothesis has unknown top-level field(s): "
+            f"{', '.join(unknown)}"
+        )
         raise ValueError(msg)
 
     status = d["status"]
@@ -187,6 +247,28 @@ def validate_schema(d: dict[str, Any]) -> None:
         raise ValueError(msg)
 
     _validate_predicted_window_days(d["predicted"])
+
+
+def _sanitize_author_role_fields(d: dict[str, Any]) -> None:
+    """Sanitize every author-role variant present in ``d`` in place.
+
+    F001 contract: cap each value at ``_AUTHOR_ROLE_MAX_LEN`` characters
+    (truncate excess) and strip every control-character codepoint
+    (matches regex ``[\\x00-\\x1f\\x7f]``). Applied at the input-handling
+    site by ``load`` so downstream consumers see clean values regardless
+    of which author-role field(s) the file uses (legacy ``author_role``
+    or F010+ ``spec_author_role`` / ``architect_author_role``).
+
+    Non-string values are left untouched here; the validator surfaces
+    type problems separately. Missing fields are skipped silently —
+    presence-of-at-least-one is enforced by ``validate_schema``.
+    """
+    for field in _AUTHOR_ROLE_FIELDS:
+        value = d.get(field)
+        if isinstance(value, str):
+            d[field] = value.translate(_CONTROL_CHAR_TRANSLATION)[
+                :_AUTHOR_ROLE_MAX_LEN
+            ]
 
 
 def _validate_predicted_window_days(predicted: Any) -> None:

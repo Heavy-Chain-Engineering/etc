@@ -24,6 +24,7 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 import yaml
@@ -32,7 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MODULE_PATH = REPO_ROOT / "scripts" / "value_hypothesis.py"
 
 
-def _load_module() -> object:
+def _load_module() -> ModuleType:
     """Import scripts/value_hypothesis.py as a module.
 
     `scripts/` is not a Python package, so we load the file directly via
@@ -50,7 +51,7 @@ def _load_module() -> object:
 
 
 @pytest.fixture(scope="module")
-def vh() -> object:
+def vh() -> ModuleType:
     """Module under test, imported once per test module."""
     return _load_module()
 
@@ -86,7 +87,7 @@ class TestLoadAndDump:
     """Round-trip and error handling for load() and dump()."""
 
     def test_should_round_trip_when_hypothesis_is_well_formed(
-        self, vh: object, tmp_path: Path
+        self, vh: ModuleType, tmp_path: Path
     ) -> None:
         path = tmp_path / "value-hypothesis.yaml"
         hypothesis = _valid_hypothesis()
@@ -97,7 +98,7 @@ class TestLoadAndDump:
         assert loaded == hypothesis
 
     def test_should_raise_value_error_when_yaml_is_malformed(
-        self, vh: object, tmp_path: Path
+        self, vh: ModuleType, tmp_path: Path
     ) -> None:
         path = tmp_path / "value-hypothesis.yaml"
         # Deliberately broken YAML: unmatched bracket inside a flow mapping.
@@ -107,7 +108,7 @@ class TestLoadAndDump:
             vh.load(path)
 
     def test_should_raise_value_error_when_top_level_is_not_a_mapping(
-        self, vh: object, tmp_path: Path
+        self, vh: ModuleType, tmp_path: Path
     ) -> None:
         path = tmp_path / "value-hypothesis.yaml"
         path.write_text("- one\n- two\n", encoding="utf-8")
@@ -116,7 +117,7 @@ class TestLoadAndDump:
             vh.load(path)
 
     def test_should_raise_value_error_when_file_is_missing(
-        self, vh: object, tmp_path: Path
+        self, vh: ModuleType, tmp_path: Path
     ) -> None:
         path = tmp_path / "does-not-exist.yaml"
 
@@ -124,7 +125,7 @@ class TestLoadAndDump:
             vh.load(path)
 
     def test_should_return_none_and_warn_when_schema_version_is_unknown_future(
-        self, vh: object, tmp_path: Path, caplog: pytest.LogCaptureFixture
+        self, vh: ModuleType, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """AC-006/BR-006: unknown future schema versions are skipped, not crashed."""
         path = tmp_path / "value-hypothesis.yaml"
@@ -142,7 +143,7 @@ class TestLoadAndDump:
         ), f"expected warning citing schema_version=99, got: {[r.message for r in caplog.records]}"
 
     def test_should_raise_value_error_when_schema_version_is_not_an_integer(
-        self, vh: object, tmp_path: Path
+        self, vh: ModuleType, tmp_path: Path
     ) -> None:
         path = tmp_path / "value-hypothesis.yaml"
         bad = _valid_hypothesis()
@@ -153,7 +154,7 @@ class TestLoadAndDump:
             vh.load(path)
 
     def test_should_use_safe_loader_when_parsing_yaml(
-        self, vh: object, tmp_path: Path
+        self, vh: ModuleType, tmp_path: Path
     ) -> None:
         """Reject Python-object YAML tags that the safe loader forbids.
 
@@ -181,7 +182,7 @@ class TestLoadAndDump:
 class TestValidateSchema:
     """BR-005: required fields enforced."""
 
-    def test_should_pass_when_all_required_fields_present(self, vh: object) -> None:
+    def test_should_pass_when_all_required_fields_present(self, vh: ModuleType) -> None:
         # Should not raise.
         vh.validate_schema(_valid_hypothesis())
 
@@ -200,7 +201,7 @@ class TestValidateSchema:
         ],
     )
     def test_should_raise_value_error_when_required_field_is_missing(
-        self, vh: object, missing_field: str
+        self, vh: ModuleType, missing_field: str
     ) -> None:
         hypothesis = _valid_hypothesis()
         del hypothesis[missing_field]
@@ -209,13 +210,13 @@ class TestValidateSchema:
             vh.validate_schema(hypothesis)
 
     def test_should_raise_value_error_when_input_is_not_a_mapping(
-        self, vh: object
+        self, vh: ModuleType
     ) -> None:
         with pytest.raises(ValueError, match="mapping"):
             vh.validate_schema(["not", "a", "dict"])  # type: ignore[arg-type]
 
     def test_should_raise_value_error_when_status_is_not_a_legal_value(
-        self, vh: object
+        self, vh: ModuleType
     ) -> None:
         hypothesis = _valid_hypothesis()
         hypothesis["status"] = "in_orbit"
@@ -236,7 +237,7 @@ class TestPredictedWindowDays:
     """
 
     def test_should_raise_value_error_when_window_days_is_missing(
-        self, vh: object
+        self, vh: ModuleType
     ) -> None:
         hypothesis = _valid_hypothesis()
         del hypothesis["predicted"]["window_days"]
@@ -245,7 +246,7 @@ class TestPredictedWindowDays:
             vh.validate_schema(hypothesis)
 
     def test_should_raise_value_error_when_predicted_is_not_a_mapping(
-        self, vh: object
+        self, vh: ModuleType
     ) -> None:
         """A non-mapping predicted block cannot expose window_days at all."""
         hypothesis = _valid_hypothesis()
@@ -265,7 +266,7 @@ class TestPredictedWindowDays:
         ],
     )
     def test_should_raise_value_error_when_window_days_is_not_an_int(
-        self, vh: object, bad_value: object
+        self, vh: ModuleType, bad_value: object
     ) -> None:
         hypothesis = _valid_hypothesis()
         hypothesis["predicted"]["window_days"] = bad_value
@@ -275,7 +276,7 @@ class TestPredictedWindowDays:
 
     @pytest.mark.parametrize("bad_value", [0, -1, -30])
     def test_should_raise_value_error_when_window_days_is_not_positive(
-        self, vh: object, bad_value: int
+        self, vh: ModuleType, bad_value: int
     ) -> None:
         hypothesis = _valid_hypothesis()
         hypothesis["predicted"]["window_days"] = bad_value
@@ -284,7 +285,7 @@ class TestPredictedWindowDays:
             vh.validate_schema(hypothesis)
 
     def test_should_pass_when_window_days_is_a_positive_int(
-        self, vh: object
+        self, vh: ModuleType
     ) -> None:
         # Sanity check: the canonical fixture (window_days=30) validates.
         # If this fails, the fixture and the validator have drifted apart.
@@ -302,7 +303,7 @@ class TestTransitionStatus:
         ["validated", "invalidated", "unmeasured"],
     )
     def test_should_transition_when_moving_from_pending_to_terminal_state(
-        self, vh: object, new_status: str
+        self, vh: ModuleType, new_status: str
     ) -> None:
         hypothesis = _valid_hypothesis()
 
@@ -310,7 +311,7 @@ class TestTransitionStatus:
 
         assert result["status"] == new_status
 
-    def test_should_return_a_new_dict_and_not_mutate_input(self, vh: object) -> None:
+    def test_should_return_a_new_dict_and_not_mutate_input(self, vh: ModuleType) -> None:
         hypothesis = _valid_hypothesis()
         original = dict(hypothesis)
 
@@ -319,7 +320,7 @@ class TestTransitionStatus:
         assert hypothesis == original, "transition_status must not mutate its input"
         assert result is not hypothesis
 
-    def test_should_attach_evidence_when_provided(self, vh: object) -> None:
+    def test_should_attach_evidence_when_provided(self, vh: ModuleType) -> None:
         hypothesis = _valid_hypothesis()
         evidence = {
             "measured_at": "2026-05-01T12:00:00Z",
@@ -347,7 +348,7 @@ class TestTransitionStatus:
         ],
     )
     def test_should_raise_value_error_when_transition_is_illegal(
-        self, vh: object, from_status: str, to_status: str
+        self, vh: ModuleType, from_status: str, to_status: str
     ) -> None:
         hypothesis = _valid_hypothesis()
         hypothesis["status"] = from_status
@@ -356,7 +357,7 @@ class TestTransitionStatus:
             vh.transition_status(hypothesis, to_status)
 
     def test_should_raise_value_error_when_new_status_is_unknown(
-        self, vh: object
+        self, vh: ModuleType
     ) -> None:
         hypothesis = _valid_hypothesis()
 
@@ -568,3 +569,175 @@ class TestCommandLineInterface:
 
         assert result.returncode != 0
         assert result.stderr.strip(), "expected a diagnostic on stderr"
+
+
+# F006 BR-007: dual-author-role schema extension.
+#
+# /spec → /spec + /architect phase split (F006) extends the
+# value-hypothesis.yaml schema. Legacy F001-F009 features carry a single
+# top-level `author_role`. New (F010+) features carry per-phase
+# `spec_author_role` and (optionally) `architect_author_role`. The
+# validator must accept BOTH shapes, reject unknown fields, and apply
+# the same sanitization contract (cap 64 chars, strip control chars
+# matching [\x00-\x1f\x7f]) to all three author-role variants.
+
+
+def _new_shape_hypothesis() -> dict:
+    """Construct a fully-populated v1 hypothesis using the F006 dual-role schema.
+
+    Has `spec_author_role` and `architect_author_role` instead of the
+    legacy single `author_role` field.
+    """
+    base = _valid_hypothesis()
+    del base["author_role"]
+    base["spec_author_role"] = "PM"
+    base["architect_author_role"] = "Engineer"
+    return base
+
+
+class TestF006DualAuthorRoleSchema:
+    """BR-007 / AC-10: validator accepts both legacy and new author-role shapes."""
+
+    def test_should_pass_when_legacy_author_role_present(self, vh: ModuleType) -> None:
+        """Legacy single-author_role shape (F001-F009) must continue to validate."""
+        # Should not raise.
+        vh.validate_schema(_valid_hypothesis())
+
+    def test_should_pass_when_new_dual_author_role_shape_present(
+        self, vh: ModuleType
+    ) -> None:
+        """New shape: spec_author_role + architect_author_role, no author_role."""
+        # Should not raise.
+        vh.validate_schema(_new_shape_hypothesis())
+
+    def test_should_pass_when_only_spec_author_role_present(self, vh: ModuleType) -> None:
+        """architect_author_role is independently optional; spec_author_role alone is valid."""
+        hypothesis = _new_shape_hypothesis()
+        del hypothesis["architect_author_role"]
+
+        # Should not raise.
+        vh.validate_schema(hypothesis)
+
+    def test_should_raise_value_error_when_neither_author_role_nor_spec_author_role_present(
+        self, vh: ModuleType
+    ) -> None:
+        """Schema rule: at least ONE of {author_role, spec_author_role} must be present."""
+        hypothesis = _valid_hypothesis()
+        del hypothesis["author_role"]
+        # No spec_author_role added either.
+
+        with pytest.raises(ValueError, match="author_role"):
+            vh.validate_schema(hypothesis)
+
+    def test_should_raise_value_error_when_unknown_field_present_legacy_shape(
+        self, vh: ModuleType
+    ) -> None:
+        """Validator rejects unknown fields outside the documented field set."""
+        hypothesis = _valid_hypothesis()
+        hypothesis["surprise_field"] = "unexpected"
+
+        with pytest.raises(ValueError, match="surprise_field"):
+            vh.validate_schema(hypothesis)
+
+    def test_should_raise_value_error_when_unknown_field_present_new_shape(
+        self, vh: ModuleType
+    ) -> None:
+        """Unknown-field rejection applies to the new dual-role shape too."""
+        hypothesis = _new_shape_hypothesis()
+        hypothesis["random_extra"] = "nope"
+
+        with pytest.raises(ValueError, match="random_extra"):
+            vh.validate_schema(hypothesis)
+
+    def test_should_pass_when_architect_author_role_present_with_legacy_author_role(
+        self, vh: ModuleType
+    ) -> None:
+        """architect_author_role can coexist with legacy author_role (mixed case)."""
+        hypothesis = _valid_hypothesis()
+        hypothesis["architect_author_role"] = "Engineer"
+
+        # Should not raise.
+        vh.validate_schema(hypothesis)
+
+
+class TestF006AuthorRoleSanitization:
+    """BR-007 + F001 sanitization contract: cap 64 chars, strip control chars."""
+
+    def test_should_strip_control_characters_from_legacy_author_role_when_loading(
+        self, vh: ModuleType, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "value-hypothesis.yaml"
+        hypothesis = _valid_hypothesis()
+        # Inject a control char and a DEL character.
+        hypothesis["author_role"] = "Other:\x01rogue\x7frole"
+        vh.dump(path, hypothesis)
+
+        loaded = vh.load(path)
+
+        assert loaded is not None
+        assert loaded["author_role"] == "Other:roguerole"
+
+    def test_should_cap_legacy_author_role_at_64_chars_when_loading(
+        self, vh: ModuleType, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "value-hypothesis.yaml"
+        hypothesis = _valid_hypothesis()
+        hypothesis["author_role"] = "A" * 100
+        vh.dump(path, hypothesis)
+
+        loaded = vh.load(path)
+
+        assert loaded is not None
+        assert loaded["author_role"] == "A" * 64
+
+    def test_should_strip_control_characters_from_spec_author_role_when_loading(
+        self, vh: ModuleType, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "value-hypothesis.yaml"
+        hypothesis = _new_shape_hypothesis()
+        hypothesis["spec_author_role"] = "PM\x02clean"
+        vh.dump(path, hypothesis)
+
+        loaded = vh.load(path)
+
+        assert loaded is not None
+        assert loaded["spec_author_role"] == "PMclean"
+
+    def test_should_cap_spec_author_role_at_64_chars_when_loading(
+        self, vh: ModuleType, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "value-hypothesis.yaml"
+        hypothesis = _new_shape_hypothesis()
+        hypothesis["spec_author_role"] = "B" * 100
+        vh.dump(path, hypothesis)
+
+        loaded = vh.load(path)
+
+        assert loaded is not None
+        assert loaded["spec_author_role"] == "B" * 64
+
+    def test_should_strip_control_characters_from_architect_author_role_when_loading(
+        self, vh: ModuleType, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "value-hypothesis.yaml"
+        hypothesis = _new_shape_hypothesis()
+        hypothesis["architect_author_role"] = "Engineer\x1fclean"
+        vh.dump(path, hypothesis)
+
+        loaded = vh.load(path)
+
+        assert loaded is not None
+        assert loaded["architect_author_role"] == "Engineerclean"
+
+    def test_should_cap_architect_author_role_at_64_chars_when_loading(
+        self, vh: ModuleType, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "value-hypothesis.yaml"
+        hypothesis = _new_shape_hypothesis()
+        hypothesis["architect_author_role"] = "C" * 100
+        vh.dump(path, hypothesis)
+
+        loaded = vh.load(path)
+
+        assert loaded is not None
+        assert loaded["architect_author_role"] == "C" * 64

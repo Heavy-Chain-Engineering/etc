@@ -1,5 +1,6 @@
 ---
 name: architect
+primary_phase: architect
 description: >
   Pragmatic system architect. Designs boundaries, data flow, integration patterns, and writes ADRs.
   Anti-over-engineering. Use when designing system architecture, planning new subsystems, making
