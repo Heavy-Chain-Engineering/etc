@@ -233,6 +233,31 @@ if [ -d "$DIST_DIR/scripts" ]; then
     info "Installed utility scripts"
 fi
 
+# ── 10. Rewrite hardcoded ~/.claude/ paths to TARGET_DIR ─────────────────
+# Skill instructions, hook commands, settings-hooks.json, and several
+# agent definitions reference `~/.claude/` directly. These paths are baked
+# at compile time and assume the default install location. When the
+# harness lands somewhere else (e.g. ~/.claude-etc/ via CLAUDE_CONFIG_DIR),
+# the strings must be rewritten in the installed copies so the runtime
+# invocations resolve to files that actually exist.
+#
+# Uses a temp-file rewrite instead of `sed -i` so the script works under
+# both BSD sed (macOS default) and GNU sed (Linux) without flavor checks.
+if [ "$TARGET_DIR" != "$HOME/.claude" ]; then
+    if [[ "$TARGET_DIR" == "$HOME/"* ]]; then
+        TARGET_TILDE="~/${TARGET_DIR#$HOME/}"
+    else
+        TARGET_TILDE="$TARGET_DIR"
+    fi
+
+    REWRITTEN=0
+    while IFS= read -r f; do
+        sed "s|~/.claude/|${TARGET_TILDE}/|g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+        REWRITTEN=$((REWRITTEN + 1))
+    done < <(grep -rl '~/.claude/' "$TARGET_DIR" 2>/dev/null || true)
+    info "Rewrote ~/.claude/ → $TARGET_TILDE/ in $REWRITTEN file(s)"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}Installation complete${NC}"
