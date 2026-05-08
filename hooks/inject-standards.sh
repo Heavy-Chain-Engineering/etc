@@ -20,6 +20,30 @@ cat <<CONTEXT
 You are operating under the etc (Engineering Team, Codified) harness.
 The following rules are non-negotiable:
 
+### User Interaction (MANDATORY — applies to every question you ask the user)
+- **Pattern A** — Use the \`AskUserQuestion\` tool for any decision with
+  2–4 enumerable options. The tool renders a picker UI outside the text
+  stream that the user cannot miss. Put the recommended option first
+  with "(Recommended)" suffix. Never pair Pattern A with a prose version
+  of the same question.
+- **Pattern B** — Use the visual marker for free-form ("what / why / how /
+  describe") questions. Render exactly:
+    \`\`\`
+
+    ---
+
+    **▶ Your answer needed:** <one-line question>
+
+    \`\`\`
+  Ask ONE question per turn in Pattern B. Wait for the answer before
+  proceeding. Never answer your own open-ended question.
+- **Never** embed questions inline in prose. No "Want me to…?", no
+  "Should I…?", no "Let me know if…" tails, no "?" terminators on a
+  message that lacks Pattern A or Pattern B framing. Inline questions
+  get skimmed past — users miss them or respond to the wrong thing.
+- See \`standards/process/interactive-user-input.md\` for the full rule,
+  anti-patterns, and client-compatibility fallback.
+
 ### TDD (Red/Green/Refactor)
 - Write the failing test FIRST, then implement to make it pass
 - Tests must exist before production code can be edited (enforced by hook)

@@ -68,7 +68,9 @@ read -p "Enter choice [1 or 2]: " CLIENT_CHOICE
 echo ""
 
 if [ "$CLIENT_CHOICE" = "1" ]; then
-    TARGET_DIR="$HOME/.claude"
+    # Honor CLAUDE_CONFIG_DIR so the harness can install into a side-by-side
+    # config (e.g. ~/.claude-etc/) without clobbering a personal ~/.claude/.
+    TARGET_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
     CLIENT_NAME="Claude Code"
 elif [ "$CLIENT_CHOICE" = "2" ]; then
     TARGET_DIR="$HOME/.gemini/antigravity"
@@ -229,6 +231,36 @@ if [ -d "$DIST_DIR/scripts" ]; then
         chmod +x "$TARGET_DIR/scripts/$(basename "$f")"
     done
     info "Installed utility scripts"
+fi
+
+# ── 10. Rewrite hardcoded ~/.claude/ paths to TARGET_DIR ─────────────────
+# Skill instructions, hook commands, settings-hooks.json, and several
+# agent definitions reference `~/.claude/` directly. These paths are baked
+# at compile time and assume the default install location. When the
+# harness lands somewhere else (e.g. ~/.claude-etc/ via CLAUDE_CONFIG_DIR),
+# the strings must be rewritten in the installed copies so the runtime
+# invocations resolve to files that actually exist.
+#
+# Uses a temp-file rewrite instead of `sed -i` so the script works under
+# both BSD sed (macOS default) and GNU sed (Linux) without flavor checks.
+# Writes the temp content back into the original file via `cat > "$f"`
+# rather than `mv` so the destination's mode (notably the +x bit set in
+# section 5 for hook scripts) is preserved.
+if [ "$TARGET_DIR" != "$HOME/.claude" ]; then
+    if [[ "$TARGET_DIR" == "$HOME/"* ]]; then
+        TARGET_TILDE="~/${TARGET_DIR#$HOME/}"
+    else
+        TARGET_TILDE="$TARGET_DIR"
+    fi
+
+    REWRITTEN=0
+    while IFS= read -r f; do
+        sed "s|~/.claude/|${TARGET_TILDE}/|g" "$f" > "$f.tmp" \
+            && cat "$f.tmp" > "$f" \
+            && rm -f "$f.tmp"
+        REWRITTEN=$((REWRITTEN + 1))
+    done < <(grep -rl '~/.claude/' "$TARGET_DIR" 2>/dev/null || true)
+    info "Rewrote ~/.claude/ → $TARGET_TILDE/ in $REWRITTEN file(s)"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────
