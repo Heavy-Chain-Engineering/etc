@@ -68,7 +68,9 @@ read -p "Enter choice [1 or 2]: " CLIENT_CHOICE
 echo ""
 
 if [ "$CLIENT_CHOICE" = "1" ]; then
-    TARGET_DIR="$HOME/.claude"
+    # Honor CLAUDE_CONFIG_DIR so the harness can install into a side-by-side
+    # config (e.g. ~/.claude-etc/) without clobbering a personal ~/.claude/.
+    TARGET_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
     CLIENT_NAME="Claude Code"
 elif [ "$CLIENT_CHOICE" = "2" ]; then
     TARGET_DIR="$HOME/.gemini/antigravity"
