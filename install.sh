@@ -243,6 +243,9 @@ fi
 #
 # Uses a temp-file rewrite instead of `sed -i` so the script works under
 # both BSD sed (macOS default) and GNU sed (Linux) without flavor checks.
+# Writes the temp content back into the original file via `cat > "$f"`
+# rather than `mv` so the destination's mode (notably the +x bit set in
+# section 5 for hook scripts) is preserved.
 if [ "$TARGET_DIR" != "$HOME/.claude" ]; then
     if [[ "$TARGET_DIR" == "$HOME/"* ]]; then
         TARGET_TILDE="~/${TARGET_DIR#$HOME/}"
@@ -252,7 +255,9 @@ if [ "$TARGET_DIR" != "$HOME/.claude" ]; then
 
     REWRITTEN=0
     while IFS= read -r f; do
-        sed "s|~/.claude/|${TARGET_TILDE}/|g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+        sed "s|~/.claude/|${TARGET_TILDE}/|g" "$f" > "$f.tmp" \
+            && cat "$f.tmp" > "$f" \
+            && rm -f "$f.tmp"
         REWRITTEN=$((REWRITTEN + 1))
     done < <(grep -rl '~/.claude/' "$TARGET_DIR" 2>/dev/null || true)
     info "Rewrote ~/.claude/ → $TARGET_TILDE/ in $REWRITTEN file(s)"
