@@ -552,6 +552,11 @@ agents:
     description: "Refactoring and code quality improvement specialist."
     source: agents/code-simplifier.md
 
+  frontend-dashboard-refactorer:
+    name: "Frontend Dashboard Refactorer"
+    description: "Phased refactor of large React/TypeScript dashboard modules into types, hooks, and focused components. Behavior-preserving; tests run after every phase."
+    source: agents/frontend-dashboard-refactorer.md
+
   # ── Quality & Review (Watchdogs) ───────────────────────────────────────
 
   code-reviewer:
