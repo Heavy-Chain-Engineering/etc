@@ -258,6 +258,14 @@ state['build'] = {
     'mode': None,
     'waves_completed': 0,
     'total_waves': None,
+    'stacked': None,  # bool, set at Step 5 once total_waves is known:
+                      # True when total_waves > 1 (stack layers emitted
+                      # per wave); False when total_waves == 1 (single-wave
+                      # bypass per F010 BR-005). Legacy state.yaml files
+                      # without this field are treated as stacked=false
+                      # (F010 BR-008 forward-only). Merge-preserved across
+                      # every later state-write — the field name 'stacked'
+                      # is part of the build dict shape.
 }
 p.write_text(yaml.safe_dump(state, sort_keys=False))
 "
@@ -732,6 +740,72 @@ is NOT written for the failing wave; phase-N/start tags and any
 phase-M/start|done tags from earlier successful waves remain (preserved).
 Resume continues from the last successfully completed wave.
 
+**6d.7: Emit stack layer (F010).**
+
+After 6d's phase-N/done tag AND 6d.5's completion-report both succeed,
+emit the wave's diff as a distinct GitHub PR stack layer via `gh-stack`.
+Tag FIRST (6d) so the append-only tag captures the wave's close even if
+6d.7 fails; 6d.7 runs AFTER, never before.
+
+**Single-wave bypass (BR-005, AC7).** If `total_waves == 1`, SKIP 6d.7
+entirely. Set `state['build']['stacked'] = false` (merge-preserve pattern
+from Step 2) and fall through to 6e. Multi-wave builds (`total_waves > 1`)
+set `state['build']['stacked'] = true` and proceed.
+
+**Layer branch naming (BR-003, AC4).** Branches: `<feature-slug>-L<N>`,
+slug from `state.yaml.build.feature`, `<N>` is 1-indexed wave number.
+Example: F010 wave 0 → `stacked-prs-from-build-L1`. Verbatim regex:
+
+```
+^[a-z][a-z0-9-]+-L[0-9]+$
+```
+
+Sanitization: characters outside `[a-z0-9-]` are replaced with `-` and
+the slug is lowercased at branch-creation time. On-disk slug unchanged.
+
+**Squash-commit (GA-002).** Collect the wave's modified files and
+squash-commit on the new branch `<feature-slug>-L<N>`. Base: previous
+layer branch when `N > 1`, or `main` when `N == 1`. One squash-commit
+per wave matches F005's one-report-per-wave + F008's wave-as-isolation.
+
+**gh-stack invocation (BR-002, AC3).** Argv-list `subprocess.run` —
+never shell string — mirrors F008's `git mv` precedent:
+
+```python
+import subprocess
+result = subprocess.run(
+    ["gh", "stack", "push", "--base", "<previous_layer_branch>"],
+    capture_output=True, text=True,
+    cwd="<feature_repo_worktree>",
+)
+```
+
+`<previous_layer_branch>` = `<feature-slug>-L<N-1>` (or `main` when `N==1`).
+No auto-push (BR-010); operator runs `gh stack submit` after terminal close.
+
+**Soft LOC warning (BR-004, AC5).** Compute `net_loc = additions + deletions`
+from `git diff --shortstat` (use `abs(net_loc)` so deletion-only waves
+warn too — edge case 2). When `net_loc > 500`, emit this VERBATIM line
+to stderr (the test contract greps for prefix `WARNING: layer L`):
+
+```
+WARNING: layer L<N> contains <K> LOC (target: 500). Consider splitting the wave for review tractability. Proceeding with stack emission.
+```
+
+Non-blocking. The 500 threshold is a module-level constant
+`LAYER_LOC_SOFT_TARGET = 500` in the implementing script — future tuning
+is a one-line edit; never inline `500` at the check site.
+
+**Failure semantics (edge cases 3, 5).** If `git commit` non-zero OR
+`gh stack push` non-zero, STOP. Do NOT proceed to 6e. Write
+`state['build']['stacked_failure'] = <wave_num>` for `--resume`. The
+phase-N/done tag from 6d remains. Surface stderr verbatim. /build does
+NOT degrade to monolithic-PR mode silently.
+
+**Empty wave (edge case 1).** Zero file changes → skip layer emission;
+log `note: wave <N> produced no file changes; skipping layer emission`.
+Layer `N-1` remains the head; subsequent layers base off `N-1`.
+
 **6e. Proceed to next wave or finish.**
 
 **On escalation or test failure:**
@@ -936,9 +1010,31 @@ Update `state.yaml`: `current_step: 8`, `completed_at: {timestamp}`
 When invoked with `--resume`:
 
 1. Find the most recent feature directory with an incomplete `state.yaml`
-2. Read `current_step` and `waves_completed`
+2. Read `current_step`, `waves_completed`, and `stacked`
 3. Report: "Resuming {feature} from Step {N}, Wave {M}"
 4. Continue from the next uncompleted step
+
+**Stacking-aware resume (F010 BR-006, AC9).** When
+`state.yaml.build.stacked == true`, resume picks up at the next layer
+boundary: `wave_num = waves_completed + 1`. Step 6d.7 re-fires for the
+new layer and bases its branch on the most recent completed layer's
+branch (`<feature-slug>-L<waves_completed>`). Layer branches from
+previously completed waves remain in place — they are append-only and
+are not rolled back by resume. When `state.yaml.build.stacked == false`
+(single-wave bypass per BR-005) or the field is absent (legacy
+pre-F010 state.yaml per BR-008), resume uses the existing single-PR
+semantics unchanged.
+
+**Resume failure modes (F010 edge cases 8, 10).** If
+`state.yaml.build.total_waves` changes between the original /build and
+/build --resume (re-decomposition produced a different wave plan),
+resume ABORTS with `error: wave plan changed during resume (expected
+<old> waves, got <new>); cancel and re-run /build from scratch, or
+revert spec changes`. If `state.yaml.build.stacked == true` but
+`gh-stack` is missing on resume (operator uninstalled it mid-build),
+FAIL FAST at the first Step 6d.7 invocation with the install
+instruction (same message as edge case 4). /build does NOT degrade to
+monolithic mode mid-build.
 
 If no incomplete features found: "No build in progress. Start with: /build spec/prd.md"
 

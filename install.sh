@@ -80,6 +80,17 @@ else
     exit 1
 fi
 
+# ── Preflight: gh-stack (F010 stacked-PR builds) ────────────────────────
+# Non-blocking INFO check per F010 spec.md AC10/AC11 + BR-007. gh-stack
+# is required only for multi-wave (total_waves > 1) builds; single-wave
+# builds and the installer itself work without it. Uses POSIX-portable
+# `command -v` so the check survives non-bash shells if the script is
+# ever re-shebanged. The installer continues regardless of detection
+# outcome — no abort, no non-zero termination, no early return.
+if ! command -v gh-stack >/dev/null 2>&1; then
+    echo "INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install jiazh/gh-stack (or equivalent). Single-wave builds work without it."
+fi
+
 # ── 1. Create directory structure ────────────────────────────────────────
 # Standards subdirectories are discovered from the compiled dist/ rather
 # than hardcoded — a hardcoded list silently drops any new category
