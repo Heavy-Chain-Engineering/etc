@@ -28,7 +28,7 @@ description: >
   <commentary>Environment parity between local and production is a devops concern.</commentary>
   </example>
 tools: Read, Edit, Write, Bash, Grep, Glob
-model: sonnet
+model: opus
 maxTurns: 50
 ---
 

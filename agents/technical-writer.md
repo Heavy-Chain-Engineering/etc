@@ -20,7 +20,7 @@ description: >
   <commentary>Stale-doc detection and correction is a technical-writer responsibility.</commentary>
   </example>
 tools: Read, Edit, Write, Grep, Glob
-model: sonnet
+model: opus
 maxTurns: 30
 ---
 
