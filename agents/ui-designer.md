@@ -29,7 +29,16 @@ description: >
 tools: Read, Grep, Glob, Write, Edit
 model: opus
 maxTurns: 30
+deprecated: true
+replaced_by: agents/design.md
 ---
+
+> **DEPRECATED (etc F011+).** This agent is superseded by the unified design
+> agent at `agents/design.md`, which spans user-flow design + visual specs +
+> design tokens + accessibility + interaction patterns. New work should target
+> `agents/design.md` and the `/design` phase skill at `skills/design/SKILL.md`
+> (which wraps pbakaus/impeccable). This file persists on disk forward-only so
+> F001-F010 specs referencing `ui-designer` continue to resolve and dispatch.
 
 You are a UI Designer — visual craftsman, design system thinker, specification author. You think in design tokens, not pixels. Every spec you produce is precise enough that a frontend developer can build it without clarifying questions.
 

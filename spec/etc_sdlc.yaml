@@ -515,15 +515,41 @@ agents:
     description: "Validates ubiquitous language, bounded contexts, aggregate design."
     source: agents/domain-modeler.md
 
+  # DEPRECATED (F011): ux-designer is superseded by the unified `design` agent
+  # below. The entry is retained on disk forward-only so F001-F010 references
+  # continue to resolve. New work should target `agents/design.md` instead.
   ux-designer:
     name: "UX Designer"
-    description: "User flows, information architecture, interaction patterns."
+    description: "[DEPRECATED — use `design` agent] User flows, information architecture, interaction patterns. Superseded by agents/design.md (F011)."
     source: agents/ux-designer.md
+    deprecated: true
+    replaced_by: design
 
+  # DEPRECATED (F011): ui-designer is superseded by the unified `design` agent
+  # below. The entry is retained on disk forward-only so F001-F010 references
+  # continue to resolve. New work should target `agents/design.md` instead.
   ui-designer:
     name: "UI Designer"
-    description: "Visual design system, component specs, design tokens."
+    description: "[DEPRECATED — use `design` agent] Visual design system, component specs, design tokens. Superseded by agents/design.md (F011)."
     source: agents/ui-designer.md
+    deprecated: true
+    replaced_by: design
+
+  # F011: unified design agent replaces ux-designer + ui-designer. Wraps
+  # impeccable's reference domains + anti-pattern rules; owns user flows,
+  # visual specs, design tokens, accessibility, and interaction patterns.
+  design:
+    name: "Design"
+    description: >
+      Unified design specialist. Replaces the deprecated ux-designer and
+      ui-designer agents (F011). Owns user flows, visual specs, design
+      tokens, accessibility attributes, and interaction patterns. Anchored
+      on impeccable's 7 reference domains and 27 anti-pattern rules.
+      Canonical interactive workflow lives in skills/design/SKILL.md.
+    source: agents/design.md
+    primary_phase: design
+    model: opus
+    tools: [Read, Grep, Glob, Write, Edit]
 
   # ── Implementation ──���──────────────────────────────────────────────────
 
@@ -685,6 +711,43 @@ skills:
         description: "Analyze and reorganize board without building — score complexity, map dependencies, decompose epics"
         on_failure: "N/A — triage is non-destructive, always succeeds"
 
+  discovery:
+    name: "discovery"
+    description: >
+      Archaeological investigation of an existing system. Reads code,
+      data, git history, Salesforce metadata, and infrastructure configs
+      to find what the system ACTUALLY is — not what the documentation
+      claims. Stateful and resumable: writes findings to disk as it
+      works, surfaces blocking access requests rather than guessing.
+      Produces system-portrait.md, dependency-map.md, and complexity
+      assessment that feed /roadmap.
+    usage: "/discovery <one-line description of the investigation target>"
+    source: skills/discovery/SKILL.md
+
+  roadmap:
+    name: "roadmap"
+    description: >
+      Strategic roadmap planning agent that refuses to plan toward fuzzy
+      targets. Demands a clear target state through 5-phase interrogation
+      (Why / What / Boundaries / Constraints / Validation), detects
+      contradictions between scope and constraints, and produces phased
+      roadmaps with entry/exit criteria. Pairs explicitly with /discovery
+      for current-state input. Each roadmap phase becomes input to /spec.
+    usage: "/roadmap <one-line description of the migration or transition>"
+    source: skills/roadmap/SKILL.md
+
+  retrospective:
+    name: "retrospective"
+    description: >
+      Personal engineering coach that turns development sessions into
+      structured learning. Extracts workflow improvements, identifies
+      software engineering principles applied or missed, and surfaces
+      architectural insights. Closes the learning loop alongside
+      /postmortem (which traces specific incidents). Builds an
+      institutional engineering playbook over time.
+    usage: "/retrospective"
+    source: skills/retrospective/SKILL.md
+
   harness-feedback:
     name: "harness-feedback"
     description: >
@@ -699,6 +762,30 @@ skills:
       shipped bugs) — see the cross-skill contract in the SKILL.md.
     usage: "/harness-feedback [\"<one-line observation>\"]"
     source: skills/harness-feedback/SKILL.md
+
+  # F011: /design wraps pbakaus/impeccable (Apache 2.0, ≥v3.0.7) as a discrete
+  # phase on the design side of the (design | strategy) mid-funnel branch,
+  # positioned BEFORE /spec in the 6-phase pipeline. Mirrors /architect's
+  # 5-phase Socratic structure (intent capture → research → gray-area
+  # resolution → 2.75 classification → section drafting → output). The first
+  # phase to allocate `features/F<NNN>` when invoked first; /spec and
+  # /architect on the same feature inherit feature_id from state.yaml.
+  design:
+    name: "design"
+    description: >
+      Design phase wrapping impeccable. Socratic design loop that dispatches
+      /impeccable teach (wrap-and-invoke via the Skill tool, NOT subprocess)
+      to capture PRODUCT.md + DESIGN.md, then resolves etc-specific gray
+      areas impeccable does not natively cover (WCAG floor, motion-reduction
+      respect, responsive breakpoint targets, user-flow state machines).
+      Outputs design-tokens.json + component-specs.md consumed by /spec
+      during AC authoring and by /build Step 6 dispatch context. Runs on
+      the design side of the (design | strategy) mid-funnel branch, BEFORE
+      /spec. Replaces the deprecated ux-designer + ui-designer agents.
+    usage: "/design [<feature_path>] | /design --sync [--sync-from <path>] | /design --retrofit <feature_path>"
+    source: skills/design/SKILL.md
+    primary_phase: design
+    model: opus
 
 # ─── Standards ───���───────────────────────────────────────────────────────
 # Engineering standards passed through to dist/standards/.
@@ -741,6 +828,29 @@ standards:
 # ─── SDLC Phases ────────���────────────────────────────────────────────────
 # Phase definitions compile to tracker templates in dist/sdlc/.
 # Each phase has a Definition of Done that gates transition to the next.
+#
+# Locked 6-phase pipeline (F006 + F011):
+#
+#   strategy (business)
+#       ↓
+#     research
+#       ↓
+#   (design | strategy)        ← mid-funnel branch: user-facing surface OR
+#       ↓                        internal/infra. /design wraps impeccable;
+#                                /strategy is a future skill.
+#      spec
+#       ↓
+#    architect
+#       ↓
+#      build
+#       ↓
+#    release
+#
+# The `(design | strategy)` branch sits BETWEEN research and spec. /design
+# is the design side of the branch (F011); /strategy is the non-user-facing
+# side (future PRD). Backend-only features route through strategy and skip
+# /design; user-facing features route through /design and may set
+# state.yaml.design_phase.tier_0_promoted = true (F011 BR-006).
 
 phases:
   bootstrap:
@@ -751,6 +861,48 @@ phases:
       - "Gap analysis document produced"
       - "Existing patterns and anti-patterns cataloged"
 
+  # F011: `/design` phase wraps impeccable. Runs on the design side of the
+  # (design | strategy) mid-funnel branch, positioned BEFORE /spec. First
+  # phase to allocate `features/F<NNN>` when invoked first; /spec and
+  # /architect inherit feature_id from state.yaml. Replaces the legacy
+  # pre-F006 `design` entry which conflated design with architecture
+  # (architect/ADR work moved to its own phase in F006).
+  design:
+    description: >
+      Wrap-and-invoke impeccable for Socratic design capture. Produces
+      PRODUCT.md + DESIGN.md (impeccable-owned), design-tokens.json +
+      component-specs.md (etc-owned, consumed by /spec + /build), and
+      state.yaml.design_phase (etc-owned phase metadata).
+    branch: "(design | strategy)"
+    branch_side: design
+    runs_before: spec
+    team: [design]
+    definition_of_done:
+      - "PRODUCT.md + DESIGN.md exist at repo root (via /impeccable teach)"
+      - "design-tokens.json + component-specs.md written under <feature_path>/"
+      - "gray-areas-design.md captures WCAG floor, motion-reduction, breakpoints"
+      - "state.yaml.design_phase block written with classification + metrics"
+      - "value-hypothesis.yaml.design_author_role field populated"
+      - "Git tags etc/feature/F<NNN>/design/{start,done} written"
+      - "tier_0_promoted set when feature has user-facing surface"
+
+  # F011 placeholder: `/strategy` is the non-user-facing side of the
+  # (design | strategy) mid-funnel branch. Skill body is a future PRD;
+  # the phase entry is reserved here so the 6-phase pipeline is complete
+  # in the manifest. Backend-only features route through this branch and
+  # skip /design.
+  strategy:
+    description: >
+      Non-user-facing side of the (design | strategy) mid-funnel branch.
+      Skill body is a future PRD; phase reserved in the manifest so
+      backend-only features have an explicit route that bypasses /design.
+    branch: "(design | strategy)"
+    branch_side: strategy
+    runs_before: spec
+    team: [product-manager, architect]
+    definition_of_done:
+      - "Strategy phase skill not yet implemented — future PRD"
+
   spec:
     description: "Gather requirements, write PRDs, validate domain model"
     team: [product-manager, product-owner, domain-modeler, researcher]
@@ -760,14 +912,18 @@ phases:
       - "Edge cases documented"
       - "Stakeholder review completed"
 
-  design:
-    description: "Architecture, ADRs, interaction flows, system design"
-    team: [architect, ux-designer, ui-designer]
+  # F006 split out the architecture phase from the legacy conflated `design`
+  # entry. F011 repurposes the `design` key for /design (impeccable wrap);
+  # architecture work lives here under `architect`.
+  architect:
+    description: "Architecture, ADRs, API contracts, data model, module structure"
+    team: [architect, researcher, architect-reviewer]
     definition_of_done:
-      - "System design document with component boundaries"
-      - "ADRs for all significant technical decisions"
-      - "API contracts defined"
-      - "Data model designed"
+      - "design.md drafted (architecture overview, data model, API contracts,"
+      - "  module structure, technical constraints, security considerations,"
+      - "  trade-offs)"
+      - "ADRs written for all significant technical decisions"
+      - "gray-areas-architect.md captures resolved gray areas with citations"
 
   decompose:
     description: "Break specs into task graph with dependencies"

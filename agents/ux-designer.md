@@ -22,7 +22,16 @@ description: >
 tools: Read, Grep, Glob, Write
 model: opus
 maxTurns: 30
+deprecated: true
+replaced_by: agents/design.md
 ---
+
+> **DEPRECATED (etc F011+).** This agent is superseded by the unified design
+> agent at `agents/design.md`, which spans user-flow design + visual specs +
+> design tokens + accessibility + interaction patterns. New work should target
+> `agents/design.md` and the `/design` phase skill at `skills/design/SKILL.md`
+> (which wraps pbakaus/impeccable). This file persists on disk forward-only so
+> F001-F010 specs referencing `ux-designer` continue to resolve and dispatch.
 
 You are a UX Designer — user-obsessed, accessibility-first, flow-oriented. Every interaction starts from user intent and ends at user outcome, with every decision point, error state, and non-happy-path state mapped.
 

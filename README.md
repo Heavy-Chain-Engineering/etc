@@ -12,7 +12,7 @@ etc is built for **mixed teams**. Different roles use the same harness without s
 
 - **Product Managers** specify features through guided Socratic questioning rather than blank-page PRDs. `/spec` runs the conversation.
 - **Subject Matter Experts** file domain requests that get pulled, scoped, and either built or returned with specific clarifying questions. `/pull-tickets` reads from Linear.
-- **Designers** capture user flows and component specs. The `/ux` and `/ui` phases are on the roadmap; for now their work feeds `/spec`.
+- **Designers** capture user flows, design tokens, and component specs. `/design` is the dedicated phase — it wraps [pbakaus/impeccable](https://github.com/pbakaus/impeccable) for Socratic design-context capture (PRODUCT.md + DESIGN.md) and a browser-extension iteration loop. Output feeds `/spec`.
 - **Architects** turn specs into architecture and ADRs. `/architect` is the dedicated phase.
 - **Engineers** decompose, dispatch, build, verify, and ship. `/build` runs the conductor pipeline.
 
@@ -27,10 +27,8 @@ strategy (business)
         ↓
     research
         ↓
-   ux  │  strategy        ← branch: user-facing surface OR internal/infra
-        ↓
-       ui
-        ↓
+  design  │  strategy     ← branch: user-facing surface OR internal/infra
+        ↓                   (/design wraps pbakaus/impeccable)
       spec
         ↓
    architect
@@ -40,12 +38,13 @@ strategy (business)
     release
 ```
 
-Three phases are fully built today: **spec**, **architect**, and **build**. The user-facing design phases (`ux`, `ui`) are on the roadmap. The strategy phases (front-of-funnel and the mid-funnel branch for non-user-facing features) are workflows for now, not skills.
+Four phases are fully built today: **design**, **spec**, **architect**, and **build**. `/design` wraps [pbakaus/impeccable](https://github.com/pbakaus/impeccable) (Apache 2.0) and runs on the design side of the mid-funnel `(design | strategy)` branch — replacing the previous `ux` / `ui` placeholders. The strategy branch (front-of-funnel and the non-user-facing mid-funnel) is a workflow for now, not a skill.
 
 | Phase | What you get | Skill |
 |---|---|---|
 | **Discover** *(brownfield, optional)* | system-portrait, dependency-map, complexity assessment | `/discovery` |
 | **Roadmap** *(strategic, optional)* | phased plan with entry/exit criteria | `/roadmap` |
+| **Design** *(wraps pbakaus/impeccable)* | PRODUCT.md, DESIGN.md, design-tokens.json, component-specs.md | `/design` |
 | **Spec** | spec.md — requirements, ACs, edge cases, value hypothesis | `/spec` |
 | **Architect** | design.md — architecture, data model, APIs, ADRs | `/architect` |
 | **Build** | working code, green tests, audit trail | `/build` |
@@ -125,6 +124,9 @@ A skill calls an agent. An agent reads the standards. A hook blocks the agent if
 
 Skills are slash commands. Each lives at `skills/<name>/SKILL.md` — read those directly when you want the full contract. Highlights below.
 
+### `/design`
+The impeccable wrap. Runs on the design side of the `(design | strategy)` mid-funnel branch — before `/spec` — and is the first phase to allocate the feature directory. Phase 1 detects PRODUCT.md + DESIGN.md at repo root: if absent, dispatches `/impeccable teach` via the Skill tool (auth-context-preserving, never subprocess) for Socratic design-context capture; if present, surfaces a Pattern A entry picker (Accept / Refine PRODUCT / Refine DESIGN / Start over). Mirrors `/architect`'s 5-phase shape with `gray-areas-design.md` covering etc-specific concerns impeccable does not natively address (WCAG floor, motion-reduction, responsive breakpoints, user-flow state machines). A **file-watch contract** bridges impeccable's browser-extension iteration loop back to /design's state: the extension writes designer-decision deltas to `~/.impeccable/last-session.json` (or per-feature `<feature_path>/design-iteration.json`); `/design --sync` pulls them in. Conditional tier-0 promotion of PRODUCT.md + DESIGN.md fires only when the feature has a user-facing surface. Output: `design-tokens.json`, `component-specs.md`, `gray-areas-design.md`, `state.yaml.design_phase`, plus `etc/feature/F<NNN>/design/{start,done}` tags. Consumed by `/spec` Phase 2 research and `/build` Step 6 dispatch.
+
 ### `/spec`
 Socratic specification loop. Six clarifying questions, parallel research (codebase + web + antipatterns), three-state classifier (proceed / research-assisted / reject), section-by-section drafting with per-section approval. Auto-detects engineering implications and offers to chain `/architect`. Output: `spec.md`, `value-hypothesis.yaml`, `gray-areas-spec.md`, `research/`, plus a git tag.
 
@@ -201,6 +203,7 @@ Recent features, newest first. Each is a fully shipped PRD with tests, audit tra
 
 | Feature | What changed |
 |---|---|
+| **F011** | `/design` phase wraps impeccable. Adds Socratic design-context capture via `/impeccable teach`, conditional tier-0 promotion of PRODUCT.md + DESIGN.md, file-watch designer-iteration loop. Deprecates homeless `ux-designer` + `ui-designer` agents. |
 | **F010** | `/build` emits stacked PRs — one squash-commit per wave on a layered branch chain via `gh-stack`. Soft warning at 500 LOC/layer. Single-wave builds skip stacking and ship as a single PR. Attacks the 4-hour-reconciliation pain at agentic-AI scale. |
 | **F006** | `/spec` and `/architect` are now distinct phases. PMs can spec without writing architecture; architects can design without re-running intent capture. `/spec --include-architect` chains both. |
 | **F009** | Two-state directory lifecycle — `features/active/` and `features/shipped/`, plus a separate `.etc_sdlc/rejections/` location. Forward-only; existing flat-path features remain in place. |
@@ -218,7 +221,7 @@ Recent features, newest first. Each is a fully shipped PRD with tests, audit tra
 
 | Path | Contents |
 |---|---|
-| `agents/` | Agent definitions. One markdown file per role. |
+| `agents/` | Agent definitions. One markdown file per role. `agents/design.md` is the unified design agent (introduced in F011); `agents/ux-designer.md` and `agents/ui-designer.md` are deprecated forward-only — files remain on disk so F001-F010 references resolve, but new specs reference `agents/design.md`. |
 | `skills/` | Skill definitions. One subdirectory per skill, each with `SKILL.md`. |
 | `standards/` | Engineering standards organised by tier: `process/`, `code/`, `testing/`, `architecture/`, `security/`, `quality/`, `git/`. |
 | `hooks/` | Bash scripts that fire on Claude Code lifecycle events (PreToolUse, SubagentStart, Stop, etc.). |

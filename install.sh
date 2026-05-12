@@ -91,6 +91,19 @@ if ! command -v gh-stack >/dev/null 2>&1; then
     echo "INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install jiazh/gh-stack (or equivalent). Single-wave builds work without it."
 fi
 
+# ── Preflight: impeccable (F011 /design phase wrap) ─────────────────────
+# Non-blocking INFO check per F011 spec.md AC15 + BR-009. impeccable is
+# required only for features that route through the /design phase; backend-
+# only features and the installer itself work without it. Mirrors F010's
+# gh-stack preflight pattern (POSIX-portable `command -v` AND a skill-
+# directory existence fallback, since impeccable may be installed as a
+# Claude Code skill at ~/.claude/skills/impeccable/ rather than as an
+# executable on PATH). The installer continues regardless of detection
+# outcome — no abort, no non-zero termination, no early return.
+if ! command -v impeccable >/dev/null 2>&1 && [ ! -d "$HOME/.claude/skills/impeccable" ]; then
+    echo "INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npm install -g impeccable (or equivalent). Features without a /design phase work without it."
+fi
+
 # ── 1. Create directory structure ────────────────────────────────────────
 # Standards subdirectories are discovered from the compiled dist/ rather
 # than hardcoded — a hardcoded list silently drops any new category
