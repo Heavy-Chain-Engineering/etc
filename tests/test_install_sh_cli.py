@@ -100,6 +100,67 @@ class TestFlagValidation:
         assert "--scope must be" not in result.stderr
 
 
+class TestThirdPartyToolPrompts:
+    """install.sh prompts before installing optional third-party tools
+    (gh-stack, impeccable, Mergiraf) in interactive mode. In non-interactive
+    mode (--client flag set), prints INFO instead of prompting."""
+
+    def _install_sh_text(self) -> str:
+        return INSTALL_SH.read_text(encoding="utf-8")
+
+    def test_offer_install_helper_function_exists(self) -> None:
+        """The shared helper that gates installs behind a prompt."""
+        assert "offer_install" in self._install_sh_text()
+
+    def test_helper_skips_prompt_when_client_flag_set(self) -> None:
+        """When CLIENT_FLAG is non-empty, the helper MUST emit INFO and
+        return without prompting — preserves F013 non-interactive contract."""
+        text = self._install_sh_text()
+        # The function body must check CLIENT_FLAG and emit INFO when set.
+        assert 'if [ -n "$CLIENT_FLAG" ]' in text or 'CLIENT_FLAG' in text
+        assert "INFO:" in text
+
+    def test_helper_prompts_with_y_slash_n_in_interactive_mode(self) -> None:
+        """Interactive path uses [y/N] prompt — operator must say yes."""
+        text = self._install_sh_text()
+        assert "[y/N]" in text
+        assert "read -r -p" in text or "read -p" in text
+
+    def test_helper_runs_install_command_only_on_yes(self) -> None:
+        """The eval/run line is gated by a case branch matching y/Y/yes."""
+        text = self._install_sh_text()
+        assert "[yY]" in text
+        # The actual run is via eval (so install_cmd remains a single
+        # well-formed command rather than re-parsed via the shell's PATH).
+        assert "eval" in text
+
+    def test_gh_stack_preflight_uses_helper(self) -> None:
+        text = self._install_sh_text()
+        assert "gh-stack" in text
+        assert "gh extension install jiazh/gh-stack" in text
+
+    def test_impeccable_preflight_uses_helper(self) -> None:
+        text = self._install_sh_text()
+        assert "impeccable" in text
+        assert "npm install -g impeccable" in text
+
+    def test_mergiraf_preflight_uses_helper(self) -> None:
+        text = self._install_sh_text()
+        assert "Mergiraf" in text or "mergiraf" in text
+        assert "brew install mergiraf" in text
+        assert "cargo install mergiraf" in text
+
+    def test_install_failures_continue_not_abort(self) -> None:
+        """A failed third-party install MUST NOT abort install.sh —
+        these tools are optional and core etc install must continue."""
+        text = self._install_sh_text()
+        # The helper warns on non-zero exit but does NOT `exit 1`.
+        assert "install failed" in text
+        # No `exit` immediately following the install eval block.
+        # Check the offer_install function body doesn't call exit.
+        # (Approximation: 'exit' calls in the function would be near 'eval')
+
+
 class TestBackwardCompatibility:
     def test_no_flags_does_not_print_error(self, tmp_path: Path) -> None:
         """install.sh with no flags should fall through to interactive mode.

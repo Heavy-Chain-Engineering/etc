@@ -170,36 +170,82 @@ fi
 
 info "Scope: $SCOPE_FLAG — installing into $TARGET_DIR"
 
-# ── Preflight: gh-stack (F010 stacked-PR builds) ────────────────────────
-# Non-blocking INFO check per F010 spec.md AC10/AC11 + BR-007. gh-stack
-# is required only for multi-wave (total_waves > 1) builds; single-wave
-# builds and the installer itself work without it. Uses POSIX-portable
-# `command -v` so the check survives non-bash shells if the script is
-# ever re-shebanged. The installer continues regardless of detection
-# outcome — no abort, no non-zero termination, no early return.
+# ── Optional third-party tool preflights (gh-stack, impeccable, Mergiraf) ─
+# Pattern: detect missing tool → in INTERACTIVE mode (no --client flag),
+# prompt the operator [y/N] whether to install + run the install command
+# with their consent. In NON-INTERACTIVE mode (--client flag set), do NOT
+# prompt — emit the INFO line listing how to install for the operator's
+# later reference. The installer ALWAYS continues regardless of outcome;
+# no third-party tool is a hard dependency for the etc core.
+#
+# Security posture: each install command is a single, well-known command
+# (e.g. `brew install mergiraf`). The operator sees the exact command in
+# the prompt before answering 'y'. Failures are surfaced as warnings, not
+# errors — the installer keeps going.
+
+# Verbatim INFO lines per F010/F011/F016 contract tests. These strings are
+# the operator-facing surface AND the assertion targets for test_design_skill.py
+# and test_build_stacked_prs.py. Modify with care — pinned in PRD ACs.
+F010_INFO_LINE="INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install jiazh/gh-stack (or equivalent). Single-wave builds work without it."
+F011_INFO_LINE="INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npm install -g impeccable (or equivalent). Features without a /design phase work without it."
+F016_INFO_LINE="INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: brew install mergiraf (macOS) | cargo install mergiraf | https://mergiraf.org for other platforms."
+
+offer_install() {
+    # Args:
+    #   $1 = tool display name (e.g. "Mergiraf")
+    #   $2 = verbatim INFO line (printed in non-interactive mode)
+    #   $3 = install command (run with operator consent in interactive mode)
+    local tool_name="$1"
+    local info_line="$2"
+    local install_cmd="$3"
+
+    if [ -n "$CLIENT_FLAG" ]; then
+        # Non-interactive (--client flag set): print verbatim INFO line; do
+        # not prompt. Preserves F010/F011/F016 contract tests.
+        echo "$info_line"
+        return
+    fi
+
+    # Interactive: prompt operator before running anything third-party.
+    echo ""
+    echo "  $tool_name not detected."
+    echo "  $info_line"
+    read -r -p "  Install now via: $install_cmd ? [y/N]: " reply
+    case "$reply" in
+        [yY]|[yY][eE][sS])
+            echo "  Running: $install_cmd"
+            if eval "$install_cmd"; then
+                info "$tool_name installed"
+            else
+                warn "$tool_name install failed (exit $?). Continuing without it."
+            fi
+            ;;
+        *)
+            echo "  Skipped. Install later via: $install_cmd"
+            ;;
+    esac
+}
+
+# gh-stack (F010 stacked-PR builds): required only for multi-wave builds.
 if ! command -v gh-stack >/dev/null 2>&1; then
-    echo "INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install jiazh/gh-stack (or equivalent). Single-wave builds work without it."
+    offer_install "gh-stack" "$F010_INFO_LINE" "gh extension install jiazh/gh-stack"
 fi
 
-# ── Preflight: impeccable (F011 /design phase wrap) ─────────────────────
-# Non-blocking INFO check per F011 spec.md AC15 + BR-009. impeccable is
-# required only for features that route through the /design phase; backend-
-# only features and the installer itself work without it. Mirrors F010's
-# gh-stack preflight pattern (POSIX-portable `command -v` AND a skill-
-# directory existence fallback, since impeccable may be installed as a
-# Claude Code skill at ~/.claude/skills/impeccable/ rather than as an
-# executable on PATH). The installer continues regardless of detection
-# outcome — no abort, no non-zero termination, no early return.
+# impeccable (F011 /design phase wrap): required only for features routing
+# through /design. Skip detection if the Claude Code skill version is
+# already installed under ~/.claude/skills/impeccable/.
 if ! command -v impeccable >/dev/null 2>&1 && [ ! -d "$HOME/.claude/skills/impeccable" ]; then
-    echo "INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npm install -g impeccable (or equivalent). Features without a /design phase work without it."
+    offer_install "impeccable" "$F011_INFO_LINE" "npm install -g impeccable"
 fi
 
-# ── Preflight: Mergiraf (F016 R3 — semantic merge for stacked-PR chains) ─
-# Non-blocking INFO. Mergiraf resolves trivial semantic conflicts during
-# the stacked-PR rebase chain F010 emits. Optional — manual conflict
-# resolution still works without it.
+# Mergiraf (F016 R3 — semantic merge for stacked-PR chains). On macOS we
+# prefer brew (no Rust toolchain required); on Linux fall back to cargo.
 if ! command -v mergiraf >/dev/null 2>&1; then
-    echo "INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: brew install mergiraf (macOS) | cargo install mergiraf | https://mergiraf.org for other platforms."
+    case "$(uname -s)" in
+        Darwin) mergiraf_cmd="brew install mergiraf" ;;
+        *)      mergiraf_cmd="cargo install mergiraf" ;;
+    esac
+    offer_install "Mergiraf" "$F016_INFO_LINE" "$mergiraf_cmd"
 fi
 
 # ── 1. Create directory structure ────────────────────────────────────────
