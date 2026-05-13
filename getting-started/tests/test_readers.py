@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from src.readers import read_sdlc_state, read_task_summary
 
 

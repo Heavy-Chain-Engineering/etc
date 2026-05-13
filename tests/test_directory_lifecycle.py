@@ -44,7 +44,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import feature_id as feature_id_module  # pyright: ignore[reportMissingImports]  # noqa: E402
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 

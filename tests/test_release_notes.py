@@ -26,7 +26,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import release_notes  # noqa: E402  (sys.path mutated above)
 
-
 # ── Fixture helpers ──────────────────────────────────────────────────────
 
 

@@ -285,8 +285,8 @@ def test_skill_build_documents_gh_stack_argv_invocation(
     # The gh-stack invocation appears in the region — at minimum the
     # tool name and the documented subcommand.
     assert "gh stack" in region or "gh-stack" in region, (
-        f"skills/build/SKILL.md 6d.7 region missing gh-stack tool reference; "
-        f"expected 'gh stack' or 'gh-stack' per BR-002"
+        "skills/build/SKILL.md 6d.7 region missing gh-stack tool reference; "
+        "expected 'gh stack' or 'gh-stack' per BR-002"
     )
     # The argv-list invocation form is documented. Either ``subprocess.run``
     # is mentioned, or the literal argv elements appear together.
@@ -294,16 +294,16 @@ def test_skill_build_documents_gh_stack_argv_invocation(
     has_push_subcommand = "push" in region
     has_base_flag = "--base" in region
     assert has_subprocess_run, (
-        f"skills/build/SKILL.md 6d.7 region missing 'subprocess.run' marker "
-        f"for the argv-list invocation contract per AC3 / BR-002"
+        "skills/build/SKILL.md 6d.7 region missing 'subprocess.run' marker "
+        "for the argv-list invocation contract per AC3 / BR-002"
     )
     assert has_push_subcommand, (
-        f"skills/build/SKILL.md 6d.7 region missing 'push' subcommand from "
-        f"the documented gh stack invocation per BR-002"
+        "skills/build/SKILL.md 6d.7 region missing 'push' subcommand from "
+        "the documented gh stack invocation per BR-002"
     )
     assert has_base_flag, (
-        f"skills/build/SKILL.md 6d.7 region missing '--base' flag from the "
-        f"documented gh stack invocation per BR-002"
+        "skills/build/SKILL.md 6d.7 region missing '--base' flag from the "
+        "documented gh stack invocation per BR-002"
     )
 
 
@@ -332,12 +332,12 @@ def test_skill_build_documents_loc_warning_verbatim(
     # appear in spec.md AC5's literal block and must survive into the
     # skill body so the line is grep-stable at runtime.
     assert "target: 500" in skill_build_text, (
-        f"skills/build/SKILL.md missing literal 'target: 500' from the "
-        f"LOC warning per AC5 / BR-004"
+        "skills/build/SKILL.md missing literal 'target: 500' from the "
+        "LOC warning per AC5 / BR-004"
     )
     assert "Proceeding with stack emission" in skill_build_text, (
-        f"skills/build/SKILL.md missing literal 'Proceeding with stack "
-        f"emission' from the LOC warning per AC5 / BR-004"
+        "skills/build/SKILL.md missing literal 'Proceeding with stack "
+        "emission' from the LOC warning per AC5 / BR-004"
     )
 
 
@@ -453,12 +453,12 @@ def test_install_sh_documents_gh_stack_preflight_info(
     )
     # Additional verbatim tokens from the canonical INFO line.
     assert "gh extension install jiazh/gh-stack" in install_sh_text, (
-        f"install.sh missing literal install instruction 'gh extension "
-        f"install jiazh/gh-stack' per AC10 / BR-007"
+        "install.sh missing literal install instruction 'gh extension "
+        "install jiazh/gh-stack' per AC10 / BR-007"
     )
     assert "Single-wave builds work without it" in install_sh_text, (
-        f"install.sh missing literal 'Single-wave builds work without it' "
-        f"closing clause from the INFO message per AC10 / BR-007"
+        "install.sh missing literal 'Single-wave builds work without it' "
+        "closing clause from the INFO message per AC10 / BR-007"
     )
 
 

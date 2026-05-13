@@ -20,7 +20,6 @@ tests in a future PRD will exercise the runtime behavior end-to-end.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest

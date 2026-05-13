@@ -37,7 +37,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import telemetry  # noqa: E402  (import after sys.path manipulation)
 
-
 # ── Fixtures ────────────────────────────────────────────────────────────
 
 

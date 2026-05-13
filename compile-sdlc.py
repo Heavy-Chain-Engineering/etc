@@ -719,7 +719,7 @@ def main() -> None:
     print()
     print("Compilation complete.")
     print()
-    print(f"  dist/")
+    print("  dist/")
     print(f"  ├── settings-hooks.json    ({len(spec.get('gates', {}))} gates)")
     print(f"  ├── hooks/                 ({len(list((dist_dir / 'hooks').glob('*.sh')))} scripts)")
     print(f"  ├── agents/                ({agent_count} definitions)")

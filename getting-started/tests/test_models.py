@@ -1,6 +1,5 @@
 """Tests for src/models.py — Pydantic data models for the SDLC Dashboard API."""
 
-import pytest
 from src.models import (
     DoDItem,
     DoDProgress,

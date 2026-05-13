@@ -16,7 +16,6 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-
 from src.models import SDLCStateResponse, TaskSummaryResponse
 from src.readers import read_sdlc_state, read_task_summary
 

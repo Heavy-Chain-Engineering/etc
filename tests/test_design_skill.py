@@ -259,14 +259,14 @@ def test_skill_design_exists_with_required_frontmatter(
     # exact phrasing is wordsmithing-tunable but both load-bearing tokens
     # MUST appear.
     assert "impeccable" in frontmatter.lower(), (
-        f"skills/design/SKILL.md frontmatter description missing 'impeccable' "
-        f"reference; F011 AC2 mandates 'design phase wrapping impeccable' "
-        f"or equivalent in the description"
+        "skills/design/SKILL.md frontmatter description missing 'impeccable' "
+        "reference; F011 AC2 mandates 'design phase wrapping impeccable' "
+        "or equivalent in the description"
     )
     assert "wrap" in frontmatter.lower(), (
-        f"skills/design/SKILL.md frontmatter description missing 'wrap' "
-        f"reference; F011 AC2 mandates 'design phase wrapping impeccable' "
-        f"or equivalent in the description"
+        "skills/design/SKILL.md frontmatter description missing 'wrap' "
+        "reference; F011 AC2 mandates 'design phase wrapping impeccable' "
+        "or equivalent in the description"
     )
 
 
@@ -368,42 +368,42 @@ def test_skill_design_phase_1_documents_wrap_and_invoke(
 
     # Detection of PRODUCT.md + DESIGN.md at repo root.
     assert "PRODUCT.md" in phase_1_region, (
-        f"Phase 1 region missing 'PRODUCT.md' reference; F011 BR-003 "
-        f"mandates Phase 1 detect PRODUCT.md at repo root"
+        "Phase 1 region missing 'PRODUCT.md' reference; F011 BR-003 "
+        "mandates Phase 1 detect PRODUCT.md at repo root"
     )
     assert "DESIGN.md" in phase_1_region, (
-        f"Phase 1 region missing 'DESIGN.md' reference; F011 BR-003 "
-        f"mandates Phase 1 detect DESIGN.md at repo root"
+        "Phase 1 region missing 'DESIGN.md' reference; F011 BR-003 "
+        "mandates Phase 1 detect DESIGN.md at repo root"
     )
 
     # Wrap-and-invoke contract: dispatch /impeccable teach via Skill tool.
     assert "/impeccable teach" in phase_1_region, (
-        f"Phase 1 region missing '/impeccable teach' wrap reference; "
-        f"F011 BR-003 + GA-001 mandates wrap-and-invoke contract documented "
-        f"in Phase 1"
+        "Phase 1 region missing '/impeccable teach' wrap reference; "
+        "F011 BR-003 + GA-001 mandates wrap-and-invoke contract documented "
+        "in Phase 1"
     )
     assert "Skill tool" in phase_1_region, (
-        f"Phase 1 region missing 'Skill tool' reference; F011 BR-003 "
-        f"requires dispatch via Skill tool (NOT subprocess) per F006 "
-        f"BR-010 chain semantics for auth-context preservation"
+        "Phase 1 region missing 'Skill tool' reference; F011 BR-003 "
+        "requires dispatch via Skill tool (NOT subprocess) per F006 "
+        "BR-010 chain semantics for auth-context preservation"
     )
     # The "NOT subprocess" distinction is load-bearing — appears as a
     # parenthetical, an emphasis, or a contrast clause. Accept any form
     # that mentions subprocess in the region (the contract being documented
     # explicitly says "not subprocess").
     assert "subprocess" in phase_1_region.lower(), (
-        f"Phase 1 region missing 'subprocess' contrast clause; F011 BR-003 "
-        f"contract is dispatch via Skill tool, NOT subprocess. The skill "
-        f"body must document the distinction explicitly."
+        "Phase 1 region missing 'subprocess' contrast clause; F011 BR-003 "
+        "contract is dispatch via Skill tool, NOT subprocess. The skill "
+        "body must document the distinction explicitly."
     )
 
     # Pattern A picker is documented for the both-present case (per BR-003
     # decision matrix). "Pattern A" is the AskUserQuestion tool per
     # standards/process/interactive-user-input.md.
     assert "Pattern A" in phase_1_region, (
-        f"Phase 1 region missing 'Pattern A' picker reference; F011 BR-003 "
-        f"mandates a Pattern A picker (accept / refine / start over) when "
-        f"PRODUCT.md + DESIGN.md both present"
+        "Phase 1 region missing 'Pattern A' picker reference; F011 BR-003 "
+        "mandates a Pattern A picker (accept / refine / start over) when "
+        "PRODUCT.md + DESIGN.md both present"
     )
 
 
@@ -456,16 +456,16 @@ def test_skill_design_phase_5_documents_output_artifacts_and_git_tags(
     # discuss the start/done suffixes. Both forms are acceptable; the
     # test asserts the load-bearing tokens.
     assert "etc/feature/F" in phase_5_region, (
-        f"Phase 5 region missing git tag prefix 'etc/feature/F'; F011 AC9 "
-        f"mandates the tag pattern 'etc/feature/F<NNN>/design/{{start,done}}'"
+        "Phase 5 region missing git tag prefix 'etc/feature/F'; F011 AC9 "
+        "mandates the tag pattern 'etc/feature/F<NNN>/design/{start,done}'"
     )
     assert "design/start" in phase_5_region, (
-        f"Phase 5 region missing 'design/start' tag suffix; F011 AC9 "
-        f"mandates writing the start tag at Phase 5 entry"
+        "Phase 5 region missing 'design/start' tag suffix; F011 AC9 "
+        "mandates writing the start tag at Phase 5 entry"
     )
     assert "design/done" in phase_5_region, (
-        f"Phase 5 region missing 'design/done' tag suffix; F011 AC9 "
-        f"mandates writing the done tag at Phase 5 successful close"
+        "Phase 5 region missing 'design/done' tag suffix; F011 AC9 "
+        "mandates writing the done tag at Phase 5 successful close"
     )
 
 
@@ -497,8 +497,8 @@ def test_skill_design_documents_file_watch_contract(
 
     # --sync-from flag for operator-selectable path.
     assert "--sync-from" in skill_design_text, (
-        f"skills/design/SKILL.md missing '--sync-from' flag reference; "
-        f"F011 BR-005 mandates operator-selectable path via --sync-from"
+        "skills/design/SKILL.md missing '--sync-from' flag reference; "
+        "F011 BR-005 mandates operator-selectable path via --sync-from"
     )
 
     # Default paths from BR-005 — at least ONE must appear (operator picks one).
@@ -552,24 +552,24 @@ def test_skill_design_documents_conditional_tier_0_promotion(
     """
     # The tier_0_promoted field name is load-bearing — the hook reads it.
     assert "tier_0_promoted" in skill_design_text, (
-        f"skills/design/SKILL.md missing 'tier_0_promoted' field reference; "
-        f"F011 AC11 + BR-006 mandate documenting the state.yaml field that "
-        f"the conditional tier-0 hook reads"
+        "skills/design/SKILL.md missing 'tier_0_promoted' field reference; "
+        "F011 AC11 + BR-006 mandate documenting the state.yaml field that "
+        "the conditional tier-0 hook reads"
     )
 
     # The hook citation by path (F002 standards-doc citation pattern).
     assert "tier-0-design-preflight.sh" in skill_design_text, (
-        f"skills/design/SKILL.md missing 'tier-0-design-preflight.sh' "
-        f"reference; F011 GA-architect-4 + BR-006 mandate the skill body "
-        f"cite the new hook file by path"
+        "skills/design/SKILL.md missing 'tier-0-design-preflight.sh' "
+        "reference; F011 GA-architect-4 + BR-006 mandate the skill body "
+        "cite the new hook file by path"
     )
 
     # Conditional contract: only fires for user-facing surface features.
     # "user-facing" appears in spec.md AC11 + BR-006 + Edge Case 9.
     assert "user-facing" in skill_design_text, (
-        f"skills/design/SKILL.md missing 'user-facing' surface qualifier; "
-        f"F011 AC11 + BR-006 mandate the conditional contract is scoped "
-        f"to features with a user-facing surface (NOT backend-only)"
+        "skills/design/SKILL.md missing 'user-facing' surface qualifier; "
+        "F011 AC11 + BR-006 mandate the conditional contract is scoped "
+        "to features with a user-facing surface (NOT backend-only)"
     )
 
 
@@ -657,8 +657,8 @@ def test_install_sh_documents_impeccable_preflight_info(
     )
     # Install instruction verbatim per BR-009.
     assert "npm install -g impeccable" in install_sh_text, (
-        f"install.sh missing literal install instruction 'npm install -g "
-        f"impeccable'; F011 BR-009 + AC15 mandate the verbatim text"
+        "install.sh missing literal install instruction 'npm install -g "
+        "impeccable'; F011 BR-009 + AC15 mandate the verbatim text"
     )
 
 
@@ -764,9 +764,9 @@ def test_agent_ux_designer_marked_deprecated_with_redirect(
     # frontmatter (as a `replaced_by:` / `redirect_to:` field) OR in the
     # body (as a deprecation banner). Accept either location.
     assert "agents/design.md" in agent_ux_text, (
-        f"agents/ux-designer.md missing redirect reference to "
-        f"'agents/design.md'; F011 AC14 + BR-008 mandate a redirect note "
-        f"pointing operators to the unified agent"
+        "agents/ux-designer.md missing redirect reference to "
+        "'agents/design.md'; F011 AC14 + BR-008 mandate a redirect note "
+        "pointing operators to the unified agent"
     )
 
 
@@ -796,9 +796,9 @@ def test_agent_ui_designer_marked_deprecated_with_redirect(
         f"frontmatter={frontmatter!r}"
     )
     assert "agents/design.md" in agent_ui_text, (
-        f"agents/ui-designer.md missing redirect reference to "
-        f"'agents/design.md'; F011 AC14 + BR-008 mandate a redirect note "
-        f"pointing operators to the unified agent"
+        "agents/ui-designer.md missing redirect reference to "
+        "'agents/design.md'; F011 AC14 + BR-008 mandate a redirect note "
+        "pointing operators to the unified agent"
     )
 
 

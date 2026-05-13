@@ -43,7 +43,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import release_notes  # pyright: ignore[reportMissingImports]  # noqa: E402
 
-
 # ── Session-scoped compile fixture ──────────────────────────────────────
 
 

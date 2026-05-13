@@ -39,7 +39,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import tasks as tasks_module  # pyright: ignore[reportMissingImports]  # noqa: E402
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
