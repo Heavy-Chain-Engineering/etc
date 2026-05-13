@@ -38,6 +38,77 @@ _to_native_path() {
     esac
 }
 
+# ── CLI argument parsing (F013) ──────────────────────────────────────────
+# Accepts:
+#   --client {claude|antigravity}   non-interactive client choice
+#   --scope  {global|project}       global = ~/.claude (default); project = ./.claude in CWD
+#   --help                          usage + exit 0
+# Backward compatible: with no flags, falls through to interactive prompt.
+
+CLIENT_FLAG=""
+SCOPE_FLAG="global"
+
+usage() {
+    cat <<USAGE
+etc — Engineering Team, Codified — installer
+
+Usage: ./install.sh [OPTIONS]
+
+Options:
+  --client {claude|antigravity}   Skip interactive client prompt.
+  --scope  {global|project}       Install scope. Defaults to 'global'.
+                                  global  = \$HOME/.claude (or \$CLAUDE_CONFIG_DIR if set)
+                                            or \$HOME/.gemini/antigravity for Antigravity
+                                  project = ./.claude or ./.gemini/antigravity in current dir
+  --help                          Show this help and exit.
+
+Examples:
+  ./install.sh                              # interactive, global scope
+  ./install.sh --client claude              # non-interactive client, global
+  ./install.sh --scope project              # interactive client, project scope
+  ./install.sh --client claude --scope project  # fully non-interactive, per-project
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --client)
+            CLIENT_FLAG="${2:-}"
+            shift 2
+            ;;
+        --scope)
+            SCOPE_FLAG="${2:-}"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "ERROR: unknown flag: $1" >&2
+            echo "" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Validate flag values
+case "$CLIENT_FLAG" in
+    ""|claude|antigravity) ;;
+    *)
+        echo "ERROR: --client must be 'claude' or 'antigravity' (got: $CLIENT_FLAG)" >&2
+        exit 1
+        ;;
+esac
+case "$SCOPE_FLAG" in
+    global|project) ;;
+    *)
+        echo "ERROR: --scope must be 'global' or 'project' (got: $SCOPE_FLAG)" >&2
+        exit 1
+        ;;
+esac
+
 echo ""
 echo -e "${BOLD}etc — Engineering Team, Codified${NC}"
 echo "Installing coding harness..."
@@ -61,24 +132,43 @@ if [ ! -f "$DIST_DIR/settings-hooks.json" ]; then
 fi
 
 # ── Client selection ─────────────────────────────────────────────────────
-echo -e "${BOLD}Select your AI coding assistant:${NC}"
-echo "  1) Claude Code"
-echo "  2) Antigravity / Gemini"
-read -p "Enter choice [1 or 2]: " CLIENT_CHOICE
-echo ""
+# If --client was passed, skip the interactive prompt. Otherwise ask.
+if [ -n "$CLIENT_FLAG" ]; then
+    case "$CLIENT_FLAG" in
+        claude)       CLIENT_CHOICE="1" ;;
+        antigravity)  CLIENT_CHOICE="2" ;;
+    esac
+    info "Client: $CLIENT_FLAG (from --client)"
+else
+    echo -e "${BOLD}Select your AI coding assistant:${NC}"
+    echo "  1) Claude Code"
+    echo "  2) Antigravity / Gemini"
+    read -p "Enter choice [1 or 2]: " CLIENT_CHOICE
+    echo ""
+fi
 
+# Resolve $TARGET_DIR from (client, scope). Project-scope lands in CWD; global
+# scope lands in $HOME (honoring $CLAUDE_CONFIG_DIR for Claude global).
 if [ "$CLIENT_CHOICE" = "1" ]; then
-    # Honor CLAUDE_CONFIG_DIR so the harness can install into a side-by-side
-    # config (e.g. ~/.claude-etc/) without clobbering a personal ~/.claude/.
-    TARGET_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
     CLIENT_NAME="Claude Code"
+    if [ "$SCOPE_FLAG" = "project" ]; then
+        TARGET_DIR="$PWD/.claude"
+    else
+        TARGET_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+    fi
 elif [ "$CLIENT_CHOICE" = "2" ]; then
-    TARGET_DIR="$HOME/.gemini/antigravity"
     CLIENT_NAME="Antigravity / Gemini"
+    if [ "$SCOPE_FLAG" = "project" ]; then
+        TARGET_DIR="$PWD/.gemini/antigravity"
+    else
+        TARGET_DIR="$HOME/.gemini/antigravity"
+    fi
 else
     error "Invalid choice. Please run the script again and select 1 or 2."
     exit 1
 fi
+
+info "Scope: $SCOPE_FLAG — installing into $TARGET_DIR"
 
 # ── Preflight: gh-stack (F010 stacked-PR builds) ────────────────────────
 # Non-blocking INFO check per F010 spec.md AC10/AC11 + BR-007. gh-stack

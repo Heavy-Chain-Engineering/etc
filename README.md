@@ -64,6 +64,10 @@ python3 compile-sdlc.py spec/etc_sdlc.yaml
 # 2. Install into Claude Code.
 ./install.sh    # Choose option 1 for Claude Code
 
+# Or non-interactive (F013):
+#   ./install.sh --client claude              # global install
+#   ./install.sh --client claude --scope project  # per-project install (./.claude/)
+
 # 3. Restart Claude Code. The harness is active.
 ```
 
@@ -73,7 +77,7 @@ Three steps. The compile is sub-second; the install merges hooks into your exist
 
 ```bash
 uv sync          # Install test dependencies
-uv run pytest    # 800+ contract tests, ~25 seconds
+uv run pytest    # 830+ contract tests, ~25 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file in a real project without writing a test first. The TDD hook will block the edit and tell you why. That is the harness working.
@@ -203,6 +207,7 @@ Recent features, newest first. Each is a fully shipped PRD with tests, audit tra
 
 | Feature | What changed |
 |---|---|
+| **F013** | `install.sh` CLI UX + `--scope` flag. New flags: `--client {claude\|antigravity}` (non-interactive client choice), `--scope {global\|project}` (global = `~/.claude/`, project = `./.claude/` in CWD), `--help`. Backward compatible — no flags = current interactive behavior. Closes the "hooks bleeding cross-project" complaint by enabling per-project installs that only fire in that project's Claude Code sessions. Scriptable for CI. Unknown flags → exit 1 + usage to stderr. |
 | **F012** | Auto-checkpoint Stop hook. `hooks/auto-checkpoint.sh` blocks session-end (exit 2) when `context_window.used_percentage >= 85` AND `.etc_sdlc/checkpoint.md` is more than 30 min stale (or absent), forcing the model to run `/checkpoint` before stopping. Mechanizes what was a passive "suggest at 60%" rule. Threshold defaults are tuned for opus 1M-context windows; tunable via `CHECKPOINT_CTX_THRESHOLD` and `CHECKPOINT_STALE_MINUTES` env vars. **Wired automatically by `install.sh`** — declared in `spec/etc_sdlc.yaml`, compiled into `dist/settings-hooks.json`, merged into `~/.claude/settings.json` by the standard install path. Run `./install.sh` (or recompile + reinstall on an existing install) and the hook is live on the next session start. |
 | **F011** | `/design` phase wraps impeccable. Adds Socratic design-context capture via `/impeccable teach`, conditional tier-0 promotion of PRODUCT.md + DESIGN.md, file-watch designer-iteration loop. Deprecates homeless `ux-designer` + `ui-designer` agents. |
 | **F010** | `/build` emits stacked PRs — one squash-commit per wave on a layered branch chain via `gh-stack`. Soft warning at 500 LOC/layer. Single-wave builds skip stacking and ship as a single PR. Attacks the 4-hour-reconciliation pain at agentic-AI scale. |
