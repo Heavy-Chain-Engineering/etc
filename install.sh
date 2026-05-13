@@ -234,11 +234,14 @@ offer_install() {
 }
 
 # gh-stack (F010 stacked-PR builds): GitHub's official extension.
-# Required only for multi-wave builds. Currently in private preview —
-# install may fail if the operator's account isn't on the waitlist;
-# the offer_install helper will report the failure and continue.
+# Currently in private preview at https://github.github.com/gh-stack/ —
+# most operators (including HCE) don't have access yet, so we do NOT
+# prompt to auto-install. INFO-only. Operators with waitlist access
+# install via `gh extension install github/gh-stack` manually. Operators
+# without access can use alternative stacking tools (ezyang/ghstack,
+# Graphite, Sapling) OR ship single-wave builds, which need no tool.
 if ! command -v gh-stack >/dev/null 2>&1; then
-    offer_install "gh-stack" "$F010_INFO_LINE" "gh extension install github/gh-stack"
+    echo "$F010_INFO_LINE"
 fi
 
 # impeccable (F011 /design phase wrap): required only for features routing
