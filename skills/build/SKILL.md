@@ -964,6 +964,62 @@ successfully at Step 6:
 {list of all files created or modified across all tasks}
 ```
 
+4.5. **Step 7.5: Spec→ADR coupling gate (F015).**
+
+   This sub-step runs AFTER `verification.md` is written (item 4) and
+   BEFORE the release tag is written (item 5). It is a blocking gate:
+   if any scope-change marker in `spec.md` (or `design.md` if present)
+   is anchored to an AC/BR/ADR reference AND not covered by either a
+   decision memo at `.etc_sdlc/features/{slug}/decisions/*.md` OR an
+   ADR appendix at `docs/adrs/*.md` (with a "Scope clarification",
+   "scope-narrowed", or "appendix" phrase), the gate fires.
+
+   Invocation:
+
+   ```bash
+   python3 ~/.claude/scripts/spec_coupling_check.py \
+       .etc_sdlc/features/F<NNN>-<slug>
+   ```
+
+   Exit codes:
+   - **0** = all findings covered (or no findings). Proceed to item 5.
+   - **2** = uncovered findings. STOP. Do NOT write the release tag.
+     Do NOT write `release-notes.md`. Do NOT move the feature to
+     `shipped/`. The script emits a structured stdout report with
+     each uncovered finding's `file:line` reference + AC/BR/ADR
+     tokens + remediation hints. Route the findings to the relevant
+     task owners (or to the operator) for decision-memo authoring,
+     then re-run `/build --resume`.
+   - **1** = usage/IO error. Treat as a hard fault; surface stderr to
+     the user.
+
+   **Marker detection is AC-number-anchored** (F015 BR-003): a marker
+   word counts as a finding only when it appears in the same
+   paragraph/bullet as an `AC-\d+`, `BR-\d+`, or `ADR-\d+` reference,
+   OR a backtick-quoted spec phrase. Bare narrative use is excluded.
+   Markers inside fenced code blocks and inside literal "Out of Scope"
+   / "Not in Scope" section headers are also excluded. When the
+   `etc/feature/F<NNN>/spec/done` git tag exists, the detector diffs
+   current spec.md against the tag and flags only markers added since;
+   pre-existing markers from the original spec are excluded.
+
+   **Operator override:** `--skip-spec-coupling-check="<reason>"` (the
+   reason MUST be non-empty). The reason is appended to
+   `verification.md` and `release-notes.md` under a "Spec Coupling Gate"
+   subsection so the audit trail is preserved. `--skip-spec-coupling-check`
+   with no value or empty string → exit 1 with an error. This flag is
+   intended for legacy specs predating F015 or for genuinely-defensible
+   skip cases; routine use defeats the gate's discipline (see F007+F008
+   trust-chain lesson in `memory/feedback-stub-detection-gates.md`).
+
+   **Autonomous mode (F014) interaction:** when `--autonomous` is set,
+   this gate still runs. An exit-2 result routes through the existing
+   Step 7 remediation path under the /goal evaluator loop — the
+   evaluator reads the structured report and dispatches decision-memo
+   authoring as the remediation work, then the gate re-runs on the
+   next /build --resume iteration. The skip flag remains an explicit
+   operator override even in autonomous mode.
+
 5. **Write the release tag and release-notes.md (terminal phase close).**
 
    This step runs ONLY after items 1–4 above have all succeeded — full
