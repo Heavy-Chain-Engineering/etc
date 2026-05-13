@@ -724,7 +724,7 @@ def main() -> None:
     print(f"  ├── hooks/                 ({len(list((dist_dir / 'hooks').glob('*.sh')))} scripts)")
     print(f"  ├── agents/                ({agent_count} definitions)")
     print(f"  ├── skills/                ({skill_count} definitions)")
-    print(f"  ├─��� standards/             ({standards_count} documents)")
+    print(f"  ├── standards/             ({standards_count} documents)")
     print(f"  └── sdlc/                  ({phase_count} phase templates)")
     print()
     print("Next: ./install.sh to deploy the harness.")
