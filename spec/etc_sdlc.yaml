@@ -444,6 +444,20 @@ gates:
     timeout: 120
     on_failure: block
 
+  auto-checkpoint:
+    description: >
+      Auto-checkpoints session state when context is high and checkpoint is stale.
+      Blocks stop with exit 2 when context_window.used_percentage >= 85 AND
+      .etc_sdlc/checkpoint.md is more than 30 minutes stale or absent. Both
+      thresholds env-tunable via CHECKPOINT_CTX_THRESHOLD (default 85) and
+      CHECKPOINT_STALE_MINUTES (default 30). Safe-fails to exit 0 when
+      context_window field is absent from hook input. F012 / 2026-05-13.
+    event: Stop
+    type: command
+    script: auto-checkpoint.sh
+    timeout: 15
+    on_failure: block
+
   change-control:
     description: >
       Prevents the agent from modifying its own governance. Blocks

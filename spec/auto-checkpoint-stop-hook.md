@@ -86,12 +86,11 @@ end its turn). Three reasons this is the right surface:
 - **AC-09:** Context percentage at/above threshold AND checkpoint file stale (mtime older than stale threshold) → exit 2 with stderr containing actual file age in minutes.
 - **AC-10:** Hook handles both BSD/macOS stat (`-f %m`) AND GNU stat (`-c %Y`) for mtime extraction, falling through to a safe 0 default if both fail.
 - **AC-11:** `tests/test_auto_checkpoint_hook.py` exercises AC-06 through AC-09 with controlled stdin + temp-file mtime fixtures; all tests pass under `uv run pytest`.
-- **AC-12:** `install.sh` emits a non-blocking `INFO:` line after the impeccable preflight (line ~104) explaining how to wire the hook into `~/.claude/settings.json`. Pattern mirrors F010 gh-stack and F011 impeccable preflights (POSIX `command -v` check OR file-presence check, never aborts, always continues).
-- **AC-13:** `README.md` documents the auto-checkpoint hook: trigger conditions, env vars, operator-paste step, opt-in nature. F012 row added to the "What has been shipping" table.
+- **AC-12 (revised post-ship):** Hook is declared in `spec/etc_sdlc.yaml` under the `Stop` event with `script: auto-checkpoint.sh` and `timeout: 15`. `compile-sdlc.py` copies `hooks/auto-checkpoint.sh` into `dist/hooks/` (executable) and adds the entry to `dist/settings-hooks.json` under `hooks.Stop`. `install.sh`'s existing `merge_settings()` function (lines 219-253) merges this into the operator's `~/.claude/settings.json` on install — no manual paste required. Pattern matches every other etc-shipped hook. (The original AC-12 specified an INFO-line paste hint; that design conflated the Claude-agent session-time sandbox restriction with install.sh's runtime capability, which has full write access to `~/.claude/`. Corrected pre-fix-up-commit.)
+- **AC-13:** `README.md` documents the auto-checkpoint hook: trigger conditions, env vars, and that it's wired automatically by `install.sh` on next run. F012 row added to the "What has been shipping" table.
 
 ## Out of Scope
 
-- Writing to `~/.claude/settings.json`. denyWrite by policy; operator pastes manually. Install.sh emits the JSON to paste but never modifies the file.
 - Automatically invoking `/checkpoint`. Stop hooks cannot invoke skills; the exit-2 block surfaces the message to the model which is responsible for acting on it.
 - Bundling with F016 (`/build --autonomous` via `/goal`). F012 is independent of F016; both can ship in either order.
 - Cross-checkpoint diffing (i.e., refusing to allow a stop unless the latest checkpoint differs materially from the previous one). Out of scope; staleness suffices.

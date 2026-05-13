@@ -104,40 +104,6 @@ if ! command -v impeccable >/dev/null 2>&1 && [ ! -d "$HOME/.claude/skills/impec
     echo "INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npm install -g impeccable (or equivalent). Features without a /design phase work without it."
 fi
 
-# ── Preflight: auto-checkpoint Stop hook (F012) ─────────────────────────
-# Non-blocking INFO check per F012 spec.md AC12 + BR. The hook script
-# itself is etc-shipped under hooks/auto-checkpoint.sh and gets copied
-# during install. But the operator must paste a JSON snippet into
-# ~/.claude/settings.json to wire it into Claude Code's Stop event
-# array — that file is in sandbox.denyWrite by policy, so the installer
-# cannot patch it. Detect whether wiring is in place by grepping the
-# file for "auto-checkpoint.sh"; if absent, emit the JSON paste hint.
-# The installer continues regardless — no abort, no non-zero termination.
-if [ -f "$HOME/.claude/settings.json" ] && grep -q "auto-checkpoint.sh" "$HOME/.claude/settings.json" 2>/dev/null; then
-    : # already wired; nothing to do
-else
-    cat <<'AUTOCHECK_INFO'
-INFO: auto-checkpoint Stop hook (etc F012+) is shipped but not wired into ~/.claude/settings.json.
-      The hook blocks session-end when context_window.used_percentage >= 85 AND .etc_sdlc/checkpoint.md
-      is > 30 min stale (both thresholds env-tunable). Paste this object as a third entry under the
-      existing "Stop" array in ~/.claude/settings.json:
-
-        {
-          "hooks": [
-            {
-              "type": "command",
-              "command": "~/.claude/hooks/auto-checkpoint.sh",
-              "timeout": 15000,
-              "statusMessage": "Auto-checkpoints session state when context is high and checkpoint is stale..."
-            }
-          ]
-        }
-
-      Validate with: python3 -m json.tool ~/.claude/settings.json
-      Tune via env vars: CHECKPOINT_CTX_THRESHOLD (default 85), CHECKPOINT_STALE_MINUTES (default 30).
-AUTOCHECK_INFO
-fi
-
 # ── 1. Create directory structure ────────────────────────────────────────
 # Standards subdirectories are discovered from the compiled dist/ rather
 # than hardcoded — a hardcoded list silently drops any new category
