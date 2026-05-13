@@ -194,6 +194,14 @@ if ! command -v impeccable >/dev/null 2>&1 && [ ! -d "$HOME/.claude/skills/impec
     echo "INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npm install -g impeccable (or equivalent). Features without a /design phase work without it."
 fi
 
+# ── Preflight: Mergiraf (F016 R3 — semantic merge for stacked-PR chains) ─
+# Non-blocking INFO. Mergiraf resolves trivial semantic conflicts during
+# the stacked-PR rebase chain F010 emits. Optional — manual conflict
+# resolution still works without it.
+if ! command -v mergiraf >/dev/null 2>&1; then
+    echo "INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: cargo install mergiraf (or equivalent)."
+fi
+
 # ── 1. Create directory structure ────────────────────────────────────────
 # Standards subdirectories are discovered from the compiled dist/ rather
 # than hardcoded — a hardcoded list silently drops any new category

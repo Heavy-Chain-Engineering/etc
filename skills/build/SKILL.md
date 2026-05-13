@@ -141,6 +141,46 @@ build:
 The `mode` field gates the per-step Pattern A skip logic. `--resume`
 reads this block to know whether to skip prompts on resume.
 
+**`state.yaml.build.cross_feature_collisions` schema (F016 R2):**
+populated by Step 5 when the cross-feature collision detector returns
+exit 2. Each entry records one colliding file plus the in-flight
+features that claim it:
+
+```yaml
+build:
+  cross_feature_collisions:
+    - file: src/shared.py
+      other_features: [F101, F102]
+    - file: tests/test_shared.py
+      other_features: [F101]
+```
+
+When empty or absent, the build had no detected cross-feature
+collisions at wave-plan time.
+
+**`state.yaml.build.submission` and `state.yaml.build.merged` schemas
+(F016 R7):** documented for use by future features. F016 only
+documents the schema slot; auto-population is deferred.
+
+```yaml
+build:
+  submission:
+    submitted_at: "<iso8601>"
+    submitted_by: "<operator>"
+    target_branch: "internal/main"   # or equivalent submission target
+    pr_url: "<URL or null for non-PR pushes>"
+  merged:
+    merged_at: "<iso8601>"
+    merged_by: "<human>"             # explicitly human, not agent
+    commit_sha: "<sha>"
+```
+
+The submission/merged distinction mirrors the Stripe Minions pattern:
+the agent **submits** work (push to internal/main); a **human merges**
+to the public target. Etc enforces this via the standing rule that
+agents never push to `origin/main`. F016 documents the schema so
+future features can wire up the audit trail.
+
 ## The Pipeline
 
 ```
@@ -471,8 +511,36 @@ Wave plan:
   Total waves: {W}
 ```
 
-**Autonomous-mode skip (F014):** When `state.yaml.build.autonomous.mode == "autonomous"`,
-SKIP the AskUserQuestion below entirely. Auto-proceed with the equivalent of
+**Cross-feature collision check (F016 R2):** Run the collision detector
+after the wave plan is printed and BEFORE the operator confirmation. The
+detector compares the current feature's `files_in_scope` against every
+other in-flight feature's:
+
+```bash
+python3 ~/.claude/scripts/cross_feature_collision_check.py \
+    .etc_sdlc/features/F<NNN>-<slug>
+```
+
+Exit codes: 0 = no collisions, 2 = collisions detected, 1 = usage/IO error.
+
+- **Exit 0:** proceed to the wave-execution confirmation below.
+- **Exit 2:** present the structured collision report (script writes it to
+  stdout) and surface a new Pattern A `AskUserQuestion` with three
+  options: **Cancel** (stop /build; coordinate with the other features),
+  **Proceed with risk acknowledged** (operator owns the eventual merge
+  resolution), **Serialize via dependency** (add a task dependency so
+  this feature builds AFTER the colliding feature completes).
+- **Exit 1:** treat as hard fault; surface stderr to operator.
+
+**Under `--autonomous` mode (F014):** collision check still runs. On
+exit 2: log the collisions to stderr, write
+`state.yaml.build.cross_feature_collisions: [...]` with the collision
+report, and auto-select "Proceed with risk acknowledged". The autonomous-
+mode philosophy is "fail forward + audit-trail," not "halt for human."
+
+**Autonomous-mode skip (F014) for wave execution confirmation:** When
+`state.yaml.build.autonomous.mode == "autonomous"`, SKIP the
+AskUserQuestion below entirely. Auto-proceed with the equivalent of
 "Execute all waves" (the Recommended option). Log a single line:
 `Step 5 confirmation auto-accepted (autonomous mode).`
 
