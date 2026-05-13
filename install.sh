@@ -199,7 +199,7 @@ fi
 # the stacked-PR rebase chain F010 emits. Optional — manual conflict
 # resolution still works without it.
 if ! command -v mergiraf >/dev/null 2>&1; then
-    echo "INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: cargo install mergiraf (or equivalent)."
+    echo "INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: brew install mergiraf (macOS) | cargo install mergiraf | https://mergiraf.org for other platforms."
 fi
 
 # ── 1. Create directory structure ────────────────────────────────────────
