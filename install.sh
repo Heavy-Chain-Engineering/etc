@@ -186,7 +186,14 @@ info "Scope: $SCOPE_FLAG — installing into $TARGET_DIR"
 # Verbatim INFO lines per F010/F011/F016 contract tests. These strings are
 # the operator-facing surface AND the assertion targets for test_design_skill.py
 # and test_build_stacked_prs.py. Modify with care — pinned in PRD ACs.
-F010_INFO_LINE="INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install jiazh/gh-stack (or equivalent). Single-wave builds work without it."
+#
+# F010 NOTE (corrected 2026-05-13): the F010 spec originally cited
+# `gh extension install jiazh/gh-stack` — that namespace was wrong.
+# The real tool is github/gh-stack (GitHub's official stacked-PR
+# extension, currently in private preview; waitlist at
+# https://github.github.com/gh-stack/). Install command + CLI shape
+# (`gh stack ...`) match the F010 design.
+F010_INFO_LINE="INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack (GitHub's official extension, currently in private preview at https://github.github.com/gh-stack/). Install via: gh extension install github/gh-stack (or equivalent). Single-wave builds work without it."
 F011_INFO_LINE="INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npm install -g impeccable (or equivalent). Features without a /design phase work without it."
 F016_INFO_LINE="INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: brew install mergiraf (macOS) | cargo install mergiraf | https://mergiraf.org for other platforms."
 
@@ -226,9 +233,12 @@ offer_install() {
     esac
 }
 
-# gh-stack (F010 stacked-PR builds): required only for multi-wave builds.
+# gh-stack (F010 stacked-PR builds): GitHub's official extension.
+# Required only for multi-wave builds. Currently in private preview —
+# install may fail if the operator's account isn't on the waitlist;
+# the offer_install helper will report the failure and continue.
 if ! command -v gh-stack >/dev/null 2>&1; then
-    offer_install "gh-stack" "$F010_INFO_LINE" "gh extension install jiazh/gh-stack"
+    offer_install "gh-stack" "$F010_INFO_LINE" "gh extension install github/gh-stack"
 fi
 
 # impeccable (F011 /design phase wrap): required only for features routing

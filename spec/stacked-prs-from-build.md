@@ -76,7 +76,7 @@ When `state.yaml.build.stacked == true`, `/build --resume` reads `waves_complete
 `install.sh` adds a preflight check after the existing `claude-code` detection: `command -v gh-stack` (or `gh stack --help` exit code 0). If absent, the installer surfaces this message (verbatim, the test contract greps for the prefix):
 
 ```
-INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install jiazh/gh-stack (or equivalent). Single-wave builds work without it.
+INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install github/gh-stack (or equivalent). Single-wave builds work without it.
 ```
 
 The check is INFO-level, NOT a hard blocker — install.sh continues. The user can install gh-stack later; only multi-wave builds need it.
@@ -104,7 +104,7 @@ A new test file `tests/test_build_stacked_prs.py` covers: (a) Step 6d.7 fires af
 7. **Single-wave bypass condition documented.** `skills/build/SKILL.md` documents that Step 6d.7 is SKIPPED when `total_waves == 1`. The skip path writes `state.yaml.build.stacked = false`; the multi-wave path writes `state.yaml.build.stacked = true`.
 8. **state.yaml schema extension.** `skills/build/SKILL.md` documents the `build.stacked: bool` field as part of Step 2's merge-preserve dict shape.
 9. **`/build --resume` semantics documented.** `skills/build/SKILL.md` documents that when `state.yaml.build.stacked == true`, resume picks up at `waves_completed + 1` with the new layer based on the previous completed layer's branch.
-10. **install.sh preflight message verbatim.** `install.sh` contains the INFO line verbatim: `INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install jiazh/gh-stack (or equivalent). Single-wave builds work without it.` Test contract greps for `INFO: gh-stack not detected`.
+10. **install.sh preflight message verbatim.** `install.sh` contains the INFO line verbatim: `INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack. Install via: gh extension install github/gh-stack (or equivalent). Single-wave builds work without it.` Test contract greps for `INFO: gh-stack not detected`.
 11. **install.sh preflight is non-blocking.** install.sh continues installation when gh-stack is absent. The INFO message does not cause exit-non-zero.
 12. **Test file with required contract tests.** `tests/test_build_stacked_prs.py` exists with at least 8 test functions covering BR-009 items (a)–(h): Step 6d.7 ordering, layer-branch creation, squash-commit contents, gh-stack argv invocation, LOC warning at and below 500 LOC, single-wave bypass, state.yaml.build.stacked write, --resume behavior, install.sh preflight INFO.
 13. **All tests use tmp_path.** No test in `tests/test_build_stacked_prs.py` writes to or reads from real `.etc_sdlc/features/*/tasks/` directories or the project's real git repo. Tests construct synthetic git repos via `subprocess.run(["git", "init", str(tmp_path), ...])` per F005 + F008 precedent.
@@ -119,7 +119,7 @@ A new test file `tests/test_build_stacked_prs.py` covers: (a) Step 6d.7 fires af
 
 3. **Squash-commit fails.** `git commit` returns non-zero (e.g., pre-commit hook rejection, unstaged tree corruption). Behavior: STOP the build, do not proceed to next wave, write `state.yaml.build.stacked_failure = <wave_num>` for resume diagnosis. The phase-N/done tag from Step 6d remains (append-only per F005 edge case 4). Operator must remediate manually then run `/build --resume`.
 
-4. **gh-stack absent at multi-wave build time.** Operator skipped the install.sh preflight INFO and started a multi-wave build. Behavior: STOP at Step 6d.7's first invocation with the operator-friendly error `gh-stack required for stacked builds but not found. Install via: gh extension install jiazh/gh-stack, then /build --resume`. /build does NOT fall back to monolithic-PR mode silently.
+4. **gh-stack absent at multi-wave build time.** Operator skipped the install.sh preflight INFO and started a multi-wave build. Behavior: STOP at Step 6d.7's first invocation with the operator-friendly error `gh-stack required for stacked builds but not found. Install via: gh extension install github/gh-stack, then /build --resume`. /build does NOT fall back to monolithic-PR mode silently.
 
 5. **gh-stack invocation fails.** `gh stack push` returns non-zero (e.g., merge conflict on rebase, GitHub rate limit, network failure). Behavior: STOP, surface gh-stack stderr verbatim to operator, write `state.yaml.build.stacked_failure`. The phase-N/done tag remains. Operator remediates and runs `/build --resume`.
 
