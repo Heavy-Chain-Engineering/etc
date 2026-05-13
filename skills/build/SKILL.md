@@ -76,7 +76,70 @@ without it.
 /build spec/prd-authentication.md
 /build .etc_sdlc/features/auth/spec.md
 /build --resume                           # Resume from last checkpoint
+/build .etc_sdlc/features/auth/spec.md --autonomous          # F014: drive via /goal, skip operator prompts
+/build .etc_sdlc/features/auth/spec.md --autonomous --max-turns 75
+/build .etc_sdlc/features/auth/spec.md --autonomous --goal-condition "<override>"
 ```
+
+## Autonomous Mode (F014)
+
+When invoked with `--autonomous`, /build wraps Anthropic's `/goal` feature
+to drive the pipeline unattended. Behavior changes:
+
+1. **Step 2 (SETUP)** derives a goal condition from `state.yaml` and the
+   spec's AC count, then invokes `/goal <condition>`. The Haiku evaluator
+   then checks every turn whether Claude has surfaced evidence the
+   condition holds.
+2. **Step 3 (DECOMPOSE)** SKIPS the Pattern A "Task breakdown looks
+   right?" `AskUserQuestion`. Auto-proceeds to scoring.
+3. **Step 5 (PLAN WAVES)** SKIPS the Pattern A "Proceed with wave
+   execution?" `AskUserQuestion`. Auto-proceeds with the equivalent of
+   "Execute all waves".
+4. **Step 7 (VERIFY)** NON-COMPLIANT routes through the existing
+   remediation path without operator pause — /goal's
+   evaluator-after-each-turn drives the loop until COMPLIANT or
+   max-turns exhausts.
+5. **Terminal-phase close** (after release tag write) clears the goal
+   via `/goal --clear` (or the equivalent skill invocation) so a
+   follow-up session does not inherit a stale autonomous loop.
+
+**Goal condition (auto-derived):**
+
+```
+F<NNN> spec-enforcer returns COMPLIANT for feature <feature_id>;
+all <N> ACs in <feature_path>/spec.md are SATISFIED;
+git tag etc/feature/F<NNN>/release exists;
+pytest reports 0 failures;
+feature directory at .etc_sdlc/features/shipped/F<NNN>-<slug>/.
+```
+
+Operator override: `--goal-condition "<custom condition>"`.
+
+**`--max-turns N`** bounds runaway loops. Default 50. Hard cap 200
+regardless of operator override — beyond 200 turns the model has almost
+certainly diverged and operator intervention beats further looping.
+
+**`--autonomous --resume`** reuses the original goal condition from
+`state.yaml.build.autonomous.goal_condition`. Does NOT re-derive.
+
+**`disableAllHooks: true` in managed settings** disables /goal; in that
+case `/build --autonomous` falls back to interactive mode with a warning
+to stderr rather than hard-failing.
+
+**`state.yaml.build.autonomous` schema** (written at Step 2 when this
+mode is engaged):
+
+```yaml
+build:
+  autonomous:
+    mode: autonomous              # or 'interactive' (default)
+    max_turns: 50
+    goal_condition: "<derived or override string>"
+    started_at: "<iso8601>"
+```
+
+The `mode` field gates the per-step Pattern A skip logic. `--resume`
+reads this block to know whether to skip prompts on resume.
 
 ## The Pipeline
 
@@ -279,6 +342,27 @@ untouched throughout the pipeline.
 **On success:** Mutate `state['build']['current_step'] = 2` and write the
 merged state back.
 
+**Autonomous-mode setup (F014):** When `/build` was invoked with
+`--autonomous`, also write `state['build']['autonomous']` per the
+schema documented in the Autonomous Mode section above (`mode`,
+`max_turns`, `goal_condition`, `started_at`). Then dispatch `/goal
+<condition>` via the Skill tool to register the completion condition
+with Claude Code's evaluator. The goal condition is derived
+deterministically from `state.yaml` and spec.md AC count, or taken
+verbatim from `--goal-condition` if the operator overrode the default.
+
+If `disableAllHooks: true` is detected in the operator's managed
+settings, `/goal` is unavailable; emit a single stderr warning
+(`WARNING: --autonomous requested but /goal is disabled by managed
+policy; falling back to interactive mode.`), set
+`state['build']['autonomous']['mode'] = 'interactive'`, and proceed as
+if `--autonomous` had not been passed.
+
+`--max-turns` defaults to 50; operator overrides are capped at 200
+regardless of the value passed. Beyond 200 turns the model has almost
+certainly diverged and operator intervention is more productive than
+further looping.
+
 ### Step 3: DECOMPOSE (Initial Breakdown)
 
 Read the spec. Break it into tasks following `/decompose` conventions:
@@ -295,9 +379,16 @@ Read the spec. Break it into tasks following `/decompose` conventions:
 6. Every file in Module Structure maps to exactly one task
 
 Run: `python3 ~/.claude/scripts/tasks.py list --tree` to confirm the breakdown.
-Print the tree so the user can see it, then ask for confirmation using
-`AskUserQuestion` (see standards/process/interactive-user-input.md,
-Pattern A):
+Print the tree so the user can see it.
+
+**Autonomous-mode skip (F014):** When `state.yaml.build.autonomous.mode == "autonomous"`,
+SKIP the AskUserQuestion below entirely. Auto-proceed to Step 4 as if the operator
+had selected "Yes, proceed to scoring". The /goal evaluator will judge whether the
+breakdown was correct by checking AC satisfaction at Step 7. Log a single line:
+`Step 3 confirmation auto-accepted (autonomous mode).`
+
+Then ask for confirmation using `AskUserQuestion` (see
+standards/process/interactive-user-input.md, Pattern A):
 
 ```
 AskUserQuestion(
@@ -379,6 +470,11 @@ Wave plan:
   ...
   Total waves: {W}
 ```
+
+**Autonomous-mode skip (F014):** When `state.yaml.build.autonomous.mode == "autonomous"`,
+SKIP the AskUserQuestion below entirely. Auto-proceed with the equivalent of
+"Execute all waves" (the Recommended option). Log a single line:
+`Step 5 confirmation auto-accepted (autonomous mode).`
 
 Then ask for confirmation via `AskUserQuestion`:
 

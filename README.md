@@ -77,7 +77,7 @@ Three steps. The compile is sub-second; the install merges hooks into your exist
 
 ```bash
 uv sync          # Install test dependencies
-uv run pytest    # 830+ contract tests, ~25 seconds
+uv run pytest    # 845+ contract tests, ~25 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file in a real project without writing a test first. The TDD hook will block the edit and tell you why. That is the harness working.
@@ -138,7 +138,7 @@ Socratic specification loop. Six clarifying questions, parallel research (codeba
 Architecture design loop. Mirrors `/spec`'s shape — five phases, three-state classifier, gray-area resolution, per-section approval. Output: `design.md` (architecture overview, data model, API contracts, module structure, technical constraints, security considerations, trade-offs) + zero or more ADRs + `gray-areas-architect.md`. Run after `/spec`; consumed by `/build`.
 
 ### `/build`
-The conductor. Eight steps from spec to verified working code. Validates the spec, decomposes recursively, plans waves with file-set isolation, dispatches one Agent tool call per leaf task per wave, runs full CI plus an adversarial spec-enforcer review, writes `verification.md` and `release-notes.md`, lays down a release tag. Resumable via `/build --resume` if a session dies mid-pipeline. **Multi-wave builds emit a stack of thin PR layers** (one squash-commit per wave, <500 LOC target per layer) via gh-stack — see F010 below. Single-wave builds ship as a conventional single PR.
+The conductor. Eight steps from spec to verified working code. Validates the spec, decomposes recursively, plans waves with file-set isolation, dispatches one Agent tool call per leaf task per wave, runs full CI plus an adversarial spec-enforcer review, writes `verification.md` and `release-notes.md`, lays down a release tag. Resumable via `/build --resume` if a session dies mid-pipeline. **Multi-wave builds emit a stack of thin PR layers** (one squash-commit per wave, <500 LOC target per layer) via gh-stack — see F010 below. Single-wave builds ship as a conventional single PR. **`--autonomous` mode (F014)** wraps Anthropic's `/goal` to drive the pipeline unattended — skips Pattern A confirmations at Steps 3 + 5, lets the Haiku evaluator-loop drive remediation on Step 7 NON-COMPLIANT, bounded by `--max-turns` (default 50, hard cap 200).
 
 ### `/discovery`
 Archaeological investigation of an existing system. Reads code, data, git history, and infra config; pretends the docs do not exist; tells you what the system *is*. Stateful and resumable — writes findings to disk continuously. Use when joining a brownfield codebase or when you suspect documentation has drifted from reality.
@@ -207,6 +207,7 @@ Recent features, newest first. Each is a fully shipped PRD with tests, audit tra
 
 | Feature | What changed |
 |---|---|
+| **F014** | `/build --autonomous` wraps Anthropic's `/goal`. Derives a completion-condition from `state.yaml` + spec ACs, sets `/goal <condition>` at Step 2, then SKIPS the Pattern A confirmations at Step 3 (decomposition) and Step 5 (wave execution). On Step 7 NON-COMPLIANT, /goal's Haiku evaluator-after-each-turn drives the remediation loop. `--max-turns N` (default 50, hard cap 200) bounds runaway. `--goal-condition "<override>"` for non-default conditions. `--autonomous --resume` reuses the original goal from `state.yaml.build.autonomous`. Falls back to interactive with a stderr warning when `disableAllHooks: true` is in managed policy. Closes the "30-40 confirmation prompts per day at team scale" friction. |
 | **F013** | `install.sh` CLI UX + `--scope` flag. New flags: `--client {claude\|antigravity}` (non-interactive client choice), `--scope {global\|project}` (global = `~/.claude/`, project = `./.claude/` in CWD), `--help`. Backward compatible — no flags = current interactive behavior. Closes the "hooks bleeding cross-project" complaint by enabling per-project installs that only fire in that project's Claude Code sessions. Scriptable for CI. Unknown flags → exit 1 + usage to stderr. |
 | **F012** | Auto-checkpoint Stop hook. `hooks/auto-checkpoint.sh` blocks session-end (exit 2) when `context_window.used_percentage >= 85` AND `.etc_sdlc/checkpoint.md` is more than 30 min stale (or absent), forcing the model to run `/checkpoint` before stopping. Mechanizes what was a passive "suggest at 60%" rule. Threshold defaults are tuned for opus 1M-context windows; tunable via `CHECKPOINT_CTX_THRESHOLD` and `CHECKPOINT_STALE_MINUTES` env vars. **Wired automatically by `install.sh`** — declared in `spec/etc_sdlc.yaml`, compiled into `dist/settings-hooks.json`, merged into `~/.claude/settings.json` by the standard install path. Run `./install.sh` (or recompile + reinstall on an existing install) and the hook is live on the next session start. |
 | **F011** | `/design` phase wraps impeccable. Adds Socratic design-context capture via `/impeccable teach`, conditional tier-0 promotion of PRODUCT.md + DESIGN.md, file-watch designer-iteration loop. Deprecates homeless `ux-designer` + `ui-designer` agents. |
