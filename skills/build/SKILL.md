@@ -1032,6 +1032,65 @@ successfully at Step 6:
 {list of all files created or modified across all tasks}
 ```
 
+4.4. **Step 7.4: Journey lineage gate (F017).**
+
+   This sub-step runs AFTER `verification.md` is written (item 4) and
+   BEFORE the F015 spec→ADR coupling gate (item 4.5). It enforces that
+   every feature filed after F017 ships traces to either a captured
+   customer journey OR an explicit infrastructure-only declaration.
+
+   Invocation:
+
+   ```bash
+   python3 ~/.claude/scripts/journey_lineage_check.py \
+       .etc_sdlc/features/F<NNN>-<slug>
+   ```
+
+   Exit codes:
+   - **0** = lineage OK (journey_refs resolve to journey files OR
+     infrastructure_only sentinel is set with a non-empty reason OR
+     feature predates F017 release tag). Proceed to Step 4.5.
+   - **2** = lineage missing. STOP. Do NOT proceed to Step 4.5, the
+     release tag, or release-notes.md. Do NOT move the feature to
+     `shipped/`. The script emits a JOURNEY LINEAGE MISSING stdout
+     report with remediation options.
+   - **1** = usage / IO error. Surface stderr to user.
+
+   **Two paths to pass the gate (per F017 spec):**
+
+   - **Customer-facing path:** `state.yaml.spec_phase.journey_refs:
+     [J-NNN, ...]` lists one or more journey IDs, each resolving to
+     `docs/mvp/journeys/J-NNN-*.md`. /spec Phase 1's seventh question
+     (journey lineage) is how this gets populated.
+   - **Infrastructure path:** `state.yaml.spec_phase.infrastructure_only:
+     true` + `state.yaml.spec_phase.infrastructure_reason: "<one-line>"`
+     is set. The reason must be non-empty (gate exits 2 if empty even
+     with the sentinel set).
+
+   **Backward compatibility (F017 BR):** features filed BEFORE the F017
+   release tag (`etc/feature/F017/release`) pass automatically. The
+   script reads `state.yaml.spec_phase.completed_at` and compares against
+   the tag's commit date via `git log -1 --format=%cI <tag>`. Legacy
+   F001-F016 features stay green; only post-F017 features are gated.
+
+   **Operator override:** `--skip-journey-check="<reason>"` (the reason
+   MUST be non-empty). The reason is appended to `verification.md` and
+   `release-notes.md` under a "Journey Lineage Gate" subsection so the
+   audit trail is preserved. Empty reason → exit 1. Same discipline
+   pattern as F015's `--skip-spec-coupling-check`.
+
+   **Autonomous mode (F014) interaction:** under `--autonomous`, the
+   gate still runs. Exit-2 routes through the existing Step 7
+   remediation path under the /goal evaluator loop — the evaluator
+   reads the structured report and dispatches /journey capture (or
+   state.yaml infrastructure_only declaration) as the remediation
+   work, then the gate re-runs on the next `/build --resume` iteration.
+
+   **Authored journey capture (operator-facing):** if the gate fails
+   on a customer-facing feature with no captured journey, the operator
+   invokes `/journey` to capture one, then updates state.yaml's
+   `journey_refs` to reference the new J-NNN, then resumes /build.
+
 4.5. **Step 7.5: Spec→ADR coupling gate (F015).**
 
    This sub-step runs AFTER `verification.md` is written (item 4) and

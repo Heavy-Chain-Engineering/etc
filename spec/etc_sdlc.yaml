@@ -801,6 +801,24 @@ skills:
     primary_phase: design
     model: opus
 
+  journey:
+    name: "journey"
+    description: >
+      SME-facing skill for capturing customer journeys. Walks a domain
+      expert through 6 plain-English Socratic questions (plus one optional
+      emotion question), refines their answers, and writes a structured
+      journey artifact to docs/mvp/journeys/J-NNN-<slug>.md. Pairs with
+      /spec via journey_refs in state.yaml.spec_phase. Designed for
+      non-technical experts who LIVE the journey they're describing —
+      forbidden vocabulary includes "acceptance criteria", "BR-",
+      "stakeholder", "use case"; encouraged vocabulary includes "what
+      they click", "where they get stuck", "how they feel". The
+      intersection of captured journeys IS the MVP. F017.
+    usage: "/journey [<one-liner>] | /journey --from-text <path> | /journey --refine J-<NNN> | /journey --list"
+    source: skills/journey/SKILL.md
+    primary_phase: spec
+    model: opus
+
 # ─── Standards ───���───────────────────────────────────────────────────────
 # Engineering standards passed through to dist/standards/.
 # These are read by agents and referenced in hook prompts.

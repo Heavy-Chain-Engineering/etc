@@ -174,7 +174,48 @@ The five questions, in order:
    /metrics) sees the same clean value. This matches PRD security item 8
    (free-form input sanitization).
 
-Do NOT proceed until the user has answered all six. If any answer is
+7. **Journey lineage question (F017).** Render this Pattern B prompt
+   AFTER the author-role question:
+
+   ```
+
+   ---
+
+   **▶ Your answer needed:** Which captured journey(s) does this feature serve? Choose one:
+     • Enter J-NNN IDs (comma-separated, e.g. "J-007, J-012")
+     • Type 'new' to capture a journey via /journey first
+     • Type 'infrastructure' to mark this as platform/tooling work with no user-journey trace (library upgrade, harness internals, CI, etc.)
+
+   ```
+
+   Three resolutions:
+   - **List of J-NNN IDs**: validate each against
+     `docs/mvp/journeys/J-NNN-*.md`. Unknown IDs → re-ask via Pattern B
+     with the list of known IDs from `journey_id.py list
+     docs/mvp/journeys`. Captured for Phase 5 write to
+     `state.yaml.spec_phase.journey_refs: [J-NNN, ...]`.
+   - **`new`**: dispatch `/journey` via the Skill tool. After /journey
+     returns, the SME has a fresh J-NNN; resume Phase 1 with that ID
+     captured in `journey_refs`.
+   - **`infrastructure`**: ask a one-line follow-up via Pattern B —
+     "Why is this infrastructure (no customer-journey trace)? One
+     line. Example: 'library upgrade', 'CI pipeline', 'harness
+     internals'." Captured for Phase 5 write as
+     `state.yaml.spec_phase.infrastructure_only: true` +
+     `state.yaml.spec_phase.infrastructure_reason: "<one-line>"`. The
+     reason MUST be non-empty (re-ask if empty). It surfaces in
+     verification.md + release-notes.md when /build Step 7.4 logs the
+     infrastructure-only declaration.
+
+   This is MANDATORY. Forcing the operator to choose between
+   customer-facing (with journey lineage) and infrastructure (with an
+   explicit reason) IS the discipline — it prevents capability-shape
+   drift while honoring legitimate infrastructure work. There is no
+   "skip" answer; if the operator is uncertain, default to
+   `infrastructure` and add a reason that captures the uncertainty
+   (the reason can be refined later via /spec --refine).
+
+Do NOT proceed until the user has answered all seven. If any answer is
 vague, ask a follow-up using the same Pattern B marker:
 
 ```
