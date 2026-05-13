@@ -27,7 +27,7 @@ Ship three carve-outs of the merge-discipline R2-R7 bundle:
 `install.sh` emits a non-blocking INFO line (mirroring gh-stack / impeccable preflights) about Mergiraf availability. Mergiraf is a semantic-merge tool that resolves trivial conflicts automatically — useful for the stacked-PR rebase chain F010 emits.
 
 ```
-INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: cargo install mergiraf (or equivalent).
+INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: brew install mergiraf (macOS) | cargo install mergiraf | https://mergiraf.org for other platforms.
 ```
 
 ### R7 — Submission/merge authority schema
