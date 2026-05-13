@@ -148,8 +148,15 @@ fi
 SIGNAL_INPROGRESS_COUNT=0
 TASKS_GLOB="${CWD}/.etc_sdlc/features"
 if [[ -d "$TASKS_GLOB" ]]; then
+  # F009-lifecycle-gap fix: scan flat path AND active/ subdirectory.
+  # The naive "$TASKS_GLOB"/*/tasks/*.yaml glob misses features under
+  # active/, which is where the allocator places new in-flight work.
+  # The shipped/ subdirectory is intentionally NOT scanned — shipped
+  # features are done and shouldn't have in_progress tasks anyway.
   SIGNAL_INPROGRESS_COUNT=$(grep -rhE '^status:[[:space:]]*in_progress[[:space:]]*$' \
-    "$TASKS_GLOB"/*/tasks/*.yaml 2>/dev/null | wc -l | tr -d ' ')
+    "$TASKS_GLOB"/*/tasks/*.yaml \
+    "$TASKS_GLOB"/active/*/tasks/*.yaml \
+    2>/dev/null | wc -l | tr -d ' ')
 fi
 
 if [[ "$SIGNAL_INPROGRESS_COUNT" -eq 0 ]]; then

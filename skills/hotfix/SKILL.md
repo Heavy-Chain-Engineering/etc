@@ -129,7 +129,7 @@ The single-lock check is defense against rollback-of-rollback confusion under st
 
 ### Phase 2: /build Preemption (BR-005)
 
-Scan `.etc_sdlc/features/*/state.yaml` for any file whose `current_step` is in `{3, 4, 5, 6, 7}` (the wave-execution steps) AND `waves_completed < total_waves`. Use `pyyaml` to parse.
+Scan `.etc_sdlc/features/*/state.yaml` **AND `.etc_sdlc/features/active/*/state.yaml`** for any file whose `current_step` is in `{3, 4, 5, 6, 7}` (the wave-execution steps) AND `waves_completed < total_waves`. Use `pyyaml` to parse. (F009-lifecycle-gap fix: the allocator places new features under `active/`, so the flat-only glob misses in-flight features. Do NOT scan `shipped/` — completed features should not have mid-wave state.)
 
 **If no match**, Phase 2 is a no-op. Proceed silently to Phase 3.
 

@@ -66,6 +66,55 @@ FILES_WEIGHT = 1.0      # Each file in scope adds ~1.0 points
 DECOMPOSE_THRESHOLD = 7  # Tasks scoring > 7 should be decomposed
 
 
+# F009-lifecycle-gap fix: F009 lifecycle-aware feature directory resolution. The allocator
+# places new features under `.etc_sdlc/features/active/F<NNN>-<slug>/`;
+# legacy features remain at `.etc_sdlc/features/F<NNN>-<slug>/`;
+# shipped features move to `.etc_sdlc/features/shipped/F<NNN>-<slug>/`.
+# These helpers are inlined (rather than imported from feature_paths.py)
+# so tasks.py remains a single-file CLI that runs without sys.path setup.
+
+_FEATURE_LIFECYCLE_DIRS = ("active", "shipped", "rejections")
+
+
+def _find_feature_dir_lifecycle(root: Path, name: str) -> Path | None:
+    """Find `name` in active/, flat, or shipped/. Returns None if absent."""
+    features_dir = root / ".etc_sdlc" / "features"
+    for candidate in (
+        features_dir / "active" / name,
+        features_dir / name,
+        features_dir / "shipped" / name,
+    ):
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def _iter_all_feature_dirs(root: Path):
+    """Yield every feature directory across active/, flat, and shipped/."""
+    features_dir = root / ".etc_sdlc" / "features"
+    if not features_dir.is_dir():
+        return
+    # active/ subdirectory
+    active = features_dir / "active"
+    if active.is_dir():
+        for child in active.iterdir():
+            if child.is_dir():
+                yield child
+    # Flat path (excluding the lifecycle directory names themselves)
+    for child in features_dir.iterdir():
+        if not child.is_dir():
+            continue
+        if child.name in _FEATURE_LIFECYCLE_DIRS:
+            continue
+        yield child
+    # shipped/ subdirectory
+    shipped = features_dir / "shipped"
+    if shipped.is_dir():
+        for child in shipped.iterdir():
+            if child.is_dir():
+                yield child
+
+
 def find_task_files(root: Path, feature: str | None = None) -> list[Path]:
     """Find all task YAML files in feature dirs and global task dir.
 
@@ -76,19 +125,21 @@ def find_task_files(root: Path, feature: str | None = None) -> list[Path]:
     """
     files: list[Path] = []
 
-    features_dir = root / ".etc_sdlc" / "features"
     if feature is not None:
-        scoped = features_dir / feature / "tasks"
-        if scoped.is_dir():
-            files.extend(sorted(scoped.glob("*.yaml")))
+        # F009-lifecycle-gap fix: honor F009 lifecycle. Search active/ → flat → shipped/.
+        feature_dir = _find_feature_dir_lifecycle(root, feature)
+        if feature_dir is not None:
+            scoped = feature_dir / "tasks"
+            if scoped.is_dir():
+                files.extend(sorted(scoped.glob("*.yaml")))
         return files
 
     # No feature filter — include every feature plus the legacy global dir.
-    if features_dir.is_dir():
-        for feature_dir in sorted(features_dir.iterdir()):
-            tasks_dir = feature_dir / "tasks"
-            if tasks_dir.is_dir():
-                files.extend(sorted(tasks_dir.glob("*.yaml")))
+    # F009-lifecycle-gap fix: iterate ALL feature dirs across active/ + flat + shipped/.
+    for feature_dir in sorted(_iter_all_feature_dirs(root)):
+        tasks_dir = feature_dir / "tasks"
+        if tasks_dir.is_dir():
+            files.extend(sorted(tasks_dir.glob("*.yaml")))
 
     global_tasks = root / ".etc_sdlc" / "tasks"
     if global_tasks.is_dir():
@@ -735,13 +786,37 @@ def _validate_task_dict(task: object, label: str) -> None:
 
 
 def _resolve_task_path(root: Path, task: dict, feature: str | None) -> Path:
-    """Compute the final on-disk path for a task, with traversal guards."""
+    """Compute the final on-disk path for a task, with traversal guards.
+
+    F009-lifecycle-gap fix: honors F009 lifecycle. If the feature already exists under
+    active/ or flat path, write tasks into the existing location. If
+    only shipped/ has it, refuse (can't modify a shipped feature). If
+    no feature dir exists, create at the flat path as the legacy
+    default — callers expected to allocate via /spec or feature_id.py
+    first, but bulk-create's historical behavior is to auto-create
+    the flat path, and we preserve that for backwards compatibility.
+    """
     if feature is not None:
         if not _path_token_safe(feature):
             raise TaskValidationError(
                 f"invalid --feature value '{feature}' (path traversal guard)"
             )
-        tasks_dir = root / ".etc_sdlc" / "features" / feature / "tasks"
+        feature_dir = _find_feature_dir_lifecycle(root, feature)
+        if feature_dir is not None:
+            # Refuse to write into shipped/. (TaskValidationError inherits
+            # from ValueError so we can't use a try/except ValueError dance
+            # around relative_to — it would swallow our own raise. Use
+            # is_relative_to which is bool-shaped.)
+            shipped_root = (root / ".etc_sdlc" / "features" / "shipped").resolve()
+            if feature_dir.resolve().is_relative_to(shipped_root):
+                raise TaskValidationError(
+                    f"feature '{feature}' is in shipped/; cannot modify a "
+                    f"shipped feature. Allocate a new feature via /spec."
+                )
+            tasks_dir = feature_dir / "tasks"
+        else:
+            # Fallback: legacy flat-path auto-creation.
+            tasks_dir = root / ".etc_sdlc" / "features" / feature / "tasks"
     else:
         tasks_dir = root / ".etc_sdlc" / "tasks"
 
