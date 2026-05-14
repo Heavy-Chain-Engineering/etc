@@ -1133,6 +1133,55 @@ existing `<feature_path>`.
    Format mirrors the deprecated `agents/ui-designer.md`'s output
    format adapted for impeccable's token vocabulary (per BR-007).
 
+4.5. **Compose the Google-spec DESIGN.md (F018).** After impeccable's
+   freeform PRODUCT.md + DESIGN.md exist at the repo root, dispatch the
+   compose script to produce a canonical Google-spec DESIGN.md:
+
+   ```bash
+   python3 ~/.claude/scripts/design_md_compose.py \
+       DESIGN.md \
+       PRODUCT.md \
+       --out DESIGN.md
+   ```
+
+   The compose:
+   - Extracts `name` + `description` from PRODUCT.md's first heading and
+     intro paragraph.
+   - Extracts hex color values from impeccable's freeform DESIGN.md (with
+     role-mapping heuristics for `primary`, `accent`, `background`,
+     `text`); leftover hex values get sequential `colorN` names.
+   - Extracts typography font-family values when impeccable mentions a
+     font name near `body|copy|paragraph[s]?` or `heading[s]?|display|title`
+     prose tokens.
+   - Emits canonical Markdown sections in Google's documented order
+     (Overview, Colors, Typography, Layout, Elevation & Depth, Shapes,
+     Components, Do's and Don'ts); skips sections with no content.
+   - Preserves the original impeccable DESIGN.md at `DESIGN-impeccable.md`
+     (intermediate artifact; never overwritten).
+   - Invokes `npx @google/design.md lint DESIGN.md` as a best-effort
+     validation step. Exit 2 on lint errors (operator runs `/design
+     --refresh` after fixing); exit 0 on warnings or info-only findings;
+     exit 0 if npx is unavailable (skipped silently).
+
+   When `@google/design.md` is not installed (install.sh preflight INFO
+   surfaces this case), the compose runs without lint validation. The
+   `version: "alpha"` pin in the frontmatter aligns with Google's current
+   spec status; update via the operator-facing `/design --refresh` flow
+   when Google ships v1.0.
+
+   **Operator-facing convenience modes:**
+   - `/design --lint` — re-run `npx @google/design.md lint DESIGN.md` and
+     surface findings without re-composing.
+   - `/design --export <format>` — passthrough to
+     `npx @google/design.md export --format <format> DESIGN.md` for
+     `tailwind`, `css-tailwind`, `json-tailwind`, or `dtcg`.
+   - `/design --refresh` — re-compose from `DESIGN-impeccable.md` +
+     `PRODUCT.md` (use after manual refinement of the impeccable
+     intermediate artifact).
+   - `/design --spec` — print Google's format spec via
+     `npx @google/design.md spec` (useful as context for AI agents
+     consuming the design system).
+
 5. **Append `design_phase` block to `state.yaml`.** Add or merge
    into `<feature_path>/state.yaml` (merge-preserve per F006
    BR-008 — read existing state.yaml, mutate only the
@@ -1148,6 +1197,7 @@ existing `<feature_path>`.
        fill_ratio: <float>
      design_author_role: <SME | Engineer | PM | Designer | sanitized free-form>
      impeccable_version_pinned: <semver, e.g. "3.0.7">
+     google_designmd_version_pinned: <semver or "alpha">   # F018
      tier_0_promoted: <bool>
      completed_at: <ISO-8601 UTC>
    ```

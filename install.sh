@@ -196,6 +196,7 @@ info "Scope: $SCOPE_FLAG — installing into $TARGET_DIR"
 F010_INFO_LINE="INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack (GitHub's official extension, currently in private preview at https://github.github.com/gh-stack/). Install via: gh extension install github/gh-stack (or equivalent). Single-wave builds work without it."
 F011_INFO_LINE="INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npm install -g impeccable (or equivalent). Features without a /design phase work without it."
 F016_INFO_LINE="INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: brew install mergiraf (macOS) | cargo install mergiraf | https://mergiraf.org for other platforms."
+F018_INFO_LINE="INFO: @google/design.md not detected. /design phase output (etc F018+) validates against Google's DESIGN.md spec (https://github.com/google-labs-code/design.md). Install via: npm install -g @google/design.md (or run via npx). Features without /design work without it."
 
 offer_install() {
     # Args:
@@ -259,6 +260,17 @@ if ! command -v mergiraf >/dev/null 2>&1; then
         *)      mergiraf_cmd="cargo install mergiraf" ;;
     esac
     offer_install "Mergiraf" "$F016_INFO_LINE" "$mergiraf_cmd"
+fi
+
+# @google/design.md (F018 — DESIGN.md compose + lint). Detected via npm
+# package presence in either global node_modules OR by running `npx -y
+# @google/design.md spec` as a probe (the spec subcommand is fast and
+# only succeeds when the package is reachable). For install.sh we
+# default to the npm-global probe; offline operators can run npx
+# transparently. The fallback recommendation uses npm-global so the
+# operator picks it up across projects without re-downloading per run.
+if ! npm list -g --depth=0 @google/design.md >/dev/null 2>&1; then
+    offer_install "@google/design.md" "$F018_INFO_LINE" "npm install -g @google/design.md"
 fi
 
 # ── 1. Create directory structure ────────────────────────────────────────

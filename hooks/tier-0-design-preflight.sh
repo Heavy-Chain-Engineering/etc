@@ -221,8 +221,20 @@ if [ ! -f "$REPO_ROOT/DESIGN.md" ]; then
   MISSING="$MISSING DESIGN.md"
 fi
 
-if [ -z "$MISSING" ]; then
-  # Both files present — allow.
+# F018 — when DESIGN.md is present, validate it begins with YAML
+# frontmatter (the `---` delimiter on line 1). This is a fast structural
+# check, not a full lint. The full lint runs at /design Phase 4.5 via
+# `npx @google/design.md lint`. Hook stays cheap.
+MALFORMED=""
+if [ -z "$MISSING" ] && [ -f "$REPO_ROOT/DESIGN.md" ]; then
+  FIRST_LINE=$(head -n 1 "$REPO_ROOT/DESIGN.md" 2>/dev/null || true)
+  if [ "$FIRST_LINE" != "---" ]; then
+    MALFORMED="DESIGN.md (missing YAML frontmatter; first line is not '---')"
+  fi
+fi
+
+if [ -z "$MISSING" ] && [ -z "$MALFORMED" ]; then
+  # All present and DESIGN.md has frontmatter — allow.
   exit 0
 fi
 
@@ -237,15 +249,26 @@ fi
   echo "Feature state.yaml: $FEATURE_STATE_YAML"
   echo "Repo root:          $REPO_ROOT"
   echo ""
-  echo "Missing file(s):"
-  for m in $MISSING; do
-    echo "  - $REPO_ROOT/$m"
-  done
-  echo ""
-  echo "Fix: run /design (etc F011+) to generate the missing file(s) via"
-  echo "/impeccable teach, or install impeccable and run /impeccable teach"
-  echo "directly. See docs/adrs/F011-003-conditional-tier-0-promotion.md"
-  echo "for the rationale."
+  if [ -n "$MISSING" ]; then
+    echo "Missing file(s):"
+    for m in $MISSING; do
+      echo "  - $REPO_ROOT/$m"
+    done
+    echo ""
+    echo "Fix: run /design (etc F011+) to generate the missing file(s) via"
+    echo "/impeccable teach, or install impeccable and run /impeccable teach"
+    echo "directly. See docs/adrs/F011-003-conditional-tier-0-promotion.md"
+    echo "for the rationale."
+  fi
+  if [ -n "$MALFORMED" ]; then
+    echo "Malformed:"
+    echo "  - $MALFORMED"
+    echo ""
+    echo "Fix (F018): DESIGN.md must begin with YAML frontmatter per Google's"
+    echo "DESIGN.md spec. Run /design --refresh to re-compose from"
+    echo "DESIGN-impeccable.md, or hand-edit DESIGN.md to add the frontmatter"
+    echo "(version + name fields are required)."
+  fi
 } >&2
 
 exit 2
