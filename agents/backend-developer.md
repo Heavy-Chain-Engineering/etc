@@ -54,6 +54,20 @@ If any file does not exist, list it in the "Files Not Available" section of your
 
 ## Development Cycle (MANDATORY)
 
+### 0. SURVEY -- Find existing modules / services first
+
+See `standards/process/survey-before-build.md`. Skipping this step is a
+Definition-of-Done violation. For backend work, the typical search shape:
+
+```
+ls src/<package>/<module>/
+grep -rn "class <Entity>\|def list_<entity>\|def get_<entity>" src/
+```
+
+Examine the directory listing AND the grep hits before deciding to write
+a new file. If a sibling service / repository / route can be composed,
+extended, or have its parameters widened to fit, prefer that path.
+
 ### 1. RED -- Write a Failing Test
 - Create the test file: `tests/path/test_{module}.py`
 - Write one focused test using naming convention: `test_should_<behavior>_when_<condition>`

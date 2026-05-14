@@ -48,6 +48,20 @@ If any file does not exist, note the gap but continue.
 
 ## Development Cycle (MANDATORY)
 
+### 0. SURVEY -- Find existing components/modules first
+
+See `standards/process/survey-before-build.md`. Skipping this step is a
+Definition-of-Done violation. For frontend work, the typical search shape:
+
+```
+ls src/components/<area>/
+grep -l "useList<Entity>\|<Entity>Tab\|<Entity>List\|<Entity>Card" src/
+```
+
+Examine the directory listing AND the grep hits before deciding to write
+a new file. If a sibling can be composed, extended, or have its
+props/scope widened to fit, prefer that path.
+
 ### 1. RED -- Write a Failing Test
 - Create test file: `ComponentName.test.tsx` or `useHookName.test.ts`
 - Write one focused test: `it('should <behavior> when <condition>')`
