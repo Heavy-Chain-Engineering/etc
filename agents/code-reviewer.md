@@ -43,8 +43,11 @@ Read these files in order:
 5. `~/.claude/standards/architecture/layer-boundaries.md` -- dependency direction
 6. `~/.claude/standards/process/code-review-process.md` -- review workflow
 7. `~/.claude/standards/process/codebase-navigation.md` -- LSP-first navigation
-8. `.claude/standards/` -- all project-level standards (if directory exists)
-9. `.meta/description.md` in the working directory (if file exists)
+8. `~/.claude/standards/process/survey-before-build.md` -- flag new files
+   that duplicate the shape or domain of existing files; reject PRs whose
+   survey rationale is missing or vague ("I didn't see one" is not valid)
+9. `.claude/standards/` -- all project-level standards (if directory exists)
+10. `.meta/description.md` in the working directory (if file exists)
 
 If a file does not exist, list it in the "Standards Not Available" section of your report and proceed with the heuristics below.
 
