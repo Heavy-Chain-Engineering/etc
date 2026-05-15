@@ -45,11 +45,38 @@ afterward.
 
 ## Enforcement
 
-This step is a gate in `definition-of-done.md` (Code section). The
-verifier will block task completion if the survey is missing or
-incomplete.
+This step is surfaced two places today:
+
+1. **DoD checkboxes** — `definition-of-done.md` Code section *and* the
+   tracker's Build-phase items in `.sdlc/dod-templates.json`. Marking the
+   box requires the agent to have done the survey and recorded
+   candidates/rejections somewhere a reviewer can read them (design note,
+   PR description, or feature directory).
+2. **Code Reviewer audit** — the `code-reviewer` agent reads this
+   standard in its required-reading list and flags PRs whose survey
+   rationale is missing or vague ("I didn't see one" is not valid).
+
+**What's not yet automated:** there is no script or hook that mechanically
+greps for survey evidence at task-completion time. The `verifier` agent
+runs the test / coverage / type / lint gates only — it has no detector
+for missing surveys. A mechanical gate (probable shape: `Survey:` block
+in a known artifact location, validated by a small script invoked from
+the verifier) is a planned follow-up; until it lands, enforcement is
+honor-system at the agent level and audit-by-reviewer at the PR level.
 
 When you reject a candidate, record both the candidate and the reason
 in your design note or PR description. A reviewer should be able to
 read the rejection list and agree with each call without asking you
 what you considered.
+
+## Related
+
+- `standards/process/user-flow-completeness.md` (F001) — closes the
+  inverse failure mode: a new surface ships but no navigation reaches
+  it. Survey-before-build catches new code that duplicates existing code;
+  user-flow-completeness catches new code that no user can reach.
+- `scripts/tasks.py` wave-planner (F008) — closes the wave-level analog:
+  two tasks in the same `/build` wave claim overlapping files. The wave
+  planner rejects the plan before dispatch. Survey-before-build is the
+  task-level scale-down: one agent, deciding whether to add a sibling
+  file at all.

@@ -34,6 +34,7 @@
     "Coverage meets project threshold",
     "Code reviewed by code-reviewer agent",
     "Security review passed",
+    "Existing components/modules/patterns surveyed before adding new ones (see standards/process/survey-before-build.md) — candidates named, rejections justified",
     "Docker Compose (or project run command) configured for local dev",
     "No blocking issues open"
   ],
@@ -41,6 +42,7 @@
     "Stack stood up via docker-compose (or project run command)",
     "SEM provided human with access URL and test instructions",
     "Human has completed acceptance testing",
+    "For backend schema / new-endpoint changes: running stack hit and asserted 2xx (curl, browser, equivalent) — green tests do not substitute for the long-lived dev environment",
     "Feedback addressed or deferred with justification"
   ],
   "Ship": [
