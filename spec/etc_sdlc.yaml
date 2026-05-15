@@ -458,6 +458,39 @@ gates:
     timeout: 15
     on_failure: block
 
+  chief-efficiency-officer:
+    description: >
+      Chief Efficiency Officer — Stop-hook reflection layer per Anthropic's
+      large-codebase guidance. Observes every Stop event, captures turn timing
+      with sleep-gap subtraction, computes active engagement on the current
+      task vs operator baseline (sdlc_timing.py), writes evidence-cited
+      proposals to .etc_sdlc/efficiency/proposals/ and rolling daily report
+      to .etc_sdlc/efficiency/daily/. Threshold-push interrupts the next
+      agent turn only on >3-hour active engagement without progress.
+      Evidence-based ONLY: every observation cites a data point + baseline +
+      gap. Never blocks the Stop event. F019 / 2026-05-15.
+    event: Stop
+    type: command
+    script: chief-efficiency-officer.sh
+    timeout: 10
+    on_failure: continue
+
+  sandbox-bypass-tracker:
+    description: >
+      Tracks each Bash invocation with dangerouslyDisableSandbox: true.
+      Appends one JSONL line per bypass event to
+      .etc_sdlc/efficiency/sandbox-bypasses.jsonl for the Chief Efficiency
+      Officer Stop hook to consume. Never blocks. Schema:
+      {event_id, started_at, command_snippet, description}. Pairs with F019
+      to make bypass discipline observable (F021 audit layer collapsed
+      into F019). 2026-05-15.
+    event: PreToolUse
+    matcher: Bash
+    type: command
+    script: sandbox-bypass-tracker.sh
+    timeout: 5
+    on_failure: continue
+
   change-control:
     description: >
       Prevents the agent from modifying its own governance. Blocks
@@ -817,6 +850,23 @@ skills:
     usage: "/journey [<one-liner>] | /journey --from-text <path> | /journey --refine J-<NNN> | /journey --list"
     source: skills/journey/SKILL.md
     primary_phase: spec
+    model: opus
+
+  efficiency:
+    name: "efficiency"
+    description: >
+      Chief Efficiency Officer operator commands. Reviews evidence-cited
+      proposals queued by the Stop-hook reflection layer (F019), reads
+      the rolling daily efficiency report, queries operator velocity
+      baseline (via sdlc_timing.py), and mutes threshold-push interrupts
+      for defined windows. All observations are evidence-based — every
+      proposal cites data points + operator baseline + gap; no
+      hallucinated narrative. The CEO does NOT block work; this skill
+      surfaces what the CEO observed for operator review. F019 /
+      2026-05-15.
+    usage: "/efficiency review | /efficiency today | /efficiency baseline | /efficiency mute --until <iso8601> --reason \"<text>\""
+    source: skills/efficiency/SKILL.md
+    primary_phase: meta
     model: opus
 
 # ─── Standards ───���───────────────────────────────────────────────────────

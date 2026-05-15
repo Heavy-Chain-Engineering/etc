@@ -48,7 +48,8 @@ Read these files in order before making any edit:
 3. `~/.claude/standards/code/python-conventions.md` (if the project is Python)
 4. `~/.claude/standards/code/typing-standards.md` (if the project is Python)
 5. `~/.claude/standards/testing/testing-standards.md` (if present)
-6. `~/.claude/standards/process/survey-before-build.md` -- before extracting
+6. `~/.claude/standards/process/codebase-navigation.md` — use LSP (`findReferences`, `goToDefinition`) before refactoring a symbol; identifies every call site without false positives so the refactor scope is precise.
+7. `~/.claude/standards/process/survey-before-build.md` -- before extracting
    a new helper or module, confirm no existing one fits; the simplifier's
    job is to consolidate, not to create new shapes that compete with old ones
 

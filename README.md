@@ -11,7 +11,7 @@ The name stands for **Engineering Team, Codified**. The team being codified is H
 etc is built for **mixed teams**. Different roles use the same harness without stepping on each other:
 
 - **Product Managers** specify features through guided Socratic questioning rather than blank-page PRDs. `/spec` runs the conversation.
-- **Subject Matter Experts** file domain requests that get pulled, scoped, and either built or returned with specific clarifying questions. `/pull-tickets` reads from Linear.
+- **Subject Matter Experts** capture the work they actually do — contract execution, claims processing, customer onboarding — in plain English through `/journey`. Output feeds `/spec`. Inbound domain requests from Linear are pulled, scoped, and either built or returned with specific clarifying questions via `/pull-tickets`.
 - **Designers** capture user flows, design tokens, and component specs. `/design` is the dedicated phase — it wraps [pbakaus/impeccable](https://github.com/pbakaus/impeccable) for Socratic design-context capture (PRODUCT.md + DESIGN.md) and a browser-extension iteration loop. Output feeds `/spec`.
 - **Architects** turn specs into architecture and ADRs. `/architect` is the dedicated phase.
 - **Engineers** decompose, dispatch, build, verify, and ship. `/build` runs the conductor pipeline.
@@ -44,10 +44,12 @@ Four phases are fully built today: **design**, **spec**, **architect**, and **bu
 |---|---|---|
 | **Discover** *(brownfield, optional)* | system-portrait, dependency-map, complexity assessment | `/discovery` |
 | **Roadmap** *(strategic, optional)* | phased plan with entry/exit criteria | `/roadmap` |
+| **Journey** *(SME-led, optional)* | journey artifacts at `docs/mvp/journeys/J-NNN-*.md`; the intersection IS the MVP | `/journey` |
 | **Design** *(wraps pbakaus/impeccable)* | PRODUCT.md, DESIGN.md, design-tokens.json, component-specs.md | `/design` |
 | **Spec** | spec.md — requirements, ACs, edge cases, value hypothesis | `/spec` |
 | **Architect** | design.md — architecture, data model, APIs, ADRs | `/architect` |
 | **Build** | working code, green tests, audit trail | `/build` |
+| **Reflect** *(continuous)* | turn-by-turn engagement data, evidence-cited proposals, daily efficiency report | `/efficiency` |
 | **Maintain** | hotfix incidents, prevention rules | `/hotfix`, `/postmortem` |
 
 ---
@@ -77,7 +79,7 @@ Three steps. The compile is sub-second; the install merges hooks into your exist
 
 ```bash
 uv sync          # Install test dependencies
-uv run pytest    # 990+ contract tests, ~35 seconds
+uv run pytest    # 1000+ contract tests, ~35 seconds
 ```
 
 Then in Claude Code, try editing a `src/` file in a real project without writing a test first. The TDD hook will block the edit and tell you why. That is the harness working.
@@ -115,7 +117,7 @@ That is a complete spec session. From there:
 
 | Layer | What | Where |
 |---|---|---|
-| **Skills** | 16 workflows (`/spec`, `/architect`, `/build`, `/discovery`, `/hotfix`, …) | `skills/<name>/SKILL.md` |
+| **Skills** | 19 workflows (`/spec`, `/architect`, `/build`, `/journey`, `/design`, `/discovery`, `/efficiency`, `/hotfix`, …) | `skills/<name>/SKILL.md` |
 | **Agents** | 24 role specialists (sem, architect, backend-developer, security-reviewer, …) | `agents/<name>.md` |
 | **Standards** | Engineering rules every role inherits | `standards/<category>/*.md` |
 | **Hooks** | Mechanical enforcement on Claude Code lifecycle events | `hooks/*.sh` |
@@ -154,6 +156,9 @@ Incident response lane. Use when production is on fire and the normal `/spec →
 
 ### `/postmortem`
 Trace an escaped bug to root cause and append a prevention rule. Runs after every `/hotfix`; also runs standalone on any escaped bug. Produces an entry in `.etc_sdlc/antipatterns.md` keyed by class of bug, with the gate that should have caught it. Future `/spec` invocations on the same project read this file in Phase 2 and incorporate the prevention rule.
+
+### `/efficiency`
+Continuous engagement-data reflection layer (F019). A Stop hook captures every turn end to `.etc_sdlc/efficiency/turn-events.jsonl` and a rolling daily report at `.etc_sdlc/efficiency/daily/<YYYY-MM-DD>.md`. A PreToolUse hook audits every `dangerouslyDisableSandbox: true` invocation. Proposals are **evidence-cited only** — each one names a data point, a baseline, and a gap; no hallucinated narrative. Active engagement is computed wall-clock minus sleep gaps > `CEO_IDLE_THRESHOLD_MINUTES` (default 5). Subcommands: `/efficiency review` walks the queued proposals, `/efficiency today` prints today's report, `/efficiency baseline` shows feature-velocity percentiles + LOC churn from `scripts/sdlc_timing.py`, `/efficiency mute --until <iso8601> --reason "<text>"` suppresses threshold-push proposals temporarily.
 
 ### `/pull-tickets`
 Closed-loop ticket pipeline. Pulls Linear tickets via MCP, generates PRDs from ticket content plus codebase research, runs `/build`, creates PRs on success, or returns the ticket to the source with specific tactful clarifying questions on failure. Source-aware rejection routing — feedback reaches the SME in the tool they actually use. `--triage-only` analyses the board without building. `--concurrency N` processes up to N tickets in parallel.
@@ -210,6 +215,7 @@ Recent features, newest first. Each is a fully shipped PRD with tests, audit tra
 
 | Feature | What changed |
 |---|---|
+| **F019** | Chief Efficiency Officer — Stop-hook reflection layer per Anthropic's large-codebase guidance. New Stop hook `chief-efficiency-officer.sh` captures every turn end to `.etc_sdlc/efficiency/turn-events.jsonl`, computes active engagement on the current task (sleep gaps > 5 min subtracted, env-tunable via `CEO_IDLE_THRESHOLD_MINUTES`), writes evidence-cited proposals to `.etc_sdlc/efficiency/proposals/`, and updates a rolling daily report at `.etc_sdlc/efficiency/daily/<YYYY-MM-DD>.md`. New PreToolUse hook `sandbox-bypass-tracker.sh` audits every `dangerouslyDisableSandbox: true` invocation. New `/efficiency` skill: `review`, `today`, `baseline`, `mute --until --reason`. Evidence-based ONLY — every observation cites data points + baseline + gap; no hallucinated narrative. Collapses 3 prior queued tasks (stuck-loop detector, operator watchdog, sandbox audit) into one architectural piece. |
 | **F018** | Adopt Google's official DESIGN.md spec (Apache 2.0, https://github.com/google-labs-code/design.md) as canonical `/design` output. Impeccable's freeform DESIGN.md → input; Google's spec (YAML frontmatter + canonical Markdown sections) → output. `scripts/design_md_compose.py` extracts hex colors with role-mapping, typography font-family tokens, brand-voice prose (Overview), and anti-references (Do's and Don'ts). Original impeccable file preserved at `DESIGN-impeccable.md`. `npx @google/design.md lint` runs as a best-effort validator. New operator commands: `/design --lint`, `/design --export {tailwind\|css-tailwind\|json-tailwind\|dtcg}`, `/design --refresh`, `/design --spec`. `install.sh` preflight prompts for `@google/design.md` install (interactive only). The tier-0 design preflight hook now also validates DESIGN.md has YAML frontmatter when tier-0 is promoted. AI agents that have been trained on Google's spec now parse etc-produced design systems natively. |
 | **F017** | `/journey` skill for SME-led customer-journey capture. Walks a domain expert through 6 plain-English Socratic questions (plus 1 optional emotion question), saves the result to `docs/mvp/journeys/J-NNN-<slug>.md`. Pairs with `/spec` via a new `journey_refs:` field in `state.yaml.spec_phase`. `/build` Step 7.4 fails on empty `journey_refs` UNLESS the spec declares `infrastructure_only: true` + a one-line reason (library upgrade, harness internals, CI tooling). Legacy F001-F016 features pass automatically via a date-check against the F017 release tag. Operator override: `--skip-journey-check="<reason>"` with mandatory non-empty reason logged to verification.md + release-notes.md. Built for non-technical SMEs — forbidden vocabulary includes "acceptance criteria", "stakeholder", "user story"; encouraged vocabulary includes "what they click", "where they get stuck", "how they feel". The intersection of journeys IS the MVP. |
 | **F016** | Merge discipline at scale — three carve-outs of the R2-R7 bundle. **R2 (cross-feature collision detection at wave-plan time):** `scripts/cross_feature_collision_check.py` scans every in-flight feature's `files_in_scope` and reports overlaps before /build executes; under `--autonomous` mode the collisions are logged to `state.yaml.build.cross_feature_collisions` and the build proceeds with audit trail. **R3 (Mergiraf preflight):** `install.sh` emits non-blocking INFO if Mergiraf isn't on PATH (semantic merge tool for stacked-PR rebase chains). **R7 (submission/merged schema):** `state.yaml.build.submission` + `state.yaml.build.merged` documented per the Stripe Minions submission-vs-merge distinction (schema only; auto-population deferred). R6 (verification-time return-check / Anthropic Auto Mode pattern) is deferred as its own follow-up. Etc's distinctive market position: no surveyed competitor ships cross-feature scanning. |

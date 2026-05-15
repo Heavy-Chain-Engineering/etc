@@ -195,6 +195,49 @@ class TestWeeklyRollup:
         assert "2026-W20" in result.stdout
 
 
+class TestLOCFields:
+    """Each ship dict carries files_changed, insertions, deletions, churn."""
+
+    def test_loc_fields_present_in_json_output(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        _commit(repo, "feat(F001): first ship", "2026-05-01T10:00:00+00:00")
+        result = _run(repo, "--json")
+        payload = json.loads(result.stdout)
+        assert len(payload) == 1
+        s = payload[0]
+        for field in ("files_changed", "insertions", "deletions", "churn"):
+            assert field in s, f"missing LOC field: {field}"
+
+    def test_loc_fields_have_nonzero_values_for_real_commits(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        # Commit a file with content; should produce >0 insertions
+        _commit(repo, "feat(F001): content ship", "2026-05-01T10:00:00+00:00")
+        result = _run(repo, "--json")
+        payload = json.loads(result.stdout)
+        assert payload[0]["files_changed"] >= 1
+        assert payload[0]["insertions"] >= 1
+        assert payload[0]["churn"] == payload[0]["insertions"] + payload[0]["deletions"]
+
+    def test_detail_view_renders_loc_lines(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        _commit(repo, "feat(F001): detail", "2026-05-01T10:00:00+00:00")
+        result = _run(repo, "--feature", "F001")
+        assert "Files changed:" in result.stdout
+        assert "Insertions:" in result.stdout
+        assert "Deletions:" in result.stdout
+        assert "Churn" in result.stdout
+
+    def test_baseline_view_reports_churn_percentiles(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        _commit(repo, "feat(F001): a", "2026-05-01T10:00:00+00:00")
+        _commit(repo, "feat(F002): b", "2026-05-01T12:00:00+00:00", "f2.txt")
+        _commit(repo, "feat(F003): c", "2026-05-02T10:00:00+00:00", "f3.txt")
+        result = _run(repo, "--baseline")
+        assert "Churn per ship" in result.stdout
+        assert "median:" in result.stdout
+        assert "LOC" in result.stdout
+
+
 class TestJSON:
     def test_default_json_is_list(self, tmp_path: Path) -> None:
         repo = _init_repo(tmp_path)

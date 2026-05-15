@@ -52,6 +52,8 @@ This order matters. Domain axioms override defaults. Domain understanding shapes
 
 **CRITICAL: Read `~/.claude/standards/process/domain-fidelity.md`** — understand why domain fidelity is the most important constraint in research.
 
+**CODEBASE NAVIGATION: Read `~/.claude/standards/process/codebase-navigation.md`** — use LSP operations (`findReferences`, `workspaceSymbol`, `goToDefinition`, etc.) as first choice for symbol-anchored questions. Fall back to grep/find/Read only when LSP doesn't apply (textual patterns, non-symbol queries, file-name globbing). Symbol-anchored navigation eliminates false positives and reduces context waste — Anthropic's stated recommendation for large-codebase work.
+
 If source material includes PDFs, read them using the Read tool (it handles PDFs). For large PDFs (10+ pages), read in page ranges — pass the `pages` parameter with values like "1-10", then "11-20".
 
 ## Your Responsibilities
