@@ -51,6 +51,13 @@ from typing import Any
 FEATURE_TAG_PATTERN = re.compile(r"^etc/feature/(F\d+)/(.+)$")
 # Match `feat(F017):` or `feat(F017-slug):` or `fix(F012):` at start of line.
 FEAT_COMMIT_PATTERN = re.compile(r"^(?:feat|fix)\((F\d+)[^)]*\)", re.MULTILINE)
+# Parse `git show --shortstat` output:
+#   " 5 files changed, 100 insertions(+), 20 deletions(-)"
+#   " 1 file changed, 3 insertions(+)"        (no deletions case)
+#   " 2 files changed, 10 deletions(-)"        (no insertions case)
+SHORTSTAT_FILES_PATTERN = re.compile(r"(\d+) files? changed")
+SHORTSTAT_INSERTIONS_PATTERN = re.compile(r"(\d+) insertions?\(\+\)")
+SHORTSTAT_DELETIONS_PATTERN = re.compile(r"(\d+) deletions?\(-\)")
 
 
 def git(repo: Path, *args: str) -> str:
@@ -67,16 +74,51 @@ def git(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+def get_commit_loc(repo: Path, sha: str) -> dict[str, int]:
+    """Return {files_changed, insertions, deletions, churn} for a single commit.
+
+    Runs `git show --shortstat --format= <sha>` and parses the shortstat
+    output. Returns zeros for any field not present in the output (e.g.,
+    a docs-only commit may have no insertions(+) line in some edge cases).
+
+    `churn = insertions + deletions` — the "amount of work done" measure
+    that doesn't undercount refactoring (pure insertions does) or ignore
+    new code (pure deletions does).
+    """
+    try:
+        output = git(repo, "show", "--shortstat", "--format=", sha)
+    except RuntimeError:
+        return {"files_changed": 0, "insertions": 0, "deletions": 0, "churn": 0}
+    files = SHORTSTAT_FILES_PATTERN.search(output)
+    ins = SHORTSTAT_INSERTIONS_PATTERN.search(output)
+    dels = SHORTSTAT_DELETIONS_PATTERN.search(output)
+    files_n = int(files.group(1)) if files else 0
+    ins_n = int(ins.group(1)) if ins else 0
+    dels_n = int(dels.group(1)) if dels else 0
+    return {
+        "files_changed": files_n,
+        "insertions": ins_n,
+        "deletions": dels_n,
+        "churn": ins_n + dels_n,
+    }
+
+
 def list_feature_ships(repo: Path) -> list[dict[str, Any]]:
     """Return a chronologically-sorted list of feature ships.
 
-    Each entry: {feature_id, commit_sha, commit_date, subject}.
+    Each entry: {feature_id, commit_sha, commit_date, subject,
+                 files_changed, insertions, deletions, churn}.
 
     A ship is detected by a commit whose subject line starts with
     `feat(F<NNN>):` or `fix(F<NNN>):` — the canonical etc shipping-commit
     prefix. We dedupe by feature_id: if a feature has multiple commits
     (e.g., F012 had a fix-up `32cd749`), we keep the EARLIEST as the
     "initial ship" timestamp. Fix-ups don't reset the ship clock.
+
+    LOC fields are populated from `git show --shortstat` per ship commit.
+    These represent the INITIAL ship's churn; subsequent fix-up commits
+    on the same F<NNN> are NOT included in v1 (would inflate the number
+    in a way that conflates initial-ship work vs. follow-up maintenance).
     """
     log_output = git(
         repo,
@@ -113,7 +155,18 @@ def list_feature_ships(repo: Path) -> list[dict[str, Any]]:
                 "commit_date": date_str,
                 "commit_date_dt": dt,
                 "subject": subject,
+                # LOC fields populated below after dedupe — one git call per
+                # winning ship rather than one per matched commit.
             }
+
+    # Populate LOC for each winning ship (one `git show` per feature)
+    for fid, ship in ships_by_id.items():
+        # Resolve full sha from the truncated 7-char form
+        try:
+            full_sha = git(repo, "rev-parse", ship["commit_sha"])
+        except RuntimeError:
+            full_sha = ship["commit_sha"]
+        ship.update(get_commit_loc(repo, full_sha))
 
     return sorted(ships_by_id.values(), key=lambda s: s["commit_date_dt"])
 
@@ -201,29 +254,41 @@ def format_duration(seconds: float | None) -> str:
 
 
 def render_table(ships: list[dict[str, Any]]) -> None:
-    """Default summary table: feature ships chronologically + inter-ship gap."""
+    """Default summary table: feature ships chronologically + inter-ship gap + LOC."""
     if not ships:
         print("No feat(F<NNN>) shipping commits found in this repo.")
         return
 
     header = (
-        f"{'Feature':<8} {'Title':<46} {'Shipped':<20} {'Gap from prev':<14}"
+        f"{'Feature':<8} {'Title':<40} {'Shipped':<20} {'Gap':<12} {'Files':<7} {'+LOC':<7} {'-LOC':<7} {'Churn':<7}"
     )
     print(header)
     print("-" * len(header))
     for s in ships:
-        title = s.get("title", "")[:44]
-        shipped = s["commit_date"][:19].replace("T", " ")  # YYYY-MM-DD HH:MM:SS
+        title = s.get("title", "")[:38]
+        shipped = s["commit_date"][:19].replace("T", " ")
         gap = format_duration(s["interval_from_prev_s"])
-        print(f"{s['feature_id']:<8} {title:<46} {shipped:<20} {gap:<14}")
+        files = s.get("files_changed", 0)
+        ins = s.get("insertions", 0)
+        dels = s.get("deletions", 0)
+        churn = s.get("churn", 0)
+        print(
+            f"{s['feature_id']:<8} {title:<40} {shipped:<20} {gap:<12} "
+            f"{files:<7} {ins:<7} {dels:<7} {churn:<7}"
+        )
 
     # Aggregates
     intervals = [s["interval_from_prev_s"] for s in ships if s["interval_from_prev_s"]]
+    churns = [s.get("churn", 0) for s in ships if s.get("churn", 0) > 0]
     print()
-    print(f"Features shipped:   {len(ships)}")
+    print(f"Features shipped:        {len(ships)}")
     if intervals:
-        print(f"Median inter-ship gap:  {format_duration(statistics.median(intervals))}")
-        print(f"p90 inter-ship gap:     {format_duration(_percentile(intervals, 90))}")
+        print(f"Median inter-ship gap:   {format_duration(statistics.median(intervals))}")
+        print(f"p90 inter-ship gap:      {format_duration(_percentile(intervals, 90))}")
+    if churns:
+        print(f"Median churn per ship:   {int(statistics.median(churns))} LOC")
+        print(f"p90 churn per ship:      {int(_percentile(churns, 90))} LOC")
+        print(f"Total churn (sum):       {sum(churns)} LOC")
     if len(ships) >= 2:
         first_dt = ships[0]["commit_date_dt"]
         last_dt = ships[-1]["commit_date_dt"]
@@ -231,9 +296,12 @@ def render_table(ships: list[dict[str, Any]]) -> None:
         if span_s > 0:
             ships_per_day = len(ships) / (span_s / 86400)
             ships_per_week = len(ships) / (span_s / 604800)
-            print(f"Span:               {format_duration(span_s)}")
-            print(f"Ships per day:      {ships_per_day:.2f}")
-            print(f"Ships per week:     {ships_per_week:.2f}")
+            print(f"Span:                    {format_duration(span_s)}")
+            print(f"Ships per day:           {ships_per_day:.2f}")
+            print(f"Ships per week:          {ships_per_week:.2f}")
+            if churns:
+                churn_per_hour = sum(churns) / (span_s / 3600)
+                print(f"Churn per active hour:   {churn_per_hour:.1f} LOC/h (wall-clock)")
 
 
 def render_detail(s: dict[str, Any], tags: list[tuple[str, datetime]]) -> None:
@@ -246,6 +314,10 @@ def render_detail(s: dict[str, Any], tags: list[tuple[str, datetime]]) -> None:
     print(f"  Ship subject:   {s['subject']}")
     print(f"  Shipped at:     {s['commit_date']}")
     print(f"  Gap from prev:  {format_duration(s.get('interval_from_prev_s'))}")
+    print(f"  Files changed:  {s.get('files_changed', 0)}")
+    print(f"  Insertions:     +{s.get('insertions', 0)} LOC")
+    print(f"  Deletions:      -{s.get('deletions', 0)} LOC")
+    print(f"  Churn (total):  {s.get('churn', 0)} LOC")
     print()
     if tags:
         print(f"  Phase tags ({len(tags)} found):")
@@ -288,7 +360,7 @@ def render_weekly_rollup(ships: list[dict[str, Any]]) -> None:
 
 
 def render_baseline(ships: list[dict[str, Any]]) -> None:
-    """Operator velocity baseline: inter-ship gap percentiles + cadence."""
+    """Operator velocity baseline: inter-ship gap percentiles + cadence + LOC."""
     intervals = [s["interval_from_prev_s"] for s in ships if s["interval_from_prev_s"]]
     if not intervals:
         print("Need at least 2 shipped features to compute baseline.")
@@ -303,13 +375,29 @@ def render_baseline(ships: list[dict[str, Any]]) -> None:
     print(f"    p90:     {format_duration(_percentile(intervals, 90))}")
     print(f"    min:     {format_duration(min(intervals))}")
     print(f"    max:     {format_duration(max(intervals))}")
+
+    churns = [s.get("churn", 0) for s in ships if s.get("churn", 0) > 0]
+    if churns:
+        print()
+        print(f"  Churn per ship (LOC, insertions + deletions):")
+        print(f"    median:  {int(statistics.median(churns))} LOC")
+        print(f"    p10:     {int(_percentile(churns, 10))} LOC")
+        print(f"    p50:     {int(_percentile(churns, 50))} LOC")
+        print(f"    p90:     {int(_percentile(churns, 90))} LOC")
+        print(f"    min:     {min(churns)} LOC")
+        print(f"    max:     {max(churns)} LOC")
+        print(f"    sum:     {sum(churns)} LOC (total work shipped)")
+
     if len(ships) >= 2:
         span = (ships[-1]["commit_date_dt"] - ships[0]["commit_date_dt"]).total_seconds()
         if span > 0:
             print()
-            print(f"  Total span:       {format_duration(span)}")
-            print(f"  Ships per day:    {len(ships) / (span / 86400):.2f}")
-            print(f"  Ships per week:   {len(ships) / (span / 604800):.2f}")
+            print(f"  Total span:           {format_duration(span)}")
+            print(f"  Ships per day:        {len(ships) / (span / 86400):.2f}")
+            print(f"  Ships per week:       {len(ships) / (span / 604800):.2f}")
+            if churns:
+                churn_per_hour = sum(churns) / (span / 3600)
+                print(f"  Churn per hour:       {churn_per_hour:.1f} LOC/h (wall-clock)")
 
 
 def _percentile(values: list[float], pct: float) -> float:
