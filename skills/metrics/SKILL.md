@@ -203,6 +203,46 @@ Categorize each tag and roll up:
   the literal note "No `etc/feature/*` tags found (non-git directory,
   no HEAD commit, or no tagged features yet)." and proceed.
 
+After the tag-category rollup, surface two sdlc_timing.py sub-reports
+inside the same Process section. Both views read from git tags + commit
+history (the same authoritative source as the rollup above), so this
+does NOT violate BR-010 (no cross-derivation across layers) — every
+process-layer view is built from process-layer data.
+
+**Velocity sub-report.** Invoke:
+
+```
+python3 scripts/sdlc_timing.py --baseline 2>/dev/null
+```
+
+The script walks `git log` for `feat(F<NNN>)` commits and reports
+ship cadence (median / p90 inter-ship gap, ships per day, ships per
+week, total churn LOC, churn-per-active-hour). Embed the verbatim
+stdout under a `### Velocity` sub-heading. On non-zero exit, render
+`Velocity sub-report unavailable: scripts/sdlc_timing.py not found
+or returned <code>.` and proceed — the rest of /metrics still runs.
+
+**Per-phase sub-report.** Invoke:
+
+```
+python3 scripts/sdlc_timing.py --phases 2>/dev/null
+```
+
+For each shipped feature, this reports elapsed time per SDLC phase
+(`spec`, `architect`, `build/phase-N`). It works because
+`scripts/git_tags.py` now creates ANNOTATED phase tags (each carries
+its own `taggerdate`, distinct from the commit it points to), so wave
+boundaries are time-resolved even when /build squashes multiple waves
+to one commit. Embed under a `### Per-phase elapsed time` sub-heading.
+
+Backward-compat note: features that shipped BEFORE the annotated-tag
+change (2026-05-15) used lightweight tags and will show `0s` deltas.
+That's mechanically correct — the legacy tags all share their pointed-
+at commit's `committerdate` — and it's the operator's signal that real
+per-phase deltas start with the next shipped feature. Do NOT suppress
+those rows; they read as a visible "before / after" line in the data
+and make the moment of the switch self-documenting.
+
 ### Step 3: Outcome layer — value-hypothesis.yaml
 
 Render `## Outcome` from the per-feature hypothesis dicts loaded in

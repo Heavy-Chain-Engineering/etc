@@ -25,7 +25,17 @@ import sys
 LOGGER = logging.getLogger(__name__)
 
 ETC_TAG_PREFIX = "refs/tags/etc/"
-_FOR_EACH_REF_FORMAT = "%(refname:short) %(objectname) %(committerdate:iso8601)"
+# Prefer taggerdate (set by `git tag -a` at tag-creation time) over the commit's
+# committerdate. This is what makes per-phase timing measurable when /build
+# squashes multiple waves to a single commit: each annotated phase tag carries
+# its own creation timestamp, independent of the commit it points at.
+# Lightweight tags (legacy, pre-progressive-phase-timing) have an empty
+# taggerdate field; we fall back to committerdate so old features still report.
+_FOR_EACH_REF_FORMAT = (
+    "%(refname:short) %(objectname) "
+    "%(if)%(taggerdate)%(then)%(taggerdate:iso8601)"
+    "%(else)%(committerdate:iso8601)%(end)"
+)
 
 
 def _has_head_commit() -> bool:
@@ -58,6 +68,14 @@ def write_tag(name: str, ref: str = "HEAD") -> bool:
     Note: this helper is intentionally append-only. There is no companion
     delete/retag/force-update function; tag history is the audit trail
     (BR-008, AC-010).
+
+    Tags are created ANNOTATED (`git tag -a`) so each carries its own
+    creation timestamp via `taggerdate`. This is what makes per-phase
+    /metrics deltas measurable when /build squashes multiple waves to one
+    commit: phase-N/start and phase-N/done both point at the same commit
+    but their taggerdates differ by the wave's wall-clock duration. The
+    annotation message records the tag name verbatim so it shows up in
+    `git log --decorate` output without an opaque "tag: foo" prefix.
     """
     if not _has_head_commit():
         LOGGER.warning(
@@ -68,7 +86,7 @@ def write_tag(name: str, ref: str = "HEAD") -> bool:
 
     try:
         subprocess.run(
-            ["git", "tag", name, ref],
+            ["git", "tag", "-a", name, "-m", name, ref],
             check=True,
             capture_output=True,
             text=True,

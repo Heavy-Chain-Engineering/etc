@@ -172,31 +172,42 @@ def list_feature_ships(repo: Path) -> list[dict[str, Any]]:
 
 
 def list_feature_tags(repo: Path) -> dict[str, list[tuple[str, datetime]]]:
-    """Return {feature_id: [(tag_suffix, commit_datetime), ...]}.
+    """Return {feature_id: [(tag_suffix, tag_datetime), ...]}.
 
-    Kept for the --feature detail view: still useful to surface which
-    phase tags exist for a feature even when their timestamps all collide.
+    Prefers the annotated tag's `taggerdate` when present, falls back to
+    the commit's `committerdate` for legacy lightweight tags. Per-phase
+    deltas are measurable when /build creates annotated phase tags at
+    wave boundaries (each tag carries its own creation timestamp even if
+    multiple phases share one squash commit).
     """
+    # Format mirrors scripts/git_tags.py — taggerdate when present, else
+    # committerdate. Lightweight tags (pre-progressive-phase-timing) yield
+    # an empty taggerdate and fall through to the commit's committerdate.
+    fmt = (
+        "%(refname:short)\t"
+        "%(if)%(taggerdate)%(then)%(taggerdate:iso8601-strict)"
+        "%(else)%(committerdate:iso8601-strict)%(end)"
+    )
     try:
-        tag_list = git(repo, "tag", "-l", "etc/feature/*")
+        raw = git(repo, "for-each-ref", f"--format={fmt}", "refs/tags/etc/feature/")
     except RuntimeError:
         return {}
-    if not tag_list:
+    if not raw:
         return {}
 
     out: dict[str, list[tuple[str, datetime]]] = {}
-    for tag in tag_list.splitlines():
-        tag = tag.strip()
-        if not tag:
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
             continue
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        tag, date_str = parts
         match = FEATURE_TAG_PATTERN.match(tag)
         if not match:
             continue
         fid, suffix = match.group(1), match.group(2)
-        try:
-            date_str = git(repo, "log", "-1", "--format=%cI", tag)
-        except RuntimeError:
-            continue
         try:
             dt = datetime.fromisoformat(date_str)
         except ValueError:
@@ -400,6 +411,124 @@ def render_baseline(ships: list[dict[str, Any]]) -> None:
                 print(f"  Churn per hour:       {churn_per_hour:.1f} LOC/h (wall-clock)")
 
 
+def compute_phase_intervals(
+    tags_by_feature: dict[str, list[tuple[str, datetime]]],
+) -> dict[str, dict[str, float | None]]:
+    """For each feature, return {phase_name: seconds_in_phase | None}.
+
+    Phase pairing rules:
+      - spec        ← span between earliest 'spec*' tag and earliest tag
+                       AFTER it (architect/start or build/phase-0/start).
+                       If no later tag exists, returns None.
+      - architect   ← architect/done - architect/start (if both present)
+      - build/N     ← build/phase-N/done - build/phase-N/start
+
+    Phases with only one of (start, done) are skipped (return None).
+    Legacy lightweight tags collapse to the same timestamp and yield 0.0;
+    that's correct (the harness wrote them at the same moment) and is what
+    the operator will use to identify which features have observable
+    phase deltas going forward.
+    """
+    out: dict[str, dict[str, float | None]] = {}
+    for fid, raw_tags in tags_by_feature.items():
+        # Index by suffix for direct lookup.
+        by_suffix: dict[str, datetime] = {suf: dt for suf, dt in raw_tags}
+
+        phases: dict[str, float | None] = {}
+
+        # ── architect ──
+        arch_start = by_suffix.get("architect/start")
+        arch_done = by_suffix.get("architect/done")
+        if arch_start and arch_done:
+            phases["architect"] = (arch_done - arch_start).total_seconds()
+
+        # ── build/phase-N ──
+        # Find every "build/phase-K/start" suffix and pair with its done.
+        build_phase_pattern = re.compile(r"^build/phase-(\d+)/start$")
+        for suffix, dt in raw_tags:
+            m = build_phase_pattern.match(suffix)
+            if not m:
+                continue
+            n = m.group(1)
+            done = by_suffix.get(f"build/phase-{n}/done")
+            if done:
+                phases[f"build/phase-{n}"] = (done - dt).total_seconds()
+
+        # ── spec ── (single-point in the legacy shape; span until next phase)
+        spec_tag = by_suffix.get("spec") or by_suffix.get("spec/done")
+        if spec_tag:
+            # The phase boundary AFTER spec is the earliest architect/start
+            # or build/phase-0/start, whichever comes first.
+            later_candidates = [
+                by_suffix.get("architect/start"),
+                by_suffix.get("build/phase-0/start"),
+            ]
+            later = [c for c in later_candidates if c is not None and c > spec_tag]
+            if later:
+                phases["spec"] = (min(later) - spec_tag).total_seconds()
+
+        out[fid] = phases
+
+    return out
+
+
+def render_phases(
+    ships: list[dict[str, Any]],
+    phase_intervals: dict[str, dict[str, float | None]],
+) -> None:
+    """Per-feature × per-phase elapsed-time table."""
+    # Collect every phase name that appears across features (sorted).
+    all_phases: set[str] = set()
+    for phases in phase_intervals.values():
+        all_phases.update(phases.keys())
+    phase_order = sorted(all_phases, key=lambda p: (
+        0 if p == "spec" else 1 if p == "architect"
+        else 2 if p.startswith("build/phase-") else 3,
+        p,
+    ))
+
+    if not phase_order:
+        print("No phase tags found. Run /build with progressive annotated tags")
+        print("(scripts/git_tags.py now creates annotated tags as of 2026-05-15)")
+        print("for at least one feature to populate this view.")
+        return
+
+    header = f"{'Feature':<8} {'Title':<40}"
+    for p in phase_order:
+        header += f" {p:<14}"
+    print(header)
+    print("-" * len(header))
+
+    for s in ships:
+        fid = s["feature_id"]
+        title = (s.get("title") or "")[:38]
+        row = f"{fid:<8} {title:<40}"
+        for p in phase_order:
+            secs = phase_intervals.get(fid, {}).get(p)
+            row += f" {format_duration(secs):<14}"
+        print(row)
+
+    # Per-phase percentiles across features (when ≥1 feature has measurable
+    # data, ignoring zero-duration entries which indicate collapsed legacy tags).
+    print()
+    print("Per-phase percentiles (across features with measurable, non-zero deltas):")
+    print(f"  {'Phase':<18} {'count':<7} {'median':<14} {'p90':<14}")
+    for p in phase_order:
+        values = [
+            secs for f in phase_intervals.values()
+            for ph, secs in f.items() if ph == p and secs is not None and secs > 0
+        ]
+        if not values:
+            print(f"  {p:<18} {0:<7} {'—':<14} {'—':<14}")
+            continue
+        median = _percentile(values, 50)
+        p90 = _percentile(values, 90)
+        print(
+            f"  {p:<18} {len(values):<7} "
+            f"{format_duration(median):<14} {format_duration(p90):<14}"
+        )
+
+
 def _percentile(values: list[float], pct: float) -> float:
     """Simple nearest-rank percentile (no interpolation). Adequate for the
     small datasets this script handles."""
@@ -445,6 +574,11 @@ def main(argv: list[str]) -> int:
         "--baseline",
         action="store_true",
         help="show operator velocity baseline (inter-ship gap percentiles)",
+    )
+    parser.add_argument(
+        "--phases",
+        action="store_true",
+        help="show per-feature × per-phase elapsed time (requires annotated phase tags)",
     )
     parser.add_argument(
         "--json",
@@ -503,6 +637,19 @@ def main(argv: list[str]) -> int:
         ships = [s for s in ships if s["commit_date_dt"] >= cutoff]
         # Re-attach intervals on the filtered set
         attach_intervals(ships)
+
+    if args.phases:
+        tags_by_feature = list_feature_tags(repo)
+        phase_intervals = compute_phase_intervals(tags_by_feature)
+        if args.json:
+            phase_payload = {
+                fid: {ph: secs for ph, secs in phases.items()}
+                for fid, phases in phase_intervals.items()
+            }
+            print(json.dumps(phase_payload, indent=2, sort_keys=True))
+            return 0
+        render_phases(ships, phase_intervals)
+        return 0
 
     if args.json:
         payload = []

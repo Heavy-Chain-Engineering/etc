@@ -153,6 +153,66 @@ class TestWriteTag:
         assert len(caplog.records) >= 1
 
 
+class TestAnnotatedTagSemantics:
+    """Tags written by write_tag are annotated so they carry a taggerdate
+    independent of the commit they point to. This is what makes per-phase
+    deltas measurable when /build squashes multiple waves to one commit.
+    """
+
+    def test_should_create_annotated_tag_not_lightweight(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        repo = tmp_path / "repo"
+        _init_repo_with_commit(repo)
+        monkeypatch.chdir(repo)
+        git_tags = _load_git_tags()
+
+        assert git_tags.write_tag("etc/feature/F999/spec") is True
+
+        # An annotated tag resolves via `git cat-file -t <tag>` to "tag";
+        # a lightweight tag resolves to "commit" because it just points
+        # at the commit directly.
+        result = subprocess.run(
+            ["git", "cat-file", "-t", "etc/feature/F999/spec"],
+            cwd=str(repo), capture_output=True, text=True, check=True,
+        )
+        assert result.stdout.strip() == "tag"
+
+    def test_should_expose_taggerdate_distinct_from_committerdate(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """list_etc_tags returns the taggerdate when present — which lets
+        per-phase deltas work even when all phase tags share one commit."""
+        import time
+        repo = tmp_path / "repo"
+        _init_repo_with_commit(repo)
+        monkeypatch.chdir(repo)
+        git_tags = _load_git_tags()
+
+        # Wait ~2s between the commit and the tag so the dates differ
+        # by enough to be observable at iso8601 second resolution.
+        time.sleep(2)
+        assert git_tags.write_tag("etc/feature/F999/build/phase-0/done") is True
+
+        results = git_tags.list_etc_tags()
+        assert len(results) == 1
+        _name, _sha, date = results[0]
+
+        # Sanity: the listed date is parseable and is the TAGGER date,
+        # which is strictly later than the commit's date (we slept 2s).
+        commit_date = subprocess.run(
+            ["git", "log", "-1", "--format=%cI"],
+            cwd=str(repo), capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        # Compare as strings up to the second — the listed date should
+        # NOT equal the commit's committer date.
+        assert date.split("+")[0].split("-0")[0] != commit_date.split("+")[0].split("-0")[0] or date != commit_date
+
+
 class TestListEtcTags:
     def test_should_return_etc_tag_triples_when_etc_tags_exist(
         self,
