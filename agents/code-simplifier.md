@@ -48,6 +48,7 @@ Read these files in order before making any edit:
 3. `~/.claude/standards/code/python-conventions.md` (if the project is Python)
 4. `~/.claude/standards/code/typing-standards.md` (if the project is Python)
 5. `~/.claude/standards/testing/testing-standards.md` (if present)
+6. `~/.claude/standards/process/codebase-navigation.md` — use LSP (`findReferences`, `goToDefinition`) before refactoring a symbol; identifies every call site without false positives so the refactor scope is precise.
 
 If any file does not exist, list it in the "Files Not Available" section of your completion report and continue with available context.
 

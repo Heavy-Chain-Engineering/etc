@@ -44,8 +44,9 @@ Read these files in order:
 1. `~/.claude/standards/architecture/layer-boundaries.md`
 2. `~/.claude/standards/architecture/abstraction-rules.md`
 3. `~/.claude/standards/architecture/adr-process.md`
-4. `.claude/standards/` (project-level standards, if directory exists)
-5. `.meta/description.md` at the system root and relevant subsystem level
+4. `~/.claude/standards/process/codebase-navigation.md` — use LSP (`findReferences`, `workspaceSymbol`, `goToDefinition`, `goToImplementation`, `incomingCalls`, `outgoingCalls`) as first choice for symbol-anchored navigation; grep for textual patterns only.
+5. `.claude/standards/` (project-level standards, if directory exists)
+6. `.meta/description.md` at the system root and relevant subsystem level
 
 If any file does not exist, note the gap but continue with available context.
 
