@@ -173,6 +173,20 @@ gates:
     timeout: 30
     on_failure: block
 
+  value-hypothesis-schema:
+    description: >
+      Validates that any value-hypothesis.yaml written or edited conforms to the
+      canonical v1 schema (BR-005 / AC-004). Closes the write-time gate that
+      let F012-F019 ship with an alternative who/what/why shape — invisible
+      to git (`.etc_sdlc/*` is gitignored) and invisible to all gates except
+      /metrics. Only triggers when the edited path ends in `value-hypothesis.yaml`.
+    event: PostToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-value-hypothesis-schema.sh
+    timeout: 10
+    on_failure: block
+
   # ── During Work: Tracking ───────────────────────────────────────────
 
   dirty-marker:
