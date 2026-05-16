@@ -1,0 +1,25 @@
+profile: python
+markers:
+  - pyproject.toml
+  - setup.py
+  - uv.lock
+  - Pipfile
+  - poetry.lock
+file_globs:
+  - "**/*.py"
+  - "**/*.pyi"
+exclude_globs:
+  - "**/__pycache__/**"
+  - "**/.venv/**"
+  - "**/venv/**"
+  - "**/.tox/**"
+  - "**/build/**"
+  - "**/dist/**"
+  - "**/.pytest_cache/**"
+  - "**/.mypy_cache/**"
+  - "**/.ruff_cache/**"
+canonical_sources:
+  - https://peps.python.org/pep-0008/
+  - https://google.github.io/styleguide/pyguide.html
+  - https://docs.astral.sh/ruff/rules/
+  - https://mypy.readthedocs.io/
