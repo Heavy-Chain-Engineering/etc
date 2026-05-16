@@ -1,0 +1,7 @@
+# ADR-F020-004: Monorepo activates every detected profile; file path scopes which gates fire
+
+**Date:** 2026-05-16
+**Status:** Accepted
+**Context:** A monorepo with both `pyproject.toml` and `package.json` could activate (a) only the first detected profile (operator override for additional), (b) only manually-declared profiles, or (c) every detected profile, with hooks file-scoping which gates apply to which file. The customer-pain case: HCE partners with mixed backend (Python or Go) and frontend (TypeScript) monorepos — common today, dominant in 5 years.
+**Decision:** All detected profiles activate. Each gate's file-path matching (via fnmatch globs in each profile's `detection.yaml`) routes individual files to their responsible profile's gate script. A `.py` file goes through python's verify-green; a `.tsx` file goes through typescript's verify-green; no profile claims the other's files.
+**Consequences:** *Positive:* full coverage for true monorepos with zero operator configuration; the default behavior matches the most common modern repo shape. *Negative:* overlapping path globs are possible (a `.py` script in a node project's `scripts/` directory matched by both python globs and the node profile's `scripts/` glob) — resolved by "more-specific-path-wins" with alphabetical tie-break, documented in `standards/code/profiles/README.md`. Operator can override via `.etc_sdlc/profiles.yaml exclude_paths` per profile.
