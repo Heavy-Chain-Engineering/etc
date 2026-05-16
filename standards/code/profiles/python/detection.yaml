@@ -9,14 +9,25 @@ file_globs:
   - "**/*.py"
   - "**/*.pyi"
 exclude_globs:
+  # fnmatch doesn't recursively expand **; both top-level and nested
+  # patterns are needed to cover monorepo and workspace shapes.
+  - "__pycache__/**"
   - "**/__pycache__/**"
+  - ".venv/**"
   - "**/.venv/**"
+  - "venv/**"
   - "**/venv/**"
+  - ".tox/**"
   - "**/.tox/**"
+  - "build/**"
   - "**/build/**"
+  - "dist/**"
   - "**/dist/**"
+  - ".pytest_cache/**"
   - "**/.pytest_cache/**"
+  - ".mypy_cache/**"
   - "**/.mypy_cache/**"
+  - ".ruff_cache/**"
   - "**/.ruff_cache/**"
 canonical_sources:
   - https://peps.python.org/pep-0008/

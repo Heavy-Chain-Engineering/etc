@@ -1,0 +1,29 @@
+profile: typescript
+markers:
+  - package.json
+  - tsconfig.json
+file_globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.mts"
+  - "**/*.cts"
+exclude_globs:
+  # fnmatch doesn't recursively expand **; both top-level and nested
+  # patterns are needed to cover monorepo and workspace shapes.
+  - "node_modules/**"
+  - "**/node_modules/**"
+  - "dist/**"
+  - "**/dist/**"
+  - "build/**"
+  - "**/build/**"
+  - ".next/**"
+  - "**/.next/**"
+  - ".turbo/**"
+  - "**/.turbo/**"
+  - "coverage/**"
+  - "**/coverage/**"
+  - "**/*.d.ts"
+canonical_sources:
+  - https://google.github.io/styleguide/tsguide.html
+  - https://typescript-eslint.io/rules/
+  - https://github.com/airbnb/javascript

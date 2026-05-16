@@ -1,0 +1,9 @@
+{
+  "name": "etc-typescript-fixture",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Minimal TypeScript repo fixture for F021 dispatch integration tests. NOT a runnable project.",
+  "scripts": {
+    "test": "echo 'fixture has no real test runner'"
+  }
+}
