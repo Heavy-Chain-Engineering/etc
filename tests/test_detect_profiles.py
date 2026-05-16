@@ -156,7 +156,7 @@ class TestCli:
             ["python3", str(SCRIPT_PATH), "--repo-root", str(tmp_path)],
             capture_output=True, text=True, check=True,
         )
-        lines = [l for l in result.stdout.splitlines() if l.strip()]
+        lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
         assert lines == ["python", "typescript"]
 
     def test_should_emit_json_with_flag(self, tmp_path: Path) -> None:

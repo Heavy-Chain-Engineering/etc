@@ -271,7 +271,8 @@ def render_table(ships: list[dict[str, Any]]) -> None:
         return
 
     header = (
-        f"{'Feature':<8} {'Title':<40} {'Shipped':<20} {'Gap':<12} {'Files':<7} {'+LOC':<7} {'-LOC':<7} {'Churn':<7}"
+        f"{'Feature':<8} {'Title':<40} {'Shipped':<20} {'Gap':<12} "
+        f"{'Files':<7} {'+LOC':<7} {'-LOC':<7} {'Churn':<7}"
     )
     print(header)
     print("-" * len(header))
@@ -379,7 +380,7 @@ def render_baseline(ships: list[dict[str, Any]]) -> None:
     print("Operator velocity baseline")
     print()
     print(f"  Features shipped:  {len(ships)}")
-    print(f"  Inter-ship gap:")
+    print("  Inter-ship gap:")
     print(f"    median:  {format_duration(statistics.median(intervals))}")
     print(f"    p10:     {format_duration(_percentile(intervals, 10))}")
     print(f"    p50:     {format_duration(_percentile(intervals, 50))}")
@@ -390,7 +391,7 @@ def render_baseline(ships: list[dict[str, Any]]) -> None:
     churns = [s.get("churn", 0) for s in ships if s.get("churn", 0) > 0]
     if churns:
         print()
-        print(f"  Churn per ship (LOC, insertions + deletions):")
+        print("  Churn per ship (LOC, insertions + deletions):")
         print(f"    median:  {int(statistics.median(churns))} LOC")
         print(f"    p10:     {int(_percentile(churns, 10))} LOC")
         print(f"    p50:     {int(_percentile(churns, 50))} LOC")
@@ -652,12 +653,12 @@ def main(argv: list[str]) -> int:
         return 0
 
     if args.json:
-        payload = []
+        ship_payload: list[dict[str, Any]] = []
         for s in ships:
             entry = dict(s)
             entry.pop("commit_date_dt", None)
-            payload.append(entry)
-        print(json.dumps(payload, indent=2))
+            ship_payload.append(entry)
+        print(json.dumps(ship_payload, indent=2))
         return 0
 
     if args.baseline:

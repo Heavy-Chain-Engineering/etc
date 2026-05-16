@@ -168,7 +168,8 @@ def find_findings_in_text(
     hdr_lines = header_lines(text)
 
     # Group into paragraphs separated by blank lines.
-    paragraphs: list[tuple[int, list[int], str]] = []  # (start_line_0idx, line_indices, joined_text)
+    # Each entry: (start_line_0idx, line_indices, joined_text)
+    paragraphs: list[tuple[int, list[int], str]] = []
     current_start = 0
     current_indices: list[int] = []
     current_text: list[str] = []

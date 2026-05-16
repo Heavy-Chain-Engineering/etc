@@ -77,10 +77,46 @@ def tmp_project(tmp_path: Path) -> Path:
     """Create a temporary project directory with standard subdirectories.
 
     Creates: src/, tests/, .etc_sdlc/tasks/
+
+    F020-aware: also writes `.etc_sdlc/profiles.lock` with the python
+    profile active and stages a `scripts/` + `standards/code/profiles/python/`
+    tree by copying from etc's own repo. Hook tests run against the real
+    F020 dispatch path that operators see; no behavior is faked.
+
+    The copy is best-effort: if the etc repo's profile files aren't
+    locatable (e.g., tests run from an installed harness location with
+    no source checkout), the lock is still written but profile gates
+    won't resolve — tests should declare F020-independence in that case.
     """
+    import shutil as _shutil
+
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
-    (tmp_path / ".etc_sdlc" / "tasks").mkdir(parents=True)
+    etc_sdlc = tmp_path / ".etc_sdlc"
+    etc_sdlc.mkdir()
+    (etc_sdlc / "tasks").mkdir()
+    (etc_sdlc / "profiles.lock").write_text("python\n")
+
+    # Copy F020 dispatch assets from etc's own repo so hook tests exercise
+    # the real F020 path. Falls through silently if assets aren't found
+    # (tests using tmp_project that don't depend on F020 still work).
+    etc_root = Path(__file__).resolve().parent.parent
+    profile_loader = etc_root / "scripts" / "profile_loader.py"
+    dispatcher = etc_root / "scripts" / "dispatch_profile.sh"
+    if profile_loader.is_file() and dispatcher.is_file():
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        _shutil.copy2(profile_loader, scripts_dir / "profile_loader.py")
+        _shutil.copy2(dispatcher, scripts_dir / "dispatch_profile.sh")
+
+    python_profile_src = etc_root / "standards" / "code" / "profiles" / "python"
+    if python_profile_src.is_dir():
+        python_profile_dst = tmp_path / "standards" / "code" / "profiles" / "python"
+        python_profile_dst.mkdir(parents=True)
+        for f in python_profile_src.iterdir():
+            if f.is_file():
+                _shutil.copy2(f, python_profile_dst / f.name)
+
     return tmp_path
 
 

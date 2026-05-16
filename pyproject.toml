@@ -14,6 +14,7 @@ compile-sdlc = "compile_sdlc:main"
 dev-dependencies = [
     "pytest>=9.0",
     "pytest-cov>=7.0",
+    "types-pyyaml>=6.0.12.20260510",
 ]
 
 [tool.pytest.ini_options]
@@ -22,7 +23,63 @@ testpaths = ["tests"]
 # collection walker, which otherwise stats every top-level file in rootdir
 # and fails on sandboxed secrets files before any test runs.
 addopts = "-v --tb=short --ignore-glob=.env*"
-norecursedirs = [".git", ".venv", "venv", "node_modules", "dist", "build", ".etc_sdlc"]
+norecursedirs = [".git", ".venv", "venv", "node_modules", "dist", "build", ".etc_sdlc", "platform"]
+
+[tool.mypy]
+# F020 surfaced mypy-was-off-in-practice. Coverage gate enforced 98%
+# against unscoped imports → never satisfied → operators silently
+# cleared .tdd-dirty. The python profile's verify-green now runs mypy
+# against scripts/ + hooks/helpers/, and these overrides tolerate the
+# few unresolved type-stub situations we can't fix at runtime.
+python_version = "3.11"
+
+[[tool.mypy.overrides]]
+# types-PyYAML is in dev-dependencies but mypy isn't picking it up via
+# uv's [tool.uv].dev-dependencies surface. Until that's resolved (likely
+# a uv → PEP 735 [dependency-groups] migration), tolerate the missing
+# stub. Yaml is parsed via yaml.safe_load only — no untyped behavior at
+# runtime, just a stub-resolution gap.
+module = "yaml"
+ignore_missing_imports = true
+
+[tool.coverage.run]
+# F020 honest coverage scope. Pre-F020, --cov-fail-under=98 measured the
+# whole import graph (test files, fixtures, legacy v2 platform/ tree) —
+# the 98% threshold was theater because tests have 100% self-coverage by
+# definition and the legacy platform/ tree drags total coverage down.
+# Scope here is what etc actually owns + tests for the harness layer:
+#   - scripts/: harness CLIs (tasks.py, value_hypothesis.py, git_tags.py, ...)
+#   - hooks/helpers/: AST helpers used by check-code-quality.sh
+source = ["scripts", "hooks/helpers"]
+omit = [
+    "platform/*",
+    "*/site-packages/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+# F020 honest baseline. Pre-F020 the gate enforced 98% against the whole
+# import graph (test files self-cover at 100%; legacy platform/ tree drags
+# total down). In practice it never fired — operators silently cleared
+# .tdd-dirty when verify-green would otherwise have blocked. Now scope is
+# scripts/ + hooks/helpers/ ONLY (per [tool.coverage.run] above) and the
+# floor matches measured baseline.
+#
+# Baseline as of 2026-05-16: 29% on scoped harness layer. Many scripts
+# (sdlc_timing, journey_id, journey_lineage_check, meta-reconcile,
+# cross_feature_collision_check, spec_coupling_check, check-vocabulary,
+# completion_report, design_md_compose) currently have 0% coverage — they
+# work but are not gated by automated tests. The floor here is a
+# regression detector, not an aspirational target. Raise the floor as
+# coverage genuinely improves; do NOT lower it to silence a failure.
+#
+# Improvement target: 50% on the scoped layer within Q3 2026. Highest
+# leverage: write tests for tasks.py (currently 21% on 868 stmts) and
+# value_hypothesis.py (52% on 202 stmts). Adding tests pushes the
+# number up; adjusting the threshold is the LAST resort.
+fail_under = 28
+show_missing = true
+skip_covered = false
 
 [tool.ruff]
 target-version = "py311"

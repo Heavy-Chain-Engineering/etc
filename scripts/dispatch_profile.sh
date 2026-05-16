@@ -22,14 +22,14 @@ if [[ -z "$GATE_NAME" ]]; then
   exit 2
 fi
 
-# Tee stdin to a temp file so the per-profile gate sees the same payload
-INPUT_FILE="$(mktemp -t dispatch-profile.XXXXXX)"
-trap 'rm -f "$INPUT_FILE"' EXIT
-cat > "$INPUT_FILE"
+# Read stdin once into a variable so we can both parse it (for file_path)
+# AND replay it to the per-profile gate. Avoids mktemp + temp-file pattern
+# (sandbox-friendlier, simpler, no cleanup race).
+INPUT=$(cat)
 
 # Extract the file path from the payload
-FILE_PATH=$(jq -r '.tool_input.file_path // empty' < "$INPUT_FILE" 2>/dev/null || true)
-CWD=$(jq -r '.cwd // "."' < "$INPUT_FILE" 2>/dev/null || echo ".")
+FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
+CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // "."' 2>/dev/null || echo ".")
 
 # If no file path provided, allow the operation (consistent with existing hooks)
 if [[ -z "$FILE_PATH" ]]; then
@@ -64,12 +64,18 @@ if [[ -z "$PROFILE" ]]; then
   exit 0
 fi
 
-# Locate the per-profile gate script
+# Locate the per-profile gate script — try repo-local first, then global
+# install. For operators running etc from their own project, the gate
+# scripts live under ~/.claude/standards/code/profiles/<profile>/.
 GATE_SCRIPT="${REPO_ROOT}/standards/code/profiles/${PROFILE}/${GATE_NAME}.sh"
 if [[ ! -f "$GATE_SCRIPT" ]]; then
-  echo "[${GATE_NAME}] WARN: profile '${PROFILE}' does not implement gate '${GATE_NAME}' at ${GATE_SCRIPT}" >&2
+  GATE_SCRIPT="${HOME}/.claude/standards/code/profiles/${PROFILE}/${GATE_NAME}.sh"
+fi
+if [[ ! -f "$GATE_SCRIPT" ]]; then
+  echo "[${GATE_NAME}] WARN: profile '${PROFILE}' does not implement gate '${GATE_NAME}' (looked under ${REPO_ROOT}/standards/code/profiles/${PROFILE}/ and ~/.claude/standards/code/profiles/${PROFILE}/)" >&2
   exit 0
 fi
 
-# Delegate; the gate script reads the same stdin payload via the temp file
-exec bash "$GATE_SCRIPT" < "$INPUT_FILE"
+# Delegate; replay stdin payload to the gate
+printf '%s' "$INPUT" | bash "$GATE_SCRIPT"
+exit $?

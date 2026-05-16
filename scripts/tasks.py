@@ -29,6 +29,7 @@ import os
 import re
 import sys
 import tempfile
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -89,7 +90,7 @@ def _find_feature_dir_lifecycle(root: Path, name: str) -> Path | None:
     return None
 
 
-def _iter_all_feature_dirs(root: Path):
+def _iter_all_feature_dirs(root: Path) -> Iterator[Path]:
     """Yield every feature directory across active/, flat, and shipped/."""
     features_dir = root / ".etc_sdlc" / "features"
     if not features_dir.is_dir():
@@ -1499,7 +1500,10 @@ def main() -> None:
     elif command == "tree":
         cmd_tree(root)
     elif command == "waves":
-        feature: str | None = None
+        # NOTE: feature was annotated in the set-status branch above; mypy
+        # treats main() as one scope and flags re-annotation. Drop the
+        # type annotation here — the value is reassigned, not redeclared.
+        feature = None
         if "--feature" in sys.argv:
             idx = sys.argv.index("--feature")
             if idx + 1 < len(sys.argv):

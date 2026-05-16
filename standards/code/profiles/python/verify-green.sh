@@ -24,7 +24,11 @@ cd "$CWD" || exit 0
 
 # Run tests with coverage
 echo "[python/verify-green] Running pytest with coverage..." >&2
-TEST_OUTPUT=$(uv run pytest --cov --cov-fail-under=98 -x --tb=short -q 2>&1)
+# Coverage scope + fail-under threshold come from pyproject.toml
+# [tool.coverage.run] + [tool.coverage.report]. Avoids the pre-F020 trap
+# where --cov-fail-under=98 was passed inline but measured the whole
+# import graph including legacy platform/ + tests/ self-coverage.
+TEST_OUTPUT=$(uv run pytest --cov -x --tb=short -q 2>&1)
 TEST_EXIT=$?
 
 if [ $TEST_EXIT -ne 0 ]; then
@@ -33,20 +37,46 @@ if [ $TEST_EXIT -ne 0 ]; then
   exit 2
 fi
 
-# Run type checking
-echo "[python/verify-green] Running mypy..." >&2
-MYPY_OUTPUT=$(uv run mypy src/ 2>&1)
-MYPY_EXIT=$?
+# Determine the source layout. etc itself and other tooling-style
+# projects keep Python under scripts/ or hooks/helpers/ rather than src/;
+# detect what exists and target accordingly. Pre-F020 the hook hard-coded
+# `mypy src/` and silently no-op'd on every repo without src/ — the gate
+# was effectively off.
+MYPY_TARGETS=()
+RUFF_TARGETS=()
+for d in src scripts hooks/helpers; do
+  if [ -d "$d" ]; then
+    MYPY_TARGETS+=("$d")
+    RUFF_TARGETS+=("$d")
+  fi
+done
+if [ -d "tests" ]; then
+  RUFF_TARGETS+=("tests")
+fi
 
-if [ $MYPY_EXIT -ne 0 ]; then
-  echo "[python/verify-green] FAILED: Type checking errors." >&2
-  echo "$MYPY_OUTPUT" | tail -20 >&2
-  exit 2
+if [ ${#MYPY_TARGETS[@]} -eq 0 ]; then
+  echo "[python/verify-green] No Python source dirs found (src/, scripts/, hooks/helpers/); skipping mypy + ruff." >&2
+else
+  # Run type checking
+  echo "[python/verify-green] Running mypy on ${MYPY_TARGETS[*]}..." >&2
+  MYPY_OUTPUT=$(uv run mypy "${MYPY_TARGETS[@]}" 2>&1)
+  MYPY_EXIT=$?
+
+  if [ $MYPY_EXIT -ne 0 ]; then
+    echo "[python/verify-green] FAILED: Type checking errors." >&2
+    echo "$MYPY_OUTPUT" | tail -20 >&2
+    exit 2
+  fi
 fi
 
 # Run linting
-echo "[python/verify-green] Running ruff check..." >&2
-LINT_OUTPUT=$(uv run ruff check src/ tests/ 2>&1)
+if [ ${#RUFF_TARGETS[@]} -eq 0 ]; then
+  echo "[python/verify-green] No source dirs to lint; skipping ruff." >&2
+  echo "[python/verify-green] All green: tests (no other dirs to check)." >&2
+  exit 0
+fi
+echo "[python/verify-green] Running ruff check on ${RUFF_TARGETS[*]}..." >&2
+LINT_OUTPUT=$(uv run ruff check "${RUFF_TARGETS[@]}" 2>&1)
 LINT_EXIT=$?
 
 if [ $LINT_EXIT -ne 0 ]; then

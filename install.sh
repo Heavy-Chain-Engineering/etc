@@ -339,6 +339,19 @@ if [ -d "$DIST_DIR/standards" ]; then
 fi
 info "Installed $STANDARD_COUNT standards"
 
+# F020 — profiles/ subtree (detection.yaml + bindings + gate scripts) is
+# nested deeper than the top-level *.md copy above. Use a recursive copy
+# so per-profile assets land under TARGET_DIR/standards/code/profiles/.
+if [ -d "$DIST_DIR/standards/code/profiles" ]; then
+    mkdir -p "$TARGET_DIR/standards/code"
+    cp -R "$DIST_DIR/standards/code/profiles" "$TARGET_DIR/standards/code/"
+    # Make sure the gate scripts are executable (cp -R preserves mode on
+    # most systems but is paranoid here).
+    find "$TARGET_DIR/standards/code/profiles" -name '*.sh' -exec chmod +x {} \; 2>/dev/null || true
+    PROFILE_COUNT=$(find "$TARGET_DIR/standards/code/profiles" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
+    info "Installed $PROFILE_COUNT language profile(s)"
+fi
+
 # ── 5. Install hooks ────────────────────────────────────────────────────
 HOOK_COUNT=0
 if [ -d "$DIST_DIR/hooks" ]; then

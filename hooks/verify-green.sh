@@ -47,6 +47,9 @@ while IFS= read -r PROFILE; do
   [ -z "$PROFILE" ] && continue
 
   GATE="${CWD}/standards/code/profiles/${PROFILE}/verify-green.sh"
+  if [ ! -f "$GATE" ]; then
+    GATE="${HOME}/.claude/standards/code/profiles/${PROFILE}/verify-green.sh"
+  fi
   if [ -f "$GATE" ]; then
     echo "[verify-green] Running ${PROFILE} profile..." >&2
     GATE_OUTPUT=$(echo "$INPUT" | bash "$GATE" 2>&1)
