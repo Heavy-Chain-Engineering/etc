@@ -34,5 +34,5 @@ whatever happens to be on `$PATH`.
 - `check-seam-evidence.sh` — integration-test marker presence
 - `check-completion-discipline.sh` — pre-stop CI gate
 
-See `docs/audits/F022-language-coupling-audit.md` for the audit that
+See `docs/audits/F020-language-coupling-audit.md` for the audit that
 motivated extracting this profile from the top-level hooks.

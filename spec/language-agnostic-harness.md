@@ -2,7 +2,7 @@
 
 ## Summary
 
-etc was built by Python engineers for Python codebases. Hooks hardcode `pytest`/`mypy`/`ruff`; standards cite ruff rule codes; agent manifests bake in `uv run` invocations. The audit at `docs/audits/F022-language-coupling-audit.md` inventoried 24 hard-coupled surfaces. The cost: an operator who installs etc on a TypeScript / Go / Rust / React Native / C++ / Terraform codebase gets a half-working harness — DOMAIN.md and PROJECT.md author correctly, but TDD gates silently no-op, `verify-green` never fires, and standards read as "this codebase should be Python." That ceiling caps etc's reach to a single ecosystem.
+etc was built by Python engineers for Python codebases. Hooks hardcode `pytest`/`mypy`/`ruff`; standards cite ruff rule codes; agent manifests bake in `uv run` invocations. The audit at `docs/audits/F020-language-coupling-audit.md` inventoried 24 hard-coupled surfaces. The cost: an operator who installs etc on a TypeScript / Go / Rust / React Native / C++ / Terraform codebase gets a half-working harness — DOMAIN.md and PROJECT.md author correctly, but TDD gates silently no-op, `verify-green` never fires, and standards read as "this codebase should be Python." That ceiling caps etc's reach to a single ecosystem.
 
 F020 introduces a **profile architecture** that makes language and framework support a first-class harness primitive. A profile is a thin wrapper that names a target stack (python, typescript, go, rust, terraform, k8s, markdown, ...), declares its detection markers (`pyproject.toml`, `package.json`, `go.mod`, `*.tf`, ...), binds the rule set to tooling (the universal "function size limit" rule binds to ruff `PLR0915` for python, eslint `max-lines-per-function` for typescript, golangci-lint `funlen` for go), and points to the community-canonical authority (`google/styleguide`, `rust-lang/api-guidelines`, Airbnb JS, PEP 8). etc does NOT author its own style guides — it adopts and cites them.
 
@@ -105,7 +105,7 @@ After the python profile is extracted, `clean-code.md`, `error-handling.md`, `im
 
 15. **AC-015: Reference python profile passes the full standards test suite.** The shipped python profile (the migration baseline) is a working reference. Running `pytest tests/test_python_profile_integration.py` (new) loads the profile, exercises each binding through its associated hook, and verifies green for a sample Python codebase. *surface_status: backend_only*
 
-16. **AC-016: `docs/audits/F022-language-coupling-audit.md` is cross-referenced.** The python profile's top-level `README.md` cites the audit as the source-of-record for what was migrated. This keeps the historical decision trail attached to the artifact. *surface_status: backend_only*
+16. **AC-016: `docs/audits/F020-language-coupling-audit.md` is cross-referenced.** The python profile's top-level `README.md` cites the audit as the source-of-record for what was migrated. This keeps the historical decision trail attached to the artifact. *surface_status: backend_only*
 
 17. **AC-017: Migration is a single coherent /build wave per profile.** The python migration (this PRD) ships as one wave (or two, if size demands): no half-migrated state where some hooks dispatch by profile and others don't. Either the architecture is in place across all five hooks + three agents, or the PR is rejected. *surface_status: backend_only*
 
@@ -158,7 +158,7 @@ After the python profile is extracted, `clean-code.md`, `error-handling.md`, `im
 
 ### Codebase audit (Phase 0)
 
-Source: `docs/audits/F022-language-coupling-audit.md` (258 lines, shipped 2026-05-15 in commit `a0775c9`).
+Source: `docs/audits/F020-language-coupling-audit.md` (258 lines, shipped 2026-05-15 in commit `a0775c9`).
 
 24 hard-coupled Python surfaces inventoried:
 - **5 hooks:** `verify-green.sh`, `check-test-exists.sh`, `check-code-quality.sh`, `check-seam-evidence.sh`, `check-completion-discipline.sh`

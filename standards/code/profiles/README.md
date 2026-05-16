@@ -5,7 +5,7 @@ harness. Each subdirectory at `standards/code/profiles/<profile>/` is a
 self-contained bundle declaring (i) detection rules, (ii) per-rule tool
 bindings, (iii) per-gate executable scripts.
 
-See `docs/audits/F022-language-coupling-audit.md` for the audit that
+See `docs/audits/F020-language-coupling-audit.md` for the audit that
 motivated this architecture and the six ADRs at `docs/adrs/F020-001..006`
 for the load-bearing decisions.
 
