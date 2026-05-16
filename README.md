@@ -4,7 +4,15 @@
 
 The name stands for **Engineering Team, Codified**. The team being codified is HCE. The harness is what we share with selected partners and customers when we extend our way of working into their codebase.
 
-> **Language support status (2026-05-16).** Python and TypeScript/React are first-class today (the `frontend-developer` + `frontend-dashboard-refactorer` agents are TS-coded; the python profile under `standards/code/profiles/python/` was just extracted as the reference profile for the broader **F020 language-agnostic harness** effort). Profile architecture for other languages (Go, Rust, Java, Swift, Ruby, Terraform, k8s, markdown, ...) is in active development — see the F020 row in the F-feature table for what's shipped and what remains. The audit at `docs/audits/F020-language-coupling-audit.md` is the source of record for the 24 surfaces being migrated.
+> **Language support — honest status (2026-05-16).**
+>
+> **Python is fully enforced today.** All five hooks (verify-green, check-test-exists, check-code-quality, check-seam-evidence, check-completion-discipline), tier-0 standards, and the backend-developer / code-reviewer / code-simplifier agents apply to Python source. The reference python profile lives at `standards/code/profiles/python/`.
+>
+> **TypeScript is partially supported.** The `frontend-developer` and `frontend-dashboard-refactorer` agents are TS-coded and produce TS work. But the shared hooks/standards still default Python: when you edit a `.tsx` file, the verify-green and check-test-exists hooks now WARN-skip cleanly (per F020 ADR-003) rather than silent-skipping; the other three hooks still don't see TS at all. A dedicated TypeScript profile (F021 candidate) is the next ship.
+>
+> **Go, Rust, Java, Swift, Ruby, Terraform, k8s, markdown** — profile architecture exists; per-profile content does not yet. Operators on these stacks today get `/init-project` + DOMAIN.md/PROJECT.md authoring + the agent layer, but enforcement WARN-skips on every gate.
+>
+> Trace: see the F020 row in the F-feature table below; the audit at `docs/audits/F020-language-coupling-audit.md` lists the 24 surfaces being migrated and the six ADRs at `docs/adrs/F020-001..006` document the load-bearing decisions.
 
 ---
 
