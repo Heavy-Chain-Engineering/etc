@@ -456,6 +456,28 @@ if [ "$TARGET_DIR" != "$HOME/.claude" ]; then
     info "Rewrote ~/.claude/ → $TARGET_TILDE/ in $REWRITTEN file(s)"
 fi
 
+# ── 11. F020 profile detection ──────────────────────────────────────────
+# Detect language profiles active in the install-time CWD and write
+# `.etc_sdlc/profiles.lock`. Project-scope installs (--scope project) run
+# from the target project root and produce a useful lock immediately;
+# global-scope installs run from etc's own directory and produce a lock
+# describing etc itself. SessionStart staleness checks re-detect later
+# when the operator opens a different project.
+if [ -f "$TARGET_DIR/scripts/detect_profiles.py" ] && command -v python3 &> /dev/null; then
+    LOCK_DIR="$PWD/.etc_sdlc"
+    mkdir -p "$LOCK_DIR"
+    if python3 "$TARGET_DIR/scripts/detect_profiles.py" --repo-root "$PWD" --write-lock 2>/dev/null; then
+        if [ -s "$LOCK_DIR/profiles.lock" ]; then
+            DETECTED=$(tr '\n' ' ' < "$LOCK_DIR/profiles.lock")
+            info "Detected profiles: $DETECTED"
+        else
+            info "No language profiles detected in $PWD (lock written empty)"
+        fi
+    else
+        warn "Profile detection failed; skipping profiles.lock write"
+    fi
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}Installation complete${NC}"
