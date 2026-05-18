@@ -1,0 +1,19 @@
+profile: rust
+markers:
+  - Cargo.toml
+  - Cargo.lock
+file_globs:
+  # fnmatch doesn't recursively expand **; both top-level and nested patterns
+  # are needed to cover file_path=main.rs AND file_path=src/x/y.rs.
+  - "*.rs"
+  - "**/*.rs"
+exclude_globs:
+  # Cargo-generated and conventional non-authored locations.
+  - "target/**"
+  - "**/target/**"
+  - "*.lock"
+canonical_sources:
+  - https://rust-lang.github.io/api-guidelines/
+  - https://doc.rust-lang.org/book/
+  - https://rust-lang.github.io/rust-clippy/master/
+  - https://github.com/rust-lang/style-team
