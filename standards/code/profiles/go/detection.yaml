@@ -1,0 +1,21 @@
+profile: go
+markers:
+  - go.mod
+  - go.sum
+file_globs:
+  # fnmatch doesn't recursively expand **; both top-level and nested patterns
+  # are needed to cover file_path=main.go AND file_path=cmd/x/y.go.
+  - "*.go"
+  - "**/*.go"
+exclude_globs:
+  # Generated, vendored, or non-authored source.
+  - "vendor/**"
+  - "**/vendor/**"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+  - "**/zz_generated_*.go"
+canonical_sources:
+  - https://go.dev/doc/effective_go
+  - https://google.github.io/styleguide/go/
+  - https://github.com/uber-go/guide/blob/master/style.md
+  - https://golangci-lint.run/usage/linters/
