@@ -3,9 +3,15 @@ markers:
   - package.json
   - tsconfig.json
 file_globs:
+  # fnmatch doesn't recursively expand **; both top-level and nested
+  # patterns are needed to cover file_path=script.ts AND file_path=src/x/y.ts.
+  - "*.ts"
   - "**/*.ts"
+  - "*.tsx"
   - "**/*.tsx"
+  - "*.mts"
   - "**/*.mts"
+  - "*.cts"
   - "**/*.cts"
 exclude_globs:
   # fnmatch doesn't recursively expand **; both top-level and nested

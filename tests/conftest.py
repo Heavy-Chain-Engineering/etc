@@ -117,6 +117,16 @@ def tmp_project(tmp_path: Path) -> Path:
             if f.is_file():
                 _shutil.copy2(f, python_profile_dst / f.name)
 
+    # Copy hooks/helpers so the python profile's check-code-quality.sh
+    # can resolve check_mutable_globals.py and check_noop_functions.py
+    helpers_src = etc_root / "hooks" / "helpers"
+    if helpers_src.is_dir():
+        helpers_dst = tmp_path / "hooks" / "helpers"
+        helpers_dst.mkdir(parents=True)
+        for f in helpers_src.iterdir():
+            if f.is_file() and f.suffix == ".py":
+                _shutil.copy2(f, helpers_dst / f.name)
+
     return tmp_path
 
 

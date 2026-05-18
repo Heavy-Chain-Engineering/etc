@@ -314,39 +314,39 @@ class TestCheckCodeQualityHook:
         })
         assert result.returncode == 0
 
-    def test_should_block_when_mutable_global_found(self, tmp_path: Path) -> None:
-        bad_file = tmp_path / "bad.py"
+    def test_should_block_when_mutable_global_found(self, tmp_project: Path) -> None:
+        bad_file = tmp_project / "bad.py"
         bad_file.write_text("handlers = []\n")
         result = self._run_hook({
             "tool_input": {"file_path": "bad.py"},
-            "cwd": str(tmp_path),
+            "cwd": str(tmp_project),
         })
         assert result.returncode == 2
         assert "CQ-001" in result.stderr
 
-    def test_should_block_when_noop_function_found(self, tmp_path: Path) -> None:
-        bad_file = tmp_path / "bad.py"
+    def test_should_block_when_noop_function_found(self, tmp_project: Path) -> None:
+        bad_file = tmp_project / "bad.py"
         bad_file.write_text("def placeholder():\n    pass\n")
         result = self._run_hook({
             "tool_input": {"file_path": "bad.py"},
-            "cwd": str(tmp_path),
+            "cwd": str(tmp_project),
         })
         assert result.returncode == 2
         assert "CQ-002" in result.stderr
 
-    def test_should_pass_when_clean_python_file(self, tmp_path: Path) -> None:
-        good_file = tmp_path / "good.py"
+    def test_should_pass_when_clean_python_file(self, tmp_project: Path) -> None:
+        good_file = tmp_project / "good.py"
         good_file.write_text("MAX_RETRIES = 3\n\ndef compute(x):\n    return x * 2\n")
         result = self._run_hook({
             "tool_input": {"file_path": "good.py"},
-            "cwd": str(tmp_path),
+            "cwd": str(tmp_project),
         })
         assert result.returncode == 0
 
-    def test_should_block_path_traversal_when_dotdot_present(self, tmp_path: Path) -> None:
+    def test_should_block_path_traversal_when_dotdot_present(self, tmp_project: Path) -> None:
         result = self._run_hook({
             "tool_input": {"file_path": "../../../etc/passwd.py"},
-            "cwd": str(tmp_path),
+            "cwd": str(tmp_project),
         })
         assert result.returncode == 2
         assert "Suspicious" in result.stderr

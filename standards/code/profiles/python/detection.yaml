@@ -6,7 +6,11 @@ markers:
   - Pipfile
   - poetry.lock
 file_globs:
+  # fnmatch doesn't recursively expand **; both top-level and nested
+  # patterns are needed to cover both file_path=bad.py and file_path=src/x/y.py.
+  - "*.py"
   - "**/*.py"
+  - "*.pyi"
   - "**/*.pyi"
 exclude_globs:
   # fnmatch doesn't recursively expand **; both top-level and nested
