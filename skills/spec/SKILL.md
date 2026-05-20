@@ -46,7 +46,11 @@ those operations live in this skill.
 
 Your allowed in-context actions are: (a) reading the input spec path,
 prior draft, or reference files via Read, (b) reading codebase context
-via Read/Grep/Glob for Phase 2 codebase exploration, (c) fetching web
+via LSP / Read / Grep / Glob for Phase 2 codebase exploration — **prefer
+LSP for any symbol-anchored query** (definitions, references, callers,
+implementations, types) per `standards/process/codebase-navigation.md`;
+fall back to Grep/Read for textual patterns, cross-language searches,
+non-code files, and uncovered languages, (c) fetching web
 results via WebFetch/WebSearch for Phase 2 web research, (d) invoking
 `AskUserQuestion` for Pattern A decisions (draft-handling, research
 approval, gray-area resolution, section approval, post-completion
@@ -56,17 +60,28 @@ and the draft file via Write/Edit as defined in Phase 5.
 
 ## Before Starting (Non-Negotiable)
 
-Read this file before any Phase 1 action, using the Read tool on the
-exact path:
+Read these files before any Phase 1 action, using the Read tool on the
+exact paths:
 
 1. `standards/process/interactive-user-input.md` — Pattern A
    (`AskUserQuestion`) and Pattern B (visual marker) usage rules.
    Every question in Phases 1 through 5 uses one of these two patterns.
 
+2. `standards/process/codebase-navigation.md` — LSP-first navigation
+   policy. Phase 2 research uses LSP (`workspaceSymbol`,
+   `findReferences`, `goToDefinition`, `hover`, `documentSymbol`) for
+   any symbol-anchored query and falls back to Grep / Read / Glob only
+   for textual patterns, cross-language search, non-code files, or
+   uncovered languages.
+
 If `standards/process/interactive-user-input.md` does not exist, STOP
 and report the missing file to the user — no phase in this skill can
 proceed without it, because every user interaction is Pattern A or
 Pattern B.
+
+If `standards/process/codebase-navigation.md` does not exist, note
+the gap and proceed with Grep / Read / Glob — the LSP-first policy
+is non-blocking guidance, not a phase prerequisite.
 
 Additionally, in Phase 2 (Research), Read `INVARIANTS.md` at the repo
 root if present, and Read `.etc_sdlc/antipatterns.md` if present. These
@@ -359,7 +374,10 @@ allocated feature directory.
    A gap is **research-fillable** if at least one of the following
    yields a citable answer:
 
-   - A codebase grep finds a canonical pattern.
+   - LSP `findReferences` / `goToDefinition` / `workspaceSymbol`
+     surfaces an authoritative usage pattern in the codebase; OR a
+     codebase grep finds a canonical textual pattern when the query
+     isn't symbol-anchored.
    - An existing doc cites the answer (`DOMAIN.md`, an ADR,
      `INVARIANTS.md`, an adjacent PRD, a tier-1 standard).
    - Web research finds a universally-accepted best practice with no

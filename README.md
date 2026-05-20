@@ -4,7 +4,7 @@
 
 <h1 align="center">etc</h1>
 
-<p align="center"><strong>Engineering Team, Codified.</strong><br>An agentic harness that keeps your agents in line.</p>
+<p align="center"><strong>/etc — Enter The Chat.</strong><br>An agentic harness that keeps your agents in line.</p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
@@ -19,9 +19,31 @@
 
 ## What this is
 
-**etc** encodes how a senior engineering team works — Socratic specification, test-driven development, recursive decomposition, defense in depth — as Claude Code skills, agents, and enforcement hooks. Install it once and the same disciplines govern work in any repository you point Claude Code at.
+**etc** encodes how a senior product engineering team works — value hypothesis, domain binding, Socratic specification, test-driven development, recursive decomposition, defense in depth — as Claude Code skills, agents, and enforcement hooks. Install it once and the same disciplines govern work in any repository you point Claude Code at.
 
-It is built by Heavy Chain Engineering for our own turnaround engagements. We share it with selected partners and customers because the same disciplines tend to be useful wherever software is being built under pressure.
+It is built by Heavy Chain Engineering for our own client engagements. We share it with selected partners and customers because the same disciplines tend to be useful wherever software is being built under pressure.
+
+Some high-level features:
+
+- **Bootstrap any repo with `/init-project`** — turns greenfield OR brownfield into a harness-ready state in one pass: technical scaffold, interactive DOMAIN.md, tiered docs skeleton, starter role manifests. Idempotent.
+- **Deep system archaeology with `/discovery`** — multi-source investigation across code, data, Salesforce orgs, and infra. Surfaces what is *actually* happening — not what the docs claim, not what the diagrams show. Built for migrations, due diligence, and brownfields whose documentation has drifted from reality.
+- **Socratic specification with a three-state classifier** — `/spec` interviews until it can write a buildable PRD; classifies the result (well-specified / research-assisted / rejected); refuses to draft from vague input.
+- **SME-led MVP definition** — domain experts capture real work via `/journey` in plain English; the intersection of journeys IS the MVP.
+- **Parallel research at every intake** — LSP-anchored navigation (definitions, references, call graphs) where the query is symbolic; grep where the query is textual; plus web fetch and antipatterns lookup. All run in parallel before drafting begins. Findings cite source files, URLs, or ADRs.
+- **Recursive work-breakdown decomposition** — `/build` scores every task and recurses until each leaf is small enough to dispatch (score ≤ 7 on the WBS scale). Arbitrarily large problems land as arbitrarily deep trees.
+- **Wave planning with cross-feature collision detection** — parallel-safe dispatch by file-set isolation; overlaps with other in-flight features caught at plan time, not at merge time.
+- **Stacked-PR delivery** — multi-wave builds emit one squash commit per wave on a stacked branch chain (~500 LOC per layer), so review can keep up with agentic throughput.
+- **Mechanical TDD enforcement** — a PreToolUse hook blocks edits to production code without a sibling test. No exemption flag.
+- **Multi-language profile enforcement** — Python, TypeScript, Go, and Rust get test / types / lint / TDD gates today via the F020 profile architecture; new languages copy an eight-file pattern.
+- **Adversarial spec verification** — every shipped task is reviewed against the original PRD by a spec-enforcer agent before the release tag is written.
+- **Defense in depth** — bug classes are defended at three independent SDLC phases. Three gates must fail simultaneously for recurrence.
+- **Outcome tracking by value hypothesis** — every feature carries a `value-hypothesis.yaml`; `/metrics` reports the percentage validated, broken down by author role. Anti-Goodhart by construction because the harness writes the source data automatically.
+- **Closed-loop intake via Linear MCP** — `/pull-tickets` pulls tickets, generates PRDs from ticket content + codebase research, builds successful ones, returns rejects with clarifying questions in the source tool.
+- **Hotfix → postmortem → antipattern pipeline** — incidents close with a prevention rule that every future `/spec` invocation on the same project automatically incorporates.
+- **Append-only git-tag audit trail** — phase boundaries marked mechanically (`etc/feature/F<NNN>/{spec,architect/done,build/phase-N/done,release}`); `/metrics` derives process metrics from the tags without manual logging.
+- **Output IS state** — every skill writes findings to disk continuously. Sessions die, contexts compact, work resumes exactly where it stopped.
+- *etc.*
+
 
 ---
 
@@ -29,12 +51,18 @@ It is built by Heavy Chain Engineering for our own turnaround engagements. We sh
 
 ```bash
 git clone <repo-url> && cd etc-system-engineering
-python3 compile-sdlc.py spec/etc_sdlc.yaml    # compile YAML → dist/
-./install.sh --client claude --scope global   # merge hooks + copy skills
+
+# compile your SDLC YAML → dist/
+python3 compile-sdlc.py spec/etc_sdlc.yaml
+
+# merge hooks + copy skills
+./install.sh --client claude --scope global 
 # Restart Claude Code. The harness is active.
 ```
 
 Three commands. The compile is sub-second; the install merges hooks into `~/.claude/settings.json` and copies skills, agents, and standards into place.
+
+**Warning**: This writes directly to your claude code. It is recommended that you back up your claude code before installing.
 
 ### Try it
 
@@ -73,9 +101,25 @@ The harness does not replace your engineers. It makes their disciplines mechanic
 ## The lifecycle
 
 ```
-strategy ──► research ──► (design │ strategy) ──► spec ──► architect ──► build ──► release
-                            │                                                         │
-                            └────────────────── reflect (continuous) ─────────────────┘
+    strategy
+        │
+        ▼
+    research
+        │
+        ▼
+(design │ strategy) ◄──────────┐
+        │                      │
+        ▼                      │
+      spec                     │
+        │                      │
+        ▼  reflect (continuous)│
+    architect                  │
+        │                      │
+        ▼                      │
+      build                    │
+        │                      │
+        ▼                      │
+     release ──────────────────┘
 ```
 
 | Phase | What you get | Skill |
@@ -247,3 +291,5 @@ The skills, agents, and standards are all plain markdown. They are meant to be r
 <p align="center"><em>The kind of engineering this codifies: tests-first because tests are the specification; specifications written under cross-examination because vague intent produces vague code; decompositions that go as deep as the problem requires; outcomes measured because shipping is not the same as moving the needle; and defense in depth because every shipped bug is a failure of multiple gates simultaneously, and the response is to add gates.</em></p>
 
 <p align="center"><strong>Built by <a href="https://heavychain.engineering">Heavy Chain Engineering, LLC</a>.</strong></p>
+
+<p align="center"><sub><em>The illustration of <strong>Etsy</strong> is adapted from Jason's great aunt Etsy. She was a wonderful woman.</em></sub></p>

@@ -55,9 +55,14 @@ is the canonical interactive workflow.
 
 Your allowed in-context actions are: (a) reading the input spec.md,
 existing design draft, or reference files via Read, (b) reading
-codebase context via Read/Grep/Glob for Phase 2 codebase exploration
-(prior ADRs under `docs/adrs/`, INVARIANTS.md if present,
-architecture standards), (c) fetching web results via WebFetch/WebSearch
+codebase context via LSP / Read / Grep / Glob for Phase 2 codebase
+exploration (prior ADRs under `docs/adrs/`, INVARIANTS.md if present,
+architecture standards) — **prefer LSP for any symbol-anchored query**
+(definitions, references, callers, implementations, call hierarchies,
+types) per `standards/process/codebase-navigation.md`; fall back to
+Grep/Read for textual patterns, cross-language searches, non-code
+files, and uncovered languages, (c) fetching web results via
+WebFetch/WebSearch
 for Phase 2 architectural-pattern research, (d) invoking
 `AskUserQuestion` for Pattern A decisions (research approval,
 gray-area resolution, section approval, post-completion routing),
@@ -91,15 +96,29 @@ exact paths:
    imports, framework isolation, dependency injection). Relevant to
    integration-pattern selection and module-boundary decisions.
 
+5. `standards/process/codebase-navigation.md` — LSP-first navigation
+   policy. Phase 2 architecture research uses LSP (`workspaceSymbol`,
+   `findReferences`, `incomingCalls`, `outgoingCalls`, `hover`,
+   `documentSymbol`) for any symbol-anchored query — especially
+   mapping callers and dependencies for modules named in the spec's
+   Module Structure section. Grep / Read / Glob are the fallback for
+   textual patterns, cross-language search, non-code files, or
+   uncovered languages.
+
 If `standards/process/interactive-user-input.md` does not exist, STOP
 and report the missing file to the user — no phase in this skill can
 proceed without it, because every user interaction is Pattern A or
 Pattern B.
 
-If any of the three architecture standards files do not exist, note
-the gap in the research summary and proceed with best judgment — but
-do NOT silently fork an ADR template inline; instead, report the
-missing standard to the user and ask whether to proceed without it.
+If any of the three architecture standards files (items 2–4 above)
+do not exist, note the gap in the research summary and proceed with
+best judgment — but do NOT silently fork an ADR template inline;
+instead, report the missing standard to the user and ask whether to
+proceed without it.
+
+If `standards/process/codebase-navigation.md` (item 5) does not
+exist, note the gap and proceed with Grep / Read / Glob — the
+LSP-first policy is non-blocking guidance, not a phase prerequisite.
 
 Additionally, in Phase 2 (Research), Read `INVARIANTS.md` at the repo
 root if present, and Read `.etc_sdlc/antipatterns.md` if present. These
@@ -370,8 +389,14 @@ plus `<feature_path>/research/architect-codebase.md`.
      `standards/architecture/layer-boundaries.md` against the codebase
      to surface drift.)
    - For each module mentioned in the spec's Module Structure section
-     (if any), grep for callers and dependencies to map the existing
-     dependency graph.
+     (if any), use LSP `workspaceSymbol` → `findReferences` /
+     `incomingCalls` to map the existing dependency graph
+     semantically. Grep is the fallback when the language isn't
+     covered by an LSP server. (Per
+     `standards/process/codebase-navigation.md`: grep on a symbol
+     name returns variable names, comments, string literals, and
+     unrelated matches; LSP returns only the references that point
+     to the same symbol.)
 
 2. **Web Research** — Search for established architectural patterns,
    documented pitfalls, and applicable standards for this design type.
@@ -412,9 +437,12 @@ plus `<feature_path>/research/architect-codebase.md`.
    A gap is **research-fillable** if at least one of the following
    yields a citable answer:
 
-   - A codebase grep finds a canonical pattern (e.g., "every other
-     subsystem uses async messaging via the existing broker — there's
-     one canonical answer").
+   - LSP `findReferences` / `incomingCalls` / `workspaceSymbol`
+     surfaces an authoritative usage pattern across the codebase; OR
+     a codebase grep finds a canonical textual pattern when the query
+     isn't symbol-anchored (e.g., "every other subsystem uses async
+     messaging via the existing broker — there's one canonical
+     answer").
    - An existing ADR under `docs/adrs/` cites the answer.
    - An existing doc cites the answer (`DOMAIN.md`, `INVARIANTS.md`,
      a tier-1 standard, an adjacent design).

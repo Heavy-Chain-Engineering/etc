@@ -53,7 +53,15 @@ class TestSkillMdContract:
             in skill_text
         ), "fillable test operational question must appear verbatim"
         # The four research-fillable triggers.
-        assert "codebase grep finds a canonical pattern" in skill_text
+        # LSP-first per standards/process/codebase-navigation.md; grep is
+        # the fallback when the query isn't symbol-anchored.
+        assert (
+            "LSP `findReferences` / `goToDefinition` / `workspaceSymbol`"
+            in skill_text
+        ), "LSP-first navigation must be cited as the symbol-anchored path"
+        assert "canonical textual pattern" in skill_text, (
+            "grep fallback for non-symbol queries must be cited"
+        )
         assert "existing doc cites the answer" in skill_text
         assert "universally-accepted best practice" in skill_text
         assert "adjacent test file shows the expected shape" in skill_text
