@@ -54,6 +54,44 @@ Quoting the block:
 
 > Operator ran `/spec → /architect → /build` on F004 (L1 compliance matrix evaluator) inside the keystone-demo consumer project. Agents (backend-developer × many, frontend-developer × few, devops-engineer × 1) shipped code that passed `pytest` and lefthook (ruff-format, ruff-check, gitleaks, commitizen) but accumulated 13 Pyright type errors. The conductor (`/build` orchestrator) dismissed each `<new-diagnostics>` system-reminder as "host-env noise" without verification. `/build` Step 7's spec-enforcer dispatch returned a truncated half-sentence and the conductor wrote `verification.md` from agent self-reports instead of independent traversal, marking the build COMPLETE. Operator caught it when they noticed accumulated diagnostics in their IDE and asked "How the hell are you shipping if you have stop hook errors?" — a question the harness should have made impossible. Lefthook clean ≠ type-clean; the agent conflated them. The forbidden-dismissals language matters because the dismissal phrases themselves became autoregressive: "Pyright noise is host-env" became a template once it had been said once.
 
+## Second incident — corroborating evidence (2026-05-20, project name redacted)
+
+Captured the same day. Operator observed the same family of failure in a separate project. Terminal `check-completion-discipline.sh` Stop-hook output:
+
+```
+6390 passed, 105 skipped, 30 deselected, 1 xfailed, 74 warnings, 5452 errors in 698.96s (0:11:38)
+
+── mypy output ──
+tests/common/test_metrics_endpoint.py:19: note: Use "-> None" if function does not return a value
+tests/common/test_metrics_endpoint.py:28: error: Function is missing a return type annotation  [no-untyped-def]
+tests/dev/test_e2e_fixtures_factories.py:50: error: Value of type variable "_R" of "fixture" cannot be "AsyncClient"  [type-var]
+tests/dev/test_e2e_fixtures_factories.py:51: error: The return type of an async generator function should be "AsyncGenerator" or one of its supertypes  [misc]
+tests/dev/test_e2e_fixtures_factories.py:743: error: Missing type arguments for generic type "dict"  [type-arg]
+tests/dev/test_e2e_fixtures_factories.py:1174: error: "PublicProfile" has no attribute "products_and_services"  [attr-defined]
+tests/dev/test_e2e_fixtures_factories.py:1175: error: "PublicProfile" has no attribute "products_and_services"  [attr-defined]
+Found 4323 errors in 542 files (checked 1184 source files)
+
+CI GATE FAILED: TESTS FAILED (exit 1) TYPE CHECK FAILED (exit 1)
+```
+
+**Magnitude:** 4323 mypy errors across 542 of 1184 source files (46% of the codebase). 5452 test errors (mostly collection failures, including `test_workflow_config_audit.py::TestWorkflowConfigAudit` × 4). Build duration 11 min 38 s.
+
+**Reading of the data:**
+
+- The existing `hooks/check-completion-discipline.sh` Stop hook **did** fire and block the stop — the architecture's last-line defense worked.
+- But by the time it fired, errors had accumulated to a count that proves no earlier gate was running per-wave. 4000+ type errors do not appear in one wave; they accrue across many waves while wave-N/done tags get written despite the issues.
+- The specific error families (missing return type annotations on tests, missing generic type args on `dict`, attribute-not-defined on Pydantic `PublicProfile` model) are exactly the surface that a per-wave type-check would have caught when the count was 1–5, not 4323.
+- Lefthook clean ≠ type-clean (same conflation as incident #1). Lefthook ran `ruff-format` + `ruff-check` + `gitleaks` + `commitizen` cleanly; no type-checker in the lefthook chain.
+- The autoregressive-dismissal pattern is plausible but cannot be confirmed from this output alone — the build transcript would tell us whether the conductor dismissed `<new-diagnostics>` reminders across waves. Either way, the structural defense is the same: per-wave type-check at Step 6c.
+
+**What this strengthens in the proposed scope:**
+
+- Scope item 2 (`/build` Step 6c per-wave type-check) moves from "nice to have" to **load-bearing**. The dismissal-discipline standard (scope item 1) defends against agent-level autoregressive behavior; Step 6c defends against the architectural gap that lets errors accumulate even when individual agents are well-behaved.
+- The pre-wave baseline comparison is non-negotiable: a project starting with N existing type errors (legacy debt) shouldn't have every wave fail. Wave fails iff `errors_after > errors_before` on the touched-file set.
+- Touched-file set vs whole-project: this incident argues for **whole-project** type-check at Step 6c, not just touched files. Many of the 4323 errors are in test files whose imports broke because of a production-code change in another file. Touched-file-only would have missed those cross-file effects.
+
+**Open question for `/spec`:** narrow (touched-files) vs broad (whole-project) type-check at Step 6c. Brief defaulted to narrow; this incident argues for broad. Probably a profile-specific tunable (mypy can do whole-project fast; tsc --noEmit on a large TS monorepo cannot).
+
 ## Cross-references
 
 - Renders into etc the same way F019 (CEO / stuck-loop detector) and F022-candidate (sandbox-bypass discipline) did — operator-time-loss patterns surfaced from downstream projects, codified as harness-layer gates so the next operator does not pay the same tax.
