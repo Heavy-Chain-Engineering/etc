@@ -1,0 +1,6 @@
+```yaml
+tool_rerun_command: "uv run mypy hooks/inject_standards_helpers.py"
+tool_rerun_output: "hooks/inject_standards_helpers.py:18: error: Skipping analyzing 'yaml': module is installed, but missing library stubs or py.typed marker  [import-untyped]"
+attribution: "Known upstream PyYAML packaging gap — types-PyYAML covers the public surface but not the private _yaml namespace this helper touches; pinning the suppression is the upstream-recommended workaround"
+evidence_type: UPSTREAM-ISSUE
+```

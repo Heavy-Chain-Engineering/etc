@@ -1,0 +1,11 @@
+```yaml
+tool_rerun_command: "uv run pytest tests/test_diagnostic_evidence_fixtures.py -v 2>&1 | tail -20"
+tool_rerun_output: |
+  tests/test_diagnostic_evidence_fixtures.py::test_should_have_exactly_twelve_valid_fixture_files_when_corpus_loaded PASSED
+  tests/test_diagnostic_evidence_fixtures.py::test_should_cover_all_five_evidence_type_enum_values_in_valid_corpus PASSED
+  tests/test_diagnostic_evidence_fixtures.py::test_should_have_exactly_eight_invalid_fixture_files_when_corpus_loaded PASSED
+  tests/test_diagnostic_evidence_fixtures.py::test_should_have_one_invalid_fixture_per_named_failure_mode_when_corpus_loaded PASSED
+  ===== 22 passed in 0.18s =====
+attribution: "Repro on a fresh checkout reproduces the green run end-to-end; the IDE diagnostic was emitted before the wave's last commit landed"
+evidence_type: repro
+```

@@ -4,16 +4,19 @@ The universal rule is `standards/code/error-handling.md`. This file
 binds that rule to Python tooling. Per ADR-F020-002 (rules separate from
 bindings) and ADR-F020-006 (etc adopts community canon, never authors).
 
-## Rule → Python idiom binding
+## Rule -> Python idiom binding
 
 | Rule (universal) | Python binding |
 |---|---|
-| Never silently swallow errors | `except SomeError: pass` is forbidden; ruff `BLE001` catches blind-except; ruff `S110` catches try/except/pass |
-| Catch specific exceptions | `except Exception:` without re-raise is flagged; prefer named exception classes |
+| Never silently swallow errors | `except SomeError: pass` and bare `except:` are forbidden; ruff `E722` catches bare-except, ruff `B001` catches bare-except in `try` blocks, ruff `S110` catches try/except/pass |
+| Catch specific exceptions | `except Exception:` without re-raise is flagged by ruff `BLE001`; prefer named exception classes |
 | Errors are values for expected failures | Use Result-like patterns (`pydantic.BaseModel` with `success`/`error` union, or `Optional[T]` for not-found) instead of exceptions for business-rule violations |
 | Domain-specific exception hierarchy | Inherit from a base project `<Project>Error`; do NOT inherit from `Exception` directly in domain layer |
+| Exception class naming | Domain exception class names end in `Error` (e.g. `DocumentNotFoundError`); enforced by ruff `N818` |
 | Exception messages carry context | `raise ValueError(f"Expected positive int for quantity, got {quantity!r}")` — never bare `raise ValueError("Invalid")` |
 | `raise X from e` for context-preserving re-raises | When re-raising, use `from` to chain; never swallow the originating traceback |
+| Don't catch and re-raise without adding context | ruff `TRY201` (use `raise` without re-naming) and `TRY301` (raise within `try`) flag the common shapes |
+| Don't return `None` for failure | No automated rule; required-reading review enforces |
 
 Invoke via `uv run ruff check src/ tests/`.
 
@@ -38,4 +41,6 @@ context is explicit. This is documented because ruff cannot distinguish
 - [PEP 8](https://peps.python.org/pep-0008/) §Programming Recommendations on exceptions
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#24-exceptions)
 - [ruff BLE rules](https://docs.astral.sh/ruff/rules/#flake8-blind-except-ble)
+- [ruff TRY rules](https://docs.astral.sh/ruff/rules/#tryceratops-try)
+- [ruff N818](https://docs.astral.sh/ruff/rules/error-suffix-on-exception-name/)
 - [ruff S rules](https://docs.astral.sh/ruff/rules/#flake8-bandit-s) — security-flavored try/except

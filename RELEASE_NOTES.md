@@ -811,4 +811,4 @@ tickets. The discipline is in the process, not the person.
 We never swallow errors. We never lower the bar on the second attempt. We fail
 early and loud.
 
-MIT License.
+Proprietary — all rights reserved. See `LICENSE`.

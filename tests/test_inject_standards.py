@@ -17,7 +17,7 @@ class TestTddSection:
         self, run_hook: Any, tmp_project: Path
     ) -> None:
         # Arrange
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -35,7 +35,7 @@ class TestCodeStandards:
         self, run_hook: Any, tmp_project: Path
     ) -> None:
         # Arrange
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -61,7 +61,7 @@ class TestResearchDiscipline:
         self, run_hook: Any, tmp_project: Path
     ) -> None:
         # Arrange
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -79,7 +79,7 @@ class TestResearchDiscipline:
         """context7 must appear in the onboarding so subagents know the name
         of the MCP server to query, not just the abstract concept of 'docs'."""
         # Arrange
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -98,7 +98,7 @@ class TestResearchDiscipline:
         before checking docs. The hook must name that failure mode explicitly
         so a future agent recognises itself in it."""
         # Arrange
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -129,7 +129,11 @@ class TestGitCommitDiscipline:
         self, run_hook: Any, tmp_project: Path
     ) -> None:
         # Arrange
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        # F024 BR-002: Git Commit Discipline is now conditional on the
+        # canonical developer-role allow-list (backend-developer,
+        # frontend-developer, devops-engineer). The legacy "backend" short
+        # form is suppressed post-F024; use the canonical role name.
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -149,7 +153,7 @@ class TestGitCommitDiscipline:
         see the literal command, not an abstract 'use the safe form' hint.
         The abstract version drifts past agents in the heat of the moment."""
         # Arrange
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -178,7 +182,7 @@ class TestGitCommitDiscipline:
         `git add -u` explicitly as forbidden so a future agent recognises
         itself in the failure mode."""
         # Arrange
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -209,7 +213,7 @@ class TestActiveTaskInjection:
             status="in_progress",
             files_in_scope=["src/parser.py"],
         )
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -235,7 +239,7 @@ class TestInvariantsInjection:
                 "verify": "grep -r '@require_auth' src/",
             },
         ])
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)
@@ -264,7 +268,7 @@ class TestAntipattersInjection:
         )
         antipatterns_path = tmp_project / ".etc_sdlc" / "antipatterns.md"
         antipatterns_path.write_text(antipatterns_content)
-        hook_input = {"cwd": str(tmp_project), "agent_type": "backend"}
+        hook_input = {"cwd": str(tmp_project), "agent_type": "backend-developer"}
 
         # Act
         result = run_hook("inject-standards.sh", hook_input)

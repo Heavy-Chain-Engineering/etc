@@ -1,0 +1,22 @@
+[project]
+name = "diagnostic-discipline-failing-wave-fixture"
+version = "0.0.1"
+description = "F021 fixture — minimal python-profile project with a deliberate mypy type error. NOT a runnable project; consumed by tests/test_step_6c_quality_gate.py as the AC-005 zero-tolerance integration target."
+requires-python = ">=3.11"
+
+# Strict mypy config so src/bad.py's deliberate type error surfaces.
+# The fixture's profile-dispatched verify-green run MUST exit non-zero
+# (F021 BR-004 zero-tolerance contract).
+[tool.mypy]
+python_version = "3.11"
+strict = true
+disallow_untyped_defs = true
+
+# Coverage / ruff config kept minimal — the integration test only needs
+# mypy to fire; coverage and ruff would surface their own errors but
+# the type-error is the primary contract.
+[tool.coverage.run]
+source = ["src"]
+
+[tool.coverage.report]
+fail_under = 0

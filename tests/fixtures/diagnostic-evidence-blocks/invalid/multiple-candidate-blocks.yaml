@@ -1,0 +1,17 @@
+First investigation:
+
+```yaml
+tool_rerun_command: "uv run mypy scripts/diagnostic_evidence.py"
+tool_rerun_output: "Success: no issues found in 1 source file"
+attribution: "IDE mypy resolved against the system interpreter instead of the venv"
+evidence_type: interpreter-diff
+```
+
+And, separately, for the unrelated pyright warning:
+
+```yaml
+tool_rerun_command: "uv run pyright scripts/diagnostic_evidence.py"
+tool_rerun_output: "0 errors, 0 warnings, 0 informations"
+attribution: "Pyright IDE extension was running an older version than the pinned CLI"
+evidence_type: version-diff
+```

@@ -1,0 +1,5 @@
+```yaml
+tool_rerun_output: "All checks passed!"
+attribution: "IDE plugin shipped an older ruff that flagged a rule the current pinned version has since removed"
+evidence_type: version-diff
+```

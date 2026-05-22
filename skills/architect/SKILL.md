@@ -199,6 +199,15 @@ Resolution order:
 3. Else, find the most recent feature directory under
    `.etc_sdlc/features/active/` (sorted by mtime descending).
 
+The `<feature_id>` argument (step 2 above) accepts the current `F-YYYY-MM-DD-<slug>`
+date-based form (per the 2026-05-22 revision superseding F023-001; see ADR
+`docs/adrs/F-2026-05-22-feature-id-naming-revision-001-date-based-format.md`),
+as well as the legacy `F<NNN>` (F001-F026 era) and `Ftmp-<8-hex>` forms.
+`scripts/feature_id.py::resolve_feature_path` handles all three. New
+features produced after the 2026-05-22 revision never appear in the
+legacy temp form; there is no temp→final rename step at /build Step 7c
+for date-based features.
+
 For the resolved path, read `state.yaml` and extract:
 
 - `feature_id` (e.g., `F042`) — used for tag names and ADR file paths.

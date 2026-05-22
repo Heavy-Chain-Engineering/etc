@@ -1,0 +1,6 @@
+```yaml
+tool_rerun_command: "uv run pyright scripts/diagnostic_evidence.py"
+tool_rerun_output: "0 errors, 0 warnings, 0 informations"
+attribution: "IDE pyright executable resolved from PATH instead of the project venv; CLI pyright clean"
+evidence_type: Interpreter-Diff
+```

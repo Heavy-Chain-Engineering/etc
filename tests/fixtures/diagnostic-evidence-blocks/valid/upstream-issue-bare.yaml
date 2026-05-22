@@ -1,0 +1,4 @@
+tool_rerun_command: "uv run pyright --outputjson hooks/inject_standards_helpers.py"
+tool_rerun_output: "{ \"summary\": { \"errorCount\": 1 }, \"generalDiagnostics\": [ { \"rule\": \"reportPrivateImportUsage\", \"message\": \"Import 'PyYAML._yaml' is not exported from module 'yaml'\" } ] }"
+attribution: "Known pyright bug on PyYAML's re-export shape — microsoft/pyright#7421; will clear when the stubs land in typeshed"
+evidence_type: upstream-issue

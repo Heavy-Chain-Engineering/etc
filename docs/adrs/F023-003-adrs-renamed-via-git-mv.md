@@ -1,0 +1,18 @@
+# ADR-F023-003: ADRs under `docs/adrs/` are renamed via `git mv` at /build Step 7c
+
+**Date:** 2026-05-21
+**Status:** Accepted
+
+**Context:** When a feature is authored under the F023 temp-ID regime, its ADRs are written to `docs/adrs/` as `Ftmp-<hex>-NN-name.md`. At /build Step 7c, `resolve-final-id` must rename these files to `F<NNN>-NN-name.md`. Two filesystem primitives are available: `shutil.move` (used in F022 for the feature dir under `.etc_sdlc/`) and `git mv`. The choice matters because `docs/adrs/` is git-tracked while `.etc_sdlc/` is gitignored. A plain filesystem move in a tracked directory produces a delete+add in git's eyes — the rename is invisible to `git log --follow`. Reviewers reading commit history cannot trace a given ADR back through its temp-form commits without manually correlating filenames.
+
+There is also a security constraint: the source and destination paths incorporate operator-controlled values (the feature slug and hex token). Shell-string construction of the `git mv` invocation would expose an injection surface. argv-style invocation via `subprocess.run(["git", "mv", src, dst], ...)` eliminates this class of risk. This is the same control applied in F022's `scripts/active_to_shipped_mv.py` for the `git mv` precedent established there.
+
+**Decision:** ADRs matching `docs/adrs/Ftmp-<hex>-NN-*.md` are renamed to `docs/adrs/F<NNN>-NN-*.md` using `subprocess.run(["git", "mv", src, dst], cwd=repo_root, check=False)` — argv-style, never shell-string. The rename runs as part of `scripts/feature_id.py resolve-final-id` at /build Step 7c, after the final `F<NNN>` is allocated by `allocate-next` and before the active→shipped directory move. If `git mv` exits non-zero, stderr is surfaced verbatim to the operator and `resolve-final-id` exits 1 without rolling back the directory rename already completed — operator remediates manually (matches F022's three-branch failure-semantics shape). If `docs/adrs/` contains no `Ftmp-<hex>-` ADRs, the step is skipped silently.
+
+If an ADR was committed under its temp form before Step 7c runs, the rename is still visible in the commit log via `git log --follow docs/adrs/F<NNN>-NN-name.md` — this is standard git rename tracking and is acceptable (EC-010).
+
+**Consequences:** *Positive:* `git log --follow` surfaces the full authoring history of every ADR regardless of whether it was committed under the temp name; reviewers see one continuous timeline. The argv-style invocation eliminates shell injection from operator-controlled slugs and hex tokens. The implementation is two `Path.glob` + `subprocess.run` calls — negligible complexity. *Negative:* `git mv` requires a clean working tree for the affected paths at Step 7c; a dirty tree (uncommitted modifications to an in-flight ADR) will cause `git mv` to fail with a non-zero exit, blocking Step 7c until the operator resolves the conflict manually.
+
+**Alternatives considered:** Leave ADR filenames in temp form and add a redirect stub (e.g., `docs/adrs/Ftmp-jw3k7890-001-foo.md` containing a one-liner pointing to `F042-001-foo.md`). Rejected: ADRs end up in two namespaces (`Ftmp-*` and `F<NNN>-*`), `git log` shows no rename, redirect files accumulate indefinitely, and reviewers must follow indirection to find the canonical document. Operator burden compounds across features. The core problem — history fragmentation — is not solved, only papered over.
+
+Using `shutil.move` instead of `git mv` was not considered for `docs/adrs/` because `docs/adrs/` is git-tracked; `shutil.move` would register as a delete+add and lose rename history. (`shutil.move` remains correct for the feature directory under `.etc_sdlc/`, which is gitignored — per F022.)

@@ -136,18 +136,26 @@ class TestFeatureIdAllocation:
     def test_allocation_happens_before_phase_2_5_gray_areas(
         self, skill_text: str
     ) -> None:
-        """The F<NNN> allocation must occur at the start of Phase 2 — BEFORE
-        Phase 2.5 writes gray-areas.md — so every subdirectory write uses
-        the F<NNN>-<slug> path."""
-        alloc_idx = skill_text.find(
+        """The feature-ID allocation must occur at the start of Phase 2 —
+        BEFORE Phase 2.5 writes gray-areas.md — so every subdirectory write
+        uses the feature-dir path. Per F023 BR-005 the allocator is now
+        `allocate-temp` (returns Ftmp-<hex>); pre-F023 callers used
+        `allocate-next`; either form satisfies the ordering invariant."""
+        alloc_idx_temp = skill_text.find(
+            "python3 ~/.claude/scripts/feature_id.py allocate-temp"
+        )
+        alloc_idx_next = skill_text.find(
             "python3 ~/.claude/scripts/feature_id.py allocate-next"
         )
-        assert alloc_idx != -1, "allocate-next CLI invocation missing"
+        # At least one of the two allocator invocations must be present.
+        alloc_indices = [i for i in (alloc_idx_temp, alloc_idx_next) if i != -1]
+        assert alloc_indices, "feature_id.py allocate-temp/allocate-next CLI invocation missing"
+        alloc_idx = min(alloc_indices)
         gray_areas_idx = skill_text.find("### Phase 2.5: Gray Area Resolution")
         assert gray_areas_idx != -1, "Phase 2.5 header missing"
         assert alloc_idx < gray_areas_idx, (
-            "allocate-next must be invoked BEFORE Phase 2.5 so the gray-areas.md "
-            "write lands under F<NNN>-<slug>/, not a slug-only path"
+            "feature-id allocation must be invoked BEFORE Phase 2.5 so the "
+            "gray-areas.md write lands under the feature-dir path"
         )
 
     def test_phase_5_describes_f_nnn_slug_directory(

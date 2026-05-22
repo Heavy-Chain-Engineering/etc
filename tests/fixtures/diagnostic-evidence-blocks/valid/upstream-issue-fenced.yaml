@@ -1,0 +1,6 @@
+```yaml
+tool_rerun_command: "uv run mypy --show-error-codes scripts/value_hypothesis.py"
+tool_rerun_output: "scripts/value_hypothesis.py:42: error: Module 'yaml' has no attribute 'CSafeLoader'  [attr-defined]"
+attribution: "Known upstream mypy false-positive against PyYAML stubs — tracked at python/mypy#15834; suppression is the documented workaround pending stubs update"
+evidence_type: upstream-issue
+```

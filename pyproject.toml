@@ -5,10 +5,25 @@ description = "Engineering Team, Codified — SDLC harness for AI-assisted softw
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0",
+    # Ftmp-5afddbce: Python installer rewrite (etc_installer/). typer
+    # owns argv parsing + auto-styled --help; rich owns terminal UX
+    # (✓/⚠/✗ status lines, ANSI banner write-through). Pin floors per
+    # design.md Technical Constraints: typer>=0.12 (rich integration
+    # stabilized); rich>=13.7 (Console.color_system property).
+    "typer>=0.12",
+    "rich>=13.7",
 ]
 
 [project.scripts]
 compile-sdlc = "compile_sdlc:main"
+
+# Ftmp-5afddbce: etc_installer ships inline in the repo (ADR-003 —
+# docs/adrs/Ftmp-5afddbce-003-etc-installer-inline.md). The bash
+# bootstrap hands off via `exec uv run --from "$SCRIPT_DIR" -m
+# etc_installer "$@"`. Hatchling (uv's default build backend when none
+# is declared) auto-discovers packages by directory name; once task
+# 002 lands etc_installer/__init__.py the package is importable via
+# `python -m etc_installer` without further pyproject changes.
 
 [tool.uv]
 dev-dependencies = [
@@ -19,11 +34,24 @@ dev-dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# pythonpath ensures the new etc_installer package (Ftmp-5afddbce) resolves
+# during pytest collection. Per ADR-Ftmp-5afddbce-003, etc_installer lives
+# inline in the repo root; pytest needs the root on sys.path to import it
+# without per-test-file sys.path.insert hacks.
+pythonpath = ["."]
 # --ignore-glob entries exclude sandbox-denied paths (.env*) from pytest's
 # collection walker, which otherwise stats every top-level file in rootdir
 # and fails on sandboxed secrets files before any test runs.
 addopts = "-v --tb=short --ignore-glob=.env*"
 norecursedirs = [".git", ".venv", "venv", "node_modules", "dist", "build", ".etc_sdlc", "platform"]
+
+[tool.pyright]
+# etc_installer ships inline at the repo root (ADR-Ftmp-5afddbce-003); without
+# an extraPaths hint, Pyright reports `reportMissingImports` even though the
+# package resolves at runtime (verified via `python3 -c "import etc_installer"`).
+# Documented as an F021 interpreter-diff diagnostic dismissal at the structural
+# (pyproject.toml) layer rather than per-source-file evidence comments.
+extraPaths = ["."]
 
 [tool.mypy]
 # F020 surfaced mypy-was-off-in-practice. Coverage gate enforced 98%

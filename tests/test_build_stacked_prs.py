@@ -28,8 +28,12 @@ Precedent:
   per-test; subprocess invocation that protects real F001-F009 artifacts
   by construction; verbatim string greps.
 - ``tests/test_windows_compatibility.py``: grep tests over the literal
-  contents of ``install.sh`` (module-level ``INSTALL_SH`` constant +
-  ``install_sh_text`` fixture pattern).
+  contents of source files via a module-level ``REPO_ROOT / "<file>"``
+  constant + module-scoped text fixture pattern. Post-Ftmp-5afddbce
+  task 006 migration, the install.sh-targeted assertions in this file
+  moved to ``etc_installer/preflights.py`` (declared via
+  ``PREFLIGHTS_PATH`` below) so the ``install_sh_text`` fixture was
+  removed as dead code.
 """
 
 from __future__ import annotations
@@ -42,7 +46,19 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_BUILD = REPO_ROOT / "skills" / "build" / "SKILL.md"
-INSTALL_SH = REPO_ROOT / "install.sh"
+
+# Ftmp-5afddbce task 003 ships ``etc_installer/preflights.py`` as the
+# Python rewrite of install.sh's gh-stack / impeccable / mergiraf /
+# @google/design.md preflight blocks. Per task 006 AC-006-3, the F010
+# gh-stack-preflight INFO assertions in this file migrate from
+# grep-on-install.sh to grep-on-preflights.py once task 003 ships.
+# Pre-task-003, the migrated tests SKIP via
+# skipif(not PREFLIGHTS_PATH.exists(), reason=PREFLIGHTS_PENDING_REASON).
+PREFLIGHTS_PATH = REPO_ROOT / "etc_installer" / "preflights.py"
+PREFLIGHTS_PENDING_REASON = (
+    "etc_installer/preflights.py not yet shipped (pending Ftmp-5afddbce "
+    "task 003 preflights.py)"
+)
 
 # Verbatim strings from spec.md (BR-004 + AC5, BR-007 + AC10, AC1).
 # Tests grep for these prefixes; the strings live in the source artifacts
@@ -69,15 +85,6 @@ def skill_build_text() -> str:
         f"missing source skill: {SKILL_BUILD}; F010 tests cannot run without it"
     )
     return SKILL_BUILD.read_text(encoding="utf-8")
-
-
-@pytest.fixture(scope="module")
-def install_sh_text() -> str:
-    """Read ``install.sh`` once per module."""
-    assert INSTALL_SH.exists(), (
-        f"missing installer: {INSTALL_SH}; F010 tests cannot run without it"
-    )
-    return INSTALL_SH.read_text(encoding="utf-8")
 
 
 # ── Synthetic-git-repo helpers (F005 + F008 precedent) ───────────────────
@@ -433,67 +440,92 @@ def test_skill_build_documents_resume_across_layer_boundary(
 # ─────────────────────────────────────────────────────────────────────────
 
 
-# BR-009 (h) + AC10 + BR-007: install.sh preflight INFO message verbatim.
-def test_install_sh_documents_gh_stack_preflight_info(
-    install_sh_text: str,
-) -> None:
-    """AC10 + BR-007: install.sh contains the gh-stack preflight INFO
-    message verbatim.
+# BR-009 (h) + AC10 + BR-007: gh-stack preflight INFO message verbatim
+# (post-Ftmp-5afddbce-task-003: declared in etc_installer/preflights.py).
+@pytest.mark.skipif(
+    not PREFLIGHTS_PATH.exists(),
+    reason=PREFLIGHTS_PENDING_REASON,
+)
+def test_preflights_py_documents_gh_stack_preflight_info() -> None:
+    """AC10 + BR-007 (Ftmp-5afddbce task 006 migration): ``etc_installer/
+    preflights.py`` declares the F010 gh-stack INFO message verbatim.
 
-    The test contract greps for the verbatim prefix ``INFO: gh-stack
-    not detected``. The full canonical line is:
+    Migrated from grep-on-install.sh to grep-on-preflights.py per task
+    006 AC-006-3. Per design.md ``preflights.py`` exposes verbatim
+    ``F010_INFO_LINE`` module-level constant (BR-005, AC-005). The full
+    canonical line is preserved verbatim from install.sh:
 
         INFO: gh-stack not detected. Stacked-PR builds (etc F010+)
         require gh-stack. Install via: gh extension install
-        jiazh/gh-stack (or equivalent). Single-wave builds work without it.
+        github/gh-stack (or equivalent). Single-wave builds work without it.
     """
-    assert INSTALL_INFO_PREFIX in install_sh_text, (
-        f"install.sh missing verbatim INFO message prefix "
+    preflights_text = PREFLIGHTS_PATH.read_text(encoding="utf-8")
+
+    assert "F010_INFO_LINE" in preflights_text, (
+        "etc_installer/preflights.py missing 'F010_INFO_LINE' module-level "
+        "constant; design.md mandates the verbatim INFO_LINE constants "
+        "(BR-005 / AC-005)"
+    )
+    assert INSTALL_INFO_PREFIX in preflights_text, (
+        f"etc_installer/preflights.py missing verbatim INFO message prefix "
         f"{INSTALL_INFO_PREFIX!r}; expected per F010 spec.md AC10 / BR-007"
     )
     # Additional verbatim tokens from the canonical INFO line.
-    assert "gh extension install jiazh/gh-stack" in install_sh_text, (
-        "install.sh missing literal install instruction 'gh extension "
-        "install jiazh/gh-stack' per AC10 / BR-007"
+    assert "gh extension install github/gh-stack" in preflights_text, (
+        "etc_installer/preflights.py missing literal install instruction "
+        "'gh extension install github/gh-stack' per AC10 / BR-007"
     )
-    assert "Single-wave builds work without it" in install_sh_text, (
-        "install.sh missing literal 'Single-wave builds work without it' "
-        "closing clause from the INFO message per AC10 / BR-007"
+    assert "Single-wave builds work without it" in preflights_text, (
+        "etc_installer/preflights.py missing literal 'Single-wave builds "
+        "work without it' closing clause from the INFO message per AC10 / "
+        "BR-007"
     )
 
 
 # AC11 + BR-007: preflight is non-blocking (INFO, not ERROR).
-def test_install_sh_preflight_is_non_blocking(install_sh_text: str) -> None:
-    """AC11 + BR-007: install.sh's gh-stack preflight is non-blocking.
+@pytest.mark.skipif(
+    not PREFLIGHTS_PATH.exists(),
+    reason=PREFLIGHTS_PENDING_REASON,
+)
+def test_preflights_py_gh_stack_preflight_is_non_blocking() -> None:
+    """AC11 + BR-007 (Ftmp-5afddbce task 006 migration): the Python
+    rewrite of the gh-stack preflight in ``etc_installer/preflights.py``
+    is non-blocking.
 
-    The INFO message must NOT cause the installer to exit non-zero. The
-    check uses ``command -v gh-stack`` (or ``gh stack --help``) and on
-    absence, prints the INFO via the existing ``info()``/``warn()``
-    helpers — NEVER ``error()`` + ``exit 1``.
+    Migrated from grep-on-install.sh to grep-on-preflights.py per task
+    006 AC-006-3. Post-rewrite, the Python implementation must NOT
+    abort installation when gh-stack is absent — the `offer_install`
+    helper prints the INFO and returns; aborts (sys.exit / raise
+    SystemExit) belong in `install_steps.py` for hard-fail conditions
+    (missing dist/, etc.) which are unrelated.
 
-    Test contract: in the surrounding region of the INFO message, the
-    closest exit-related token is NOT ``exit 1`` (which would block).
+    Test contract: in the surrounding region of the F010_INFO_LINE
+    declaration, no `sys.exit` or `raise SystemExit` token (the Python
+    equivalent of bash's `exit 1`) is present.
     """
-    info_idx = install_sh_text.find(INSTALL_INFO_PREFIX)
-    assert info_idx != -1, (
-        f"install.sh missing INFO message; cannot verify non-blocking "
-        f"behavior. Expected prefix {INSTALL_INFO_PREFIX!r}."
-    )
-    # Region: from a bit before the INFO line to a bit after. Scope is
-    # tight on purpose — we want to catch an ``exit 1`` in the same
-    # conditional block, not one further down the installer.
-    region_start = max(0, info_idx - 400)
-    region_end = min(len(install_sh_text), info_idx + 400)
-    region = install_sh_text[region_start:region_end]
+    preflights_text = PREFLIGHTS_PATH.read_text(encoding="utf-8")
 
-    # The preflight block must not emit ``exit 1`` immediately around
-    # the INFO message — that would make the check blocking. (The
-    # installer has other ``exit 1`` calls elsewhere for hard-fail
-    # conditions like missing dist/, which are unrelated.)
-    assert "exit 1" not in region, (
-        f"install.sh INFO region contains 'exit 1' near the gh-stack "
-        f"preflight message; preflight must be non-blocking per AC11. "
+    info_idx = preflights_text.find(INSTALL_INFO_PREFIX)
+    assert info_idx != -1, (
+        f"etc_installer/preflights.py missing INFO message; cannot verify "
+        f"non-blocking behavior. Expected prefix {INSTALL_INFO_PREFIX!r}."
+    )
+    # Region: tight scope around the INFO declaration — catches a sys.exit
+    # in the same module region, not one further away in an unrelated
+    # surface.
+    region_start = max(0, info_idx - 400)
+    region_end = min(len(preflights_text), info_idx + 400)
+    region = preflights_text[region_start:region_end]
+
+    assert "sys.exit" not in region, (
+        f"etc_installer/preflights.py region contains 'sys.exit' near the "
+        f"gh-stack preflight INFO; preflight must be non-blocking per AC11. "
         f"region={region!r}"
+    )
+    assert "raise SystemExit" not in region, (
+        f"etc_installer/preflights.py region contains 'raise SystemExit' "
+        f"near the gh-stack preflight INFO; preflight must be non-blocking "
+        f"per AC11. region={region!r}"
     )
 
 

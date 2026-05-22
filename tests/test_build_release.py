@@ -224,9 +224,13 @@ class TestStep7ReleaseTagAndNotes:
 
     def test_step7_describes_release_tag(self, skill_text: str) -> None:
         block = _step7_block(skill_text)
-        assert "etc/feature/F<NNN>/release" in block, (
-            "Step 7 must describe writing the etc/feature/F<NNN>/release tag"
-        )
+        # F023 BR-006: release tag uses the final F<NNN> (or post-F023
+        # placeholder <final_id>) — either form satisfies the intent that
+        # Step 7 names the release-tag-writing operation.
+        assert (
+            "etc/feature/F<NNN>/release" in block
+            or "etc/feature/<final_id>/release" in block
+        ), "Step 7 must describe writing the etc/feature/.../release tag"
 
     def test_step7_release_tag_uses_git_tags_cli(
         self, skill_text: str
@@ -329,7 +333,15 @@ class TestStep8ArtifactSummary:
 
     def test_step8_summary_lists_release_tag(self, skill_text: str) -> None:
         block = _step8_block(skill_text).lower()
-        assert "release tag" in block or "etc/feature/" in block, (
+        # F023 split the Step 8 tag-listing prose: "refs/tags/etc/:" prefix
+        # then nested "feature/<final_id>/release". Accept either the old
+        # contiguous form OR the F023 form (release substring + feature/
+        # substring co-present + refs/tags/etc/ prefix).
+        assert (
+            "release tag" in block
+            or "etc/feature/" in block
+            or ("refs/tags/etc/" in block and "/release" in block)
+        ), (
             "Step 8 artifact summary must name the release tag (or the "
             "etc/feature/<F-id>/release ref) so the user sees it"
         )

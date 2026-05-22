@@ -1,20 +1,98 @@
 #!/bin/bash
 # hooks/check-seam-evidence.sh
 #
-# Verify-phase hook for integration seam evidence.
-# Parses SEAMS.md from the project root, checks evidence at the declared
-# level (L1/L2/L3) for each seam entry, and blocks if any check fails.
+# Stop hook. Profile-aware seam-evidence dispatch (F022).
 #
-# This hook runs at the Stop event (verify phase), not per-edit.
-# It is structural — it checks that test files exist and contain expected
-# markers/imports, never executes the tests.
+# Profile-dispatch front-end (F022 AC-004 / BR-003):
+#   Reads .etc_sdlc/profiles.lock, iterates active profiles, dispatches to
+#   standards/code/profiles/<profile>/check-seam-evidence.sh for each.
+#   No-profile path: stderr WARN containing "no profile" + exit 0 (F020-ADR-003).
+#   Missing per-profile script: warn-and-skip (no-op, don't fail).
+#   Emits one JSONL audit row to .etc_sdlc/efficiency/turn-events.jsonl (BR-009).
+#
+# After profile dispatch, runs the structural seam-evidence checks against
+# SEAMS.md (the pre-F022 body preserved verbatim).
 #
 # Exit codes:
-#   0 = all seam evidence checks pass (or no SEAMS.md / no entries)
+#   0 = all seam evidence checks pass (or no SEAMS.md / no entries / no profiles)
 #   2 = one or more evidence checks failed
 
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+
+# ---------------------------------------------------------------------------
+# F022: Profile-dispatch front-end (mirrors verify-green.sh, F020-ADR-005)
+# ---------------------------------------------------------------------------
+
+_emit_audit_row() {
+  # Best-effort JSONL append to .etc_sdlc/efficiency/turn-events.jsonl (BR-009).
+  # Write failures degrade silently — never change the hook's exit code.
+  local outcome="$1"
+  local profiles_json="$2"
+  local audit_dir="${CWD}/.etc_sdlc/efficiency"
+  local audit_log="${audit_dir}/turn-events.jsonl"
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+  local row
+  row=$(printf '{"ts":"%s","event_type":"profile_dispatch","hook":"check-seam-evidence","profiles":%s,"outcome":"%s"}' \
+    "$ts" "$profiles_json" "$outcome" 2>/dev/null || echo "")
+  if [[ -n "$row" ]]; then
+    # Idempotent parent-dir creation; silent on failure
+    mkdir -p "$audit_dir" 2>/dev/null || true
+    printf '%s\n' "$row" >> "$audit_log" 2>/dev/null || true
+  fi
+}
+
+LOCK="${CWD}/.etc_sdlc/profiles.lock"
+
+if [[ ! -f "$LOCK" ]]; then
+  echo "[check-seam-evidence] WARN: no profile configured (profiles.lock absent); profile dispatch skipped." >&2
+  _emit_audit_row "warn-and-skip" "[]"
+elif [[ ! -s "$LOCK" ]] || ! grep -q '^[a-z]' "$LOCK" 2>/dev/null; then
+  echo "[check-seam-evidence] WARN: no profile active in profiles.lock; profile dispatch skipped." >&2
+  _emit_audit_row "warn-and-skip" "[]"
+else
+  # Build profiles JSON array for audit log
+  PROFILES_JSON=$(awk 'NF{printf "%s\"%s\"", (NR>1?",":""), $0}' "$LOCK" 2>/dev/null | { read -r p; echo "[${p}]"; } || echo "[]")
+
+  PROFILE_EXIT=0
+  SKIPPED_ALL=true
+  while IFS= read -r PROFILE; do
+    PROFILE=$(echo "$PROFILE" | tr -d '[:space:]')
+    [[ -z "$PROFILE" ]] && continue
+
+    GATE="${CWD}/standards/code/profiles/${PROFILE}/check-seam-evidence.sh"
+    if [[ ! -f "$GATE" ]]; then
+      GATE="${HOME}/.claude/standards/code/profiles/${PROFILE}/check-seam-evidence.sh"
+    fi
+    if [[ ! -f "$GATE" ]]; then
+      # Per AC-004: missing per-profile script is a no-op, not a failure
+      echo "[check-seam-evidence] WARN: profile '${PROFILE}' has no check-seam-evidence.sh; skipping." >&2
+      continue
+    fi
+
+    echo "[check-seam-evidence] Running ${PROFILE} profile..." >&2
+    GATE_OUTPUT=$(echo "$INPUT" | bash "$GATE" 2>&1)
+    GATE_EXIT=$?
+    echo "$GATE_OUTPUT" >&2
+    SKIPPED_ALL=false
+    if [[ $GATE_EXIT -ne 0 ]]; then
+      PROFILE_EXIT=$GATE_EXIT
+    fi
+  done < "$LOCK"
+
+  if [[ $PROFILE_EXIT -ne 0 ]]; then
+    _emit_audit_row "fail" "$PROFILES_JSON"
+    exit $PROFILE_EXIT
+  else
+    # All ran (or all skipped): emit pass
+    _emit_audit_row "pass" "$PROFILES_JSON"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Pre-F022 seam-evidence body (preserved verbatim)
+# ---------------------------------------------------------------------------
 
 # If we can't determine the project directory, allow the operation
 if [[ -z "$CWD" || "$CWD" == "." ]]; then
