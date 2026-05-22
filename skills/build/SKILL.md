@@ -1345,18 +1345,111 @@ successfully at Step 6:
 
 1. Run full CI: tests + coverage + types (if applicable) + lint (if applicable)
 2. Run invariant checks: `INVARIANTS.md` verify commands
-3. **Dispatch spec-enforcer** for adversarial AC verification:
+3. **Dispatch spec-enforcer** for adversarial AC verification.
+
+   Step 7 item 3 uses hierarchical chunking when the spec carries more
+   ACs than `spec-enforcer` can verify under its 20-tool-call budget.
+   The chunk size and threshold are tunable module-level constants
+   defined in `scripts/spec_enforcer_chunker.py`:
+
+   - `SPEC_ENFORCER_CHUNK_THRESHOLD` (default `10`) — AC count at or
+     below which the single-dispatch fast path is used. Rationale:
+     F026 hit the 20-tool-budget wall at 13 ACs, so 10 is the
+     conservative edge with a 3-AC safety margin.
+   - `SPEC_ENFORCER_CHUNK_SIZE` (default `6`) — ACs per chunk when
+     chunking engages. Rationale: 6 ACs × ~3 tool calls per AC = 18,
+     under the 20-tool cap with 2-call headroom.
+
+   Operators tune by editing the constants in
+   `scripts/spec_enforcer_chunker.py` (per ADR-001 / GA-A004) or by
+   passing `--chunk-size N` / `--threshold M` on the CLI for ad-hoc
+   inspection.
+
+   **3a. Partition the ACs.** Invoke the chunker CLI:
+
+   ```bash
+   python3 scripts/spec_enforcer_chunker.py partition \
+       .etc_sdlc/features/active/{slug}/spec.md
+   ```
+
+   The CLI emits JSON to stdout:
+
+   ```json
+   {
+     "strategy": "single" | "chunked",
+     "chunks": [
+       {
+         "chunk_id": 0,
+         "ac_numbers": [1, 2, 3, 4, 5, 6],
+         "ac_text": "1. **AC-001 — ...**\n   ...\n6. **AC-006 — ...**"
+       }
+     ]
+   }
+   ```
+
+   Strategy `"single"` means AC count ≤ threshold; one chunk holds
+   every AC. Strategy `"chunked"` means AC count > threshold; ACs are
+   partitioned into chunks of size `SPEC_ENFORCER_CHUNK_SIZE` (the
+   last chunk may be smaller).
+
+   **3b. Single-dispatch fast path (`strategy: "single"`).** When the
+   chunker returns one chunk, use the existing single-Agent dispatch
+   shape unchanged — small specs pay zero overhead and F001-F026
+   re-verification produces identical results:
+
    ```
    Agent({
      subagent_type: "spec-enforcer",
      prompt: "Verify the deliverables for feature '{slug}' against the PRD at {spec_path}. Check every acceptance criterion. For any AC containing a User-flow sentence (canonical prefix 'As {role}, navigate from'), additionally require reachability evidence per `standards/process/user-flow-completeness.md` (Reachability Evidence section). Acceptable evidence forms in preference order: E2E test that walks the navigation path, static nav-graph reference grep proof, or manual reachability proof. A unit test that imports the target component directly is necessary but NOT sufficient for a user-facing AC. Report COMPLIANT or NON-COMPLIANT with evidence."
    })
    ```
-   If the spec-enforcer returns NON-COMPLIANT, the build is NOT done.
-   Route the violations back to the responsible task owners for remediation
-   before proceeding to Step 8. **Do not write the release tag or
-   release-notes.md** while remediation is outstanding — release artifacts
-   are gated on a successful terminal-phase close.
+
+   **3c. Chunked dispatch path (`strategy: "chunked"`).** When the
+   chunker returns N > 1 chunks, dispatch one `spec-enforcer` per
+   chunk in parallel — N Agent-tool calls in a single conductor turn,
+   mirroring the Step 6a parallel-fan-out convention (no serial loop).
+   Each per-chunk briefing prompt embeds: the `spec.md` path (for the
+   agent's path-based grep), the chunk's `ac_text` verbatim (so the
+   agent doesn't waste tool calls re-parsing the spec for which ACs
+   it owns), the User-flow reachability-evidence clause verbatim from
+   the single-dispatch prompt (preserves the F001 contract), and an
+   instruction limiting verdict output to this chunk's ACs only:
+
+   ```
+   Agent({
+     subagent_type: "spec-enforcer",
+     prompt: "Verify the deliverables for feature '{slug}' against the PRD at {spec_path}. Check ONLY the following acceptance criteria (chunk {chunk_id} of {total_chunks}):\n\n{ac_text}\n\nFor any AC containing a User-flow sentence (canonical prefix 'As {role}, navigate from'), additionally require reachability evidence per `standards/process/user-flow-completeness.md` (Reachability Evidence section). Acceptable evidence forms in preference order: E2E test that walks the navigation path, static nav-graph reference grep proof, or manual reachability proof. A unit test that imports the target component directly is necessary but NOT sufficient for a user-facing AC. Report COMPLIANT or NON-COMPLIANT with evidence. Limit verdict output to the ACs in this chunk only."
+   })
+   ```
+
+   Issue all N such Agent-tool calls in the same orchestrator response
+   (single turn). Do NOT serialize the chunked dispatches — the whole
+   point is to keep each agent's tool budget bounded while preserving
+   wall-clock parity with the single-dispatch shape.
+
+   **3d. Aggregate per-chunk verdicts with OR-semantics.** After all
+   N dispatches return, fold the per-chunk verdicts into one overall
+   verdict:
+
+   - **Any** chunk returns `NON-COMPLIANT` → overall `NON-COMPLIANT`.
+   - **Any** chunk returns `INSUFFICIENT_EVIDENCE` → overall
+     `NON-COMPLIANT` (preserve the per-chunk remediation guidance in
+     the aggregated report so task owners see what evidence is
+     missing).
+   - **All** chunks return `COMPLIANT` → overall `COMPLIANT`.
+
+   If a chunk's spec-enforcer fails to emit a verdict (e.g., the
+   dispatch returns without a COMPLIANT/NON-COMPLIANT line), treat
+   that chunk as `INSUFFICIENT_EVIDENCE` for the ACs it owned — the
+   OR-semantics then route to overall `NON-COMPLIANT` with that
+   chunk flagged for remediation.
+
+   If the overall verdict is `NON-COMPLIANT`, the build is NOT done.
+   Route the violations back to the responsible task owners for
+   remediation before proceeding to Step 8. **Do not write the
+   release tag or release-notes.md** while remediation is
+   outstanding — release artifacts are gated on a successful
+   terminal-phase close.
 4. Write `.etc_sdlc/features/{slug}/verification.md`:
 
 ```markdown
