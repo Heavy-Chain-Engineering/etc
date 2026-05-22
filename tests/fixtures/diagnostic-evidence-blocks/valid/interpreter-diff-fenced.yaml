@@ -1,0 +1,12 @@
+The IDE just surfaced a `reportMissingImports` on `scripts/diagnostic_evidence.py`,
+but the same file imports cleanly when I run the checker from the CLI inside the
+project venv. Capturing the discrepancy:
+
+```yaml
+tool_rerun_command: "uv run pyright scripts/diagnostic_evidence.py"
+tool_rerun_output: "0 errors, 0 warnings, 0 informations"
+attribution: "IDE's pyright is resolving against the system interpreter instead of the project venv"
+evidence_type: interpreter-diff
+```
+
+Continuing with the planned edit.

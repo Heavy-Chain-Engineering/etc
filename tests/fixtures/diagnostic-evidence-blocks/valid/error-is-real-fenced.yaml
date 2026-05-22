@@ -1,0 +1,12 @@
+Re-running the checker against the staged change reproduces the diagnostic
+verbatim — this is not a transient signal. Acknowledging it as real and
+proceeding to fix rather than dismiss.
+
+```yaml
+tool_rerun_command: "uv run mypy scripts/diagnostic_evidence.py"
+tool_rerun_output: "scripts/diagnostic_evidence.py:284: error: Argument 1 to 'lower' of 'str' has incompatible type 'object'; expected 'str'  [arg-type]"
+attribution: "Genuine type-narrowing gap on raw_evidence_type when the YAML value is a non-string scalar; fix is the explicit isinstance guard the validator already contains for the str case"
+evidence_type: error-is-real
+```
+
+Filing a fix in the next edit rather than continuing the wave.

@@ -1,0 +1,5 @@
+```yaml
+tool_rerun_command: "uv run mypy scripts/diagnostic_evidence.py"
+tool_rerun_output: "Success: no issues found in 1 source file"
+evidence_type: interpreter-diff
+```

@@ -1,25 +1,50 @@
-# Python — clean-code bindings
+# Python Bindings — Clean Code
 
-The universal rule is `standards/code/clean-code.md`. This file binds
-that rule to Python tooling. Per ADR-F020-002 (rules separate from
-bindings) and ADR-F020-006 (etc adopts community canon, never authors).
+Cross-reference: `standards/code/clean-code.md` (the rule set this binds).
 
-## Rule → ruff binding
+This file binds the universal clean-code rules to Python tooling. Per
+ADR-F020-002 (rules separate from bindings) and ADR-F020-006 (etc adopts
+community canon, never authors). Section headings mirror the rule file
+so a reader can map binding to rule by H2.
 
-| Rule (universal) | Python binding (ruff) | Severity |
+## Tooling
+
+- **Linter / formatter:** `uv run ruff check` and `uv run ruff format`.
+  Reference config at `standards/code/ruff-reference.toml`.
+- **Type checker:** `uv run mypy --strict src/`.
+- **Test runner:** `uv run pytest`.
+
+All four are invoked through `uv run` to use the project venv.
+
+## Size Limits
+
+| Rule (universal) | Python binding | Severity |
 |---|---|---|
-| Functions ≤ 50 lines | `PLR0915` (too-many-statements) — fallback to required-reading review where ruff cannot count lines | hard-fail |
-| Parameter count ≤ 4 | `PLR0913` (too-many-arguments) | hard-fail |
-| Cyclomatic complexity ≤ 10 | `C901` (mccabe-complexity) | hard-fail |
-| Dead code prohibited | `F841` (unused-variable), `F811` (redefined-while-unused), `ERA001` (commented-out-code) | hard-fail |
-| No commented-out code | `ERA001` | warn |
+| Functions <= 50 lines | `ruff(PLR0915)` — too-many-statements; fallback to required-reading review (PLR0915 counts statements, not lines) | hard-fail |
+| Files <= 300 lines | none — required-reading review | warn |
+| Classes <= 200 lines | none — required-reading review | warn |
+| Parameters <= 5 per function | `ruff(PLR0913)` — too-many-arguments | hard-fail |
 
-Invoke via `uv run ruff check src/ tests/`. The reference config lives
-at `standards/code/ruff-reference.toml`.
+## Complexity
+
+| Rule (universal) | Python binding | Severity |
+|---|---|---|
+| Cyclomatic complexity <= 10 per function | `ruff(C901)` — mccabe-complexity | hard-fail |
+| Nesting depth <= 3 levels | none — required-reading review | warn |
+| No nested ternaries | none — required-reading review | warn |
+
+## What to Avoid
+
+| Rule (universal) | Python binding | Severity |
+|---|---|---|
+| Dead code (unused functions, unreachable branches, commented-out code) | `ruff(F841, F811, ERA001)` | hard-fail |
+| No commented-out code | `ruff(ERA001)` | hard-fail |
+| Magic numbers | none — required-reading review | warn |
 
 ## Type checker binding
 
-Universal rule "public functions have explicit return types" binds to:
+The universal rule "public functions have explicit return types" binds
+to mypy:
 
 - `uv run mypy --strict src/` enforces `--disallow-untyped-defs`
 - mypy `--strict` also enforces `--no-implicit-optional` and `--warn-unreachable`

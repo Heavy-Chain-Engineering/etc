@@ -1,0 +1,17 @@
+I am about to dismiss the editor's red-squiggle on
+`hooks/check-diagnostic-evidence.sh`, but only after confirming the
+project-pinned `shellcheck` does not flag the same lines.
+
+Pinned version is 0.10.0 (see `.tool-versions`); the editor extension bundles
+0.7.2, which predates several quote-style relaxations.
+
+Evidence:
+
+```yaml
+tool_rerun_command: "shellcheck --version && shellcheck hooks/check-diagnostic-evidence.sh"
+tool_rerun_output: "ShellCheck - shell script analysis tool\nversion: 0.10.0\n(no output — clean run)"
+attribution: "editor bundled shellcheck 0.7.2 still warns on SC2086 here; pinned 0.10.0 considers the construct safe given the surrounding quoting"
+evidence_type: version-diff
+```
+
+Proceeding to the next file in the wave.

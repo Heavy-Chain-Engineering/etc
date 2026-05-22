@@ -377,13 +377,22 @@ class TestEnforcementAnnotations:
         "llm-evaluation.md",
     ]
 
-    def test_should_have_enforce_annotation_in_clean_code(self) -> None:
-        content = (self.STANDARDS_CODE_DIR / "clean-code.md").read_text()
-        assert "**Enforce:**" in content
+    def test_should_have_python_bindings_for_clean_code(self) -> None:
+        # F022 BR-001: tool-specific enforcement moved out of top-level
+        # standards into per-profile bindings. The python bindings file
+        # must exist and cite at least one Python tool by name.
+        bindings = self.STANDARDS_CODE_DIR / "profiles" / "python" / "clean-code-bindings.md"
+        assert bindings.is_file()
+        content = bindings.read_text()
+        assert "ruff" in content or "mypy" in content
 
-    def test_should_have_enforce_annotation_in_error_handling(self) -> None:
-        content = (self.STANDARDS_CODE_DIR / "error-handling.md").read_text()
-        assert "**Enforce:**" in content
+    def test_should_have_python_bindings_for_error_handling(self) -> None:
+        # F022 BR-001: tool-specific enforcement moved out of top-level
+        # standards into per-profile bindings.
+        bindings = self.STANDARDS_CODE_DIR / "profiles" / "python" / "error-handling-bindings.md"
+        assert bindings.is_file()
+        content = bindings.read_text()
+        assert "ruff" in content or "mypy" in content
 
     def test_should_have_enforce_annotation_in_python_conventions(self) -> None:
         content = (self.STANDARDS_CODE_DIR / "python-conventions.md").read_text()

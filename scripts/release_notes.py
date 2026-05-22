@@ -26,12 +26,20 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 # ── Module constants ────────────────────────────────────────────────────
 
 REPORT_FILENAME = "completion-report.md"
 PHASE_DIR_GLOB = "build/phase-*"
 PHASE_DIR_PATTERN = re.compile(r"^phase-(\d+)$")
+
+# F025: state.yaml.extends drives the `## Extensions` section. The file
+# may be absent (legacy / pre-F025 feature) or have no `extends:` key —
+# both treated identically to an empty list (no section emitted).
+STATE_FILENAME = "state.yaml"
 
 # Recognised section headers in a completion report. Matching is
 # case-insensitive on the heading text. Each heading marks the start
@@ -60,6 +68,22 @@ class _AcSummary:
 
     passed: tuple[str, ...]
     failed: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ExtendRecord:
+    """One entry from `state.yaml.extends` (F025 BR-008 / Data-Model Entity 1).
+
+    Fields default to empty/placeholder values so a partially-populated
+    state.yaml entry still renders without raising. Append-only at the
+    state-file layer; immutable here at the rendering layer.
+    """
+
+    extend_id: str
+    problem: str
+    triage: str
+    release_tag: str
+    dispatched_agents: tuple[str, ...]
 
 
 @dataclass(slots=True)
@@ -113,6 +137,15 @@ def build(feature_dir: Path) -> str:
     sections.append(_render_phases_section(phases))
     sections.append(_render_deferred_section(phases))
     sections.append(_render_limitations_section(phases))
+
+    # F025 BR-008: append-only `## Extensions` section, gated on a
+    # non-empty `state.yaml.extends` list. Backwards-compat: when the
+    # list is empty / absent, the existing output is byte-equivalent
+    # because we append nothing.
+    extends = _collect_extends(feature_dir)
+    if extends:
+        sections.append(_render_extensions_section(extends))
+
     return "\n".join(sections)
 
 
@@ -363,6 +396,105 @@ def _render_rolled_up_list(
     return "\n".join(lines)
 
 
+# ── Extensions (F025) ───────────────────────────────────────────────────
+
+
+def _collect_extends(feature_dir: Path) -> list[_ExtendRecord]:
+    """Read `feature_dir/state.yaml` and return the parsed `extends:` list.
+
+    Missing file, missing key, non-list value, or empty list all collapse
+    to `[]` — the renderer skips the section in those cases. Per F025
+    BR-008 the extends list is append-only at the state-file layer; we
+    preserve its on-disk order so chronologically-sorted extend_ids
+    (UUID7-derived) render in creation order.
+
+    Malformed entries (non-dict, missing extend_id) are silently dropped
+    rather than raising — the release-notes builder is a read-only
+    audit-surface roll-up; failure at this layer should degrade to
+    "section omitted" rather than block the close.
+    """
+    state_path = feature_dir / STATE_FILENAME
+    if not state_path.is_file():
+        return []
+
+    try:
+        data = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return []
+
+    if not isinstance(data, dict):
+        return []
+    raw_extends = data.get("extends")
+    if not isinstance(raw_extends, list):
+        return []
+
+    records: list[_ExtendRecord] = []
+    for raw_entry in raw_extends:
+        record = _parse_extend_entry(raw_entry)
+        if record is not None:
+            records.append(record)
+    return records
+
+
+def _parse_extend_entry(raw: Any) -> _ExtendRecord | None:
+    """Coerce one raw YAML entry into an `_ExtendRecord` or return None.
+
+    Returns None when the entry is not a dict OR has no `extend_id` —
+    these are unrecoverable shapes. Other missing fields default to
+    placeholder strings / empty tuples so the renderer can still emit a
+    sub-section with whatever context is available.
+    """
+    if not isinstance(raw, dict):
+        return None
+    extend_id = raw.get("extend_id")
+    if not isinstance(extend_id, str) or not extend_id:
+        return None
+
+    return _ExtendRecord(
+        extend_id=extend_id,
+        problem=_as_str(raw.get("problem"), default=""),
+        triage=_as_str(raw.get("triage"), default=""),
+        release_tag=_as_str(raw.get("release_tag"), default=""),
+        dispatched_agents=_as_str_tuple(raw.get("dispatched_agents")),
+    )
+
+
+def _as_str(value: Any, *, default: str) -> str:
+    """Coerce a YAML scalar to str; non-strings collapse to ``default``."""
+    if isinstance(value, str):
+        return value
+    return default
+
+
+def _as_str_tuple(value: Any) -> tuple[str, ...]:
+    """Coerce a YAML sequence to ``tuple[str, ...]``; drop non-strings."""
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value if isinstance(item, str))
+
+
+def _render_extensions_section(extends: list[_ExtendRecord]) -> str:
+    """Render the `## Extensions` section.
+
+    One `### Extension <extend_id>` sub-section per entry, preserving the
+    on-disk order (which is chronological because extend_ids are
+    UUID7-derived and the resolver appends in creation order). Per BR-008
+    each sub-section includes problem, triage, dispatched_agents,
+    release_tag.
+    """
+    lines: list[str] = ["## Extensions", ""]
+    for record in extends:
+        lines.append(f"### Extension {record.extend_id}")
+        lines.append("")
+        lines.append(f"- Problem: {record.problem}")
+        lines.append(f"- Triage: {record.triage}")
+        agents = ", ".join(record.dispatched_agents) if record.dispatched_agents else ""
+        lines.append(f"- Dispatched agents: {agents}")
+        lines.append(f"- Release tag: {record.release_tag}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 # ── CLI ─────────────────────────────────────────────────────────────────
 
 
@@ -438,11 +570,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "build":
         return _cmd_build(args.feature_dir)
 
-    # argparse with required=True should make this unreachable; keep a
-    # belt-and-suspenders branch so a future subcommand stub does not
-    # silently exit 0.
+    # argparse with required=True makes this branch unreachable;
+    # parser.error raises SystemExit so no return is needed.
     parser.error(f"unknown command: {args.command}")
-    return 2  # pragma: no cover -- argparse.error raises SystemExit
 
 
 if __name__ == "__main__":

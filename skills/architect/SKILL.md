@@ -199,6 +199,16 @@ Resolution order:
 3. Else, find the most recent feature directory under
    `.etc_sdlc/features/active/` (sorted by mtime descending).
 
+The `<feature_id>` argument (step 2 above) accepts **either** `Ftmp-<hex>`
+or `F<NNN>` form. The underlying helper
+`scripts/feature_id.py::resolve_feature_path` handles both forms per
+F023 BR-004: pre-F023 callers passing `F<NNN>` see no behavior change.
+In-flight features authored after F023 ships carry the `Ftmp-<hex>` form
+during spec/architect/build, so the operator may pass either form to
+`/architect` during that window. At `/build` Step 7c the feature directory
+is renamed to its final `F<NNN>` form; subsequent `/architect` invocations
+(e.g., for revisions after rename) operate on the final form.
+
 For the resolved path, read `state.yaml` and extract:
 
 - `feature_id` (e.g., `F042`) — used for tag names and ADR file paths.

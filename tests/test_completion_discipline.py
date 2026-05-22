@@ -33,7 +33,11 @@ class TestNoSignals:
     ) -> None:
         result = run_hook(HOOK_NAME, _build_input(tmp_path))
         assert result.exit_code == 0
-        assert result.stderr == ""
+        # F022 BR-003: the profile-dispatch front-end may emit a no-profile
+        # WARN to stderr per F020-ADR-003; this never changes exit code.
+        # What matters: no CI-failure or in_progress signal surfaces.
+        assert "CI gate failed" not in result.stderr
+        assert "in_progress" not in result.stderr
 
     def test_should_allow_stop_when_empty_etc_sdlc_directory(
         self, run_hook: Any, tmp_path: Path

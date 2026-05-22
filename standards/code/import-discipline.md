@@ -1,7 +1,13 @@
 # Import Discipline
 
+<!-- forward-only: vocabulary purity enforced from F022 release tag onward -->
+
 ## Status: MANDATORY
 ## Applies to: Backend Developer, Frontend Developer, Code Reviewer
+
+For language-specific tooling that enforces these rules, see the per-profile
+binding files under `standards/code/profiles/<profile>/import-discipline-bindings.md`
+(e.g. `standards/code/profiles/python/import-discipline-bindings.md`).
 
 ## Motivation
 
@@ -10,38 +16,30 @@ VenLink audit (2026-04-16) found mid-module imports in 3 files with no documenta
 ## Rules
 
 ### All imports at module top
-- **Enforce:** ruff(E402) / **Fallback:** required-reading
 
-All imports MUST appear at the top of the file, after module docstrings and `__future__` imports. Ruff E402 fires on any import not at the top of the module.
+All imports MUST appear at the top of the file, after module docstrings and any language-mandated preamble (e.g. `__future__` annotations in Python). Linters MUST flag any import not at the top of the module.
 
 ### Circular break documentation
 
-When a mid-module import is genuinely required to break a circular dependency, it MUST be documented with a comment in this format:
-
-```python
-# circular-break: module_a -> module_b
-from module_b import SomeClass  # noqa: E402
-```
-
-The `# circular-break:` comment is the documentation. The `# noqa: E402` suppresses the ruff violation. Both are required -- the noqa alone is not sufficient documentation.
+When a mid-module import is genuinely required to break a circular dependency, it MUST be documented with an inline comment that names the dependency edge being broken. The documentation is required even when the linter suppression is in place -- a suppression on its own is not sufficient documentation. The exact comment shape is language-specific and lives in the per-profile binding.
 
 ### Import ordering
 
-Imports follow the standard three-section ordering, enforced by isort (ruff I001):
+Imports follow the standard three-section ordering:
 
 1. Standard library
 2. Third-party packages
 3. Local/project imports
 
-Each section separated by a blank line. Ruff isort handles sorting automatically.
+Each section is separated by a blank line. Sorting MUST be automated by the language's canonical import sorter; manual reordering is forbidden.
 
 ### Absolute imports only
 
-Relative imports (`from . import foo`) are forbidden. Use absolute imports only. This makes dependency graphs explicit and greppable via literal module paths.
+Relative imports (e.g. `from . import foo`) are forbidden. Use absolute imports only. This makes dependency graphs explicit and greppable via literal module paths.
 
 ## What NOT to Do
 
 - Don't use mid-module imports to avoid fixing circular dependencies -- fix the dependency graph instead
-- Don't suppress E402 without the `# circular-break:` documentation comment
-- Don't manually reorder imports -- let ruff isort handle it
-- Don't import individual names from large modules (except typing and dataclasses)
+- Don't suppress the linter's top-of-file import rule without the documenting `# circular-break:` (or per-language equivalent) comment
+- Don't manually reorder imports -- defer to the language's canonical sorter
+- Don't import individual names from large modules (except language-blessed cases such as typing and dataclass primitives)

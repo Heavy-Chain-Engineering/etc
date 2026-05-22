@@ -1,21 +1,23 @@
 # Clean Code Standards
 
+<!-- forward-only: vocabulary purity enforced from F022 release tag onward -->
+
 ## Status: MANDATORY
 ## Applies to: Backend Developer, Frontend Developer, Code Reviewer
 
 ## Size Limits
 - Functions: <= 50 lines (soft limit — exceed with justification comment)
-  - **Enforce:** ruff(PLR0915) / **Fallback:** required-reading (PLR0915 counts statements, not lines)
+  - **Enforce:** linter rule (per-profile) / **Fallback:** required-reading
 - Files: <= 300 lines (soft limit — exceed with justification comment)
   - **Enforce:** none / **Fallback:** required-reading
 - Classes: <= 200 lines
   - **Enforce:** none / **Fallback:** required-reading
 - Parameters: <= 5 per function (use a config/params object beyond that)
-  - **Enforce:** ruff(PLR0913)
+  - **Enforce:** linter rule (per-profile)
 
 ## Complexity
 - Cyclomatic complexity: <= 10 per function
-  - **Enforce:** ruff(C901)
+  - **Enforce:** linter rule (per-profile)
 - Nesting depth: <= 3 levels (use early returns, extract functions)
   - **Enforce:** none / **Fallback:** required-reading
 - No nested ternaries
@@ -36,11 +38,19 @@
 
 ## What to Avoid
 - Dead code (unused functions, unreachable branches, commented-out code)
-  - **Enforce:** ruff(F841, F811, ERA001)
+  - **Enforce:** linter rule (per-profile)
 - No commented-out code
-  - **Enforce:** ruff(ERA001)
+  - **Enforce:** linter rule (per-profile)
 - Magic numbers (use named constants)
   - **Enforce:** none / **Fallback:** required-reading
 - God objects (classes that do everything)
 - Feature envy (methods that use another class's data more than their own)
 - Premature optimization (measure first, optimize second)
+
+## Profile Bindings
+
+Tool-specific enforcement (linter rule codes, command invocations,
+config snippets) lives in per-language bindings — not in this file.
+The rules above are tool-agnostic; the bindings name the tool.
+
+- [Python bindings](./profiles/python/clean-code-bindings.md)

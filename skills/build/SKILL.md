@@ -193,6 +193,327 @@ or is interrupted, `/build --resume` picks up from the last completed step.
 
 ---
 
+<!-- forward-only: /build --extend lifecycle enforced from F025 release tag onward -->
+
+### Step A: EXTEND lifecycle (F025) — post-ship refinement lane
+
+`/build --extend "<problem>"` is the refinement lane for **already-shipped**
+features. When the `--extend` flag is present on the `/build` invocation, the
+conductor switches into the EXTEND lifecycle below (Steps A1–A14) INSTEAD OF
+running Step 1 (VALIDATE). When the flag is absent, `/build` behaves
+identically to its pre-F025 shape — Step 1 runs as normal and Step A is
+skipped entirely.
+
+**CLI shape:**
+
+```
+/build --extend "<problem>" [--feature F<NNN>] [--triage light|medium|heavy]
+```
+
+- `<problem>` (required) — free-text operator description of the refinement
+  (e.g., "the SettingsPage uses shadcn but the rest uses radix; swap it").
+  Empty string → reject with "Problem statement required" and exit non-zero.
+- `--feature F<NNN>` (optional) — target a specific shipped feature by ID.
+  When omitted, the resolver picks the most-recently-shipped feature.
+- `--triage light|medium|heavy` (optional) — operator override of the
+  rule-based triage classifier. Invalid values → reject with "Unknown
+  triage value '<v>'. Valid: light, medium, heavy." and exit non-zero.
+
+**Lifecycle anchor:** `shipped/` is a state, not a one-way door. For Light
+and Medium triage outcomes, the feature dir moves shipped→active for the
+duration of the extension, then back to shipped on re-close (Step A13).
+Each successful extend cuts a new versioned release tag
+(`etc/feature/F<NNN>/release_<extend_id>`); the original
+`etc/feature/F<NNN>/release` tag is never modified or deleted (append-only,
+F021 BR-008 inherited).
+
+**Composition with prior features:** F019 (audit-log surface, new
+`event_type: "extend_dispatch"`), F021 (append-only tag discipline), F022
+(`shutil.move` fallback for gitignored shipped↔active moves), F023 (POSIX-
+atomic allocate-next + Ftmp-style 8-hex shape rhymes with the extension ID),
+F024 (conditional system-overlay injection inherited by extend dispatches).
+
+**Helper script:** `scripts/extend_resolver.py` exposes the CLI subcommands
+this step invokes (`generate-id`, `resolve-target`, `classify`, `reopen`,
+`record-extend`, `complete-extend`, `close`). The conductor invokes each via
+Bash; this skill body does NOT inline the helper's implementation. See
+`standards/process/build-extend.md` for the full operator-facing convention.
+
+---
+
+**Step A1: Parse `<problem>` + `--feature` + `--triage` flags.**
+
+Validate the operator's invocation arguments BEFORE touching the filesystem
+or generating any IDs. Empty `<problem>` strings, malformed feature IDs
+(reject anything not matching `^F\d{3}$`), and invalid `--triage` values
+exit non-zero with a clear message. No state changes.
+
+**Step A2: Resolve the target shipped feature.**
+
+```bash
+target_dir=$(python3 ~/.claude/scripts/extend_resolver.py resolve-target \
+    --etc-sdlc-root .etc_sdlc \
+    [--feature F<NNN>])
+```
+
+The resolver returns the absolute path to the target shipped feature's
+directory under `.etc_sdlc/features/shipped/F<NNN>-<slug>/`. When
+`--feature` is omitted, it picks the most-recently-shipped (by
+`completed_at` in `state.yaml`). Exit codes:
+
+- **0** = target resolved; continue.
+- **1** = no shipped features (EC-001) OR `--feature F<NNN>` not found
+  anywhere under `features/{active,shipped,rejections}/` (EC-002) OR the
+  named feature is in `active/` rather than `shipped/` (EC-003). Surface
+  stderr verbatim to the operator and abort. No state changes.
+
+**Step A3: Classify the problem against the target's context-pack.**
+
+```bash
+triage=$(python3 ~/.claude/scripts/extend_resolver.py classify \
+    --problem "<problem>" \
+    --target-dir "$target_dir")
+```
+
+Returns one of `light | medium | heavy` per the rule-based rubric (file-path
+detection + architectural-keyword scan). When the operator passed
+`--triage`, that value REPLACES the classifier's output as the effective
+triage outcome — record both (classifier-emitted vs. operator-override) on
+the audit-log row at Step A8.
+
+**Step A4: Heavy-triage refusal path (AC-003, BR-003).**
+
+If the effective triage is `heavy` AND the operator did NOT pass `--triage`
+(i.e., the classifier itself returned heavy with no operator override), the
+conductor MUST refuse the extend. Emit the following message to stderr —
+the literal substring `scope creep, not a refinement` is required verbatim
+(the AC-003 contract greps for it):
+
+> This problem reads as scope creep, not a refinement. The harness will
+> not silently expand a shipped feature with architectural-impact work.
+> Run `/spec '<your problem>'` to file a fresh feature with proper
+> Socratic refinement + architect handoff. If you believe this IS
+> refinement (not scope creep), re-invoke with
+> `/build --extend --triage medium '<problem>'` to override.
+
+Exit non-zero. NO state changes — no directory move, no `state.yaml.extends`
+append, no extension ID generation, no audit-log emission, no release tag.
+The refusal is the entire outcome.
+
+When the operator explicitly passes `--triage heavy` (acknowledged override),
+Step A4 does NOT fire and the conductor proceeds to Step A5 — the operator
+has taken the audit-trail responsibility for the override.
+
+**Step A5: Generate the extension ID.**
+
+```bash
+extend_id=$(python3 ~/.claude/scripts/extend_resolver.py generate-id)
+```
+
+Returns an 8-char hex string (`^[0-9a-f]{8}$`), time-ordered (sortable
+lexicographically by creation time), stdlib-only, collision-free across
+machines. Mirrors F023's `Ftmp-<8-hex>` shape so the audit-trail format
+rhymes.
+
+**Step A6: Reopen the feature — move shipped → active (BR-004).**
+
+```bash
+active_dir=$(python3 ~/.claude/scripts/extend_resolver.py reopen \
+    --target-dir "$target_dir" \
+    --etc-sdlc-root .etc_sdlc)
+```
+
+Moves `.etc_sdlc/features/shipped/F<NNN>-<slug>/` to
+`.etc_sdlc/features/active/F<NNN>-<slug>/` via F022's `shutil.move`
+fallback (gitignored-safe; path-traversal-rejected). On `shutil.Error`
+(destination already exists per EC-004 — concurrent extends from a second
+machine), surface stderr and abort. The second operator retries after the
+first extend completes.
+
+**Step A7: Record the extend on `state.yaml` (BR-005).**
+
+```bash
+python3 ~/.claude/scripts/extend_resolver.py record-extend \
+    --target-dir "$active_dir" \
+    --extend-id "$extend_id" \
+    --problem "<problem>" \
+    --triage "$triage" \
+    --dispatched-agents "<comma-list>"
+```
+
+Appends a new entry to `state.yaml.extends` (creating the field if absent —
+BR-012 forward-only):
+
+```yaml
+extends:
+  - extend_id: "<extend_id>"
+    problem: "<verbatim problem string>"
+    triage: light | medium | heavy
+    started_at: <ISO-8601 UTC now>
+    completed_at: null            # set at Step A10
+    release_tag: null              # set at Step A10
+    dispatched_agents: [<roles>]
+```
+
+Append-only. Pre-existing `extends:` entries from earlier extensions are
+preserved byte-equivalent (EC-007). The original `build:` block,
+`id_history`, `spec_phase`, `architect_phase`, and any other top-level keys
+are NOT mutated.
+
+**Step A8: Emit the audit-log row (BR-009).**
+
+Append one row to `.etc_sdlc/efficiency/turn-events.jsonl` (F019 surface):
+
+```json
+{"ts": "<ISO-8601 UTC>",
+ "event_type": "extend_dispatch",
+ "feature_id": "F<NNN>",
+ "extend_id": "<extend_id>",
+ "triage": "<effective triage>",
+ "problem_truncated_80": "<first 80 chars of problem>",
+ "dispatched_agents": ["<role>", ...],
+ "started_at": "<ISO-8601 UTC>"}
+```
+
+Write failures degrade silently per F019 best-effort surface (EC-009). The
+extend itself proceeds regardless.
+
+**Step A9: Dispatch the refinement work.**
+
+Branch on the effective triage outcome:
+
+- **Light triage** — Skip `/spec` and `/architect` entirely. The target's
+  existing `spec.md`, `design.md`, `gray-areas-*.md`, ADRs, and
+  `value-hypothesis.yaml` are the context-pack; the operator's `<problem>`
+  text is the delta. Decompose the problem into ≤3 tasks (1 wave),
+  parallel-isolatable by file-set. Dispatch via the Agent tool one
+  invocation per task, following the Subagent Dispatch (Non-Negotiable)
+  rules from the top of this skill body. Each dispatch prompt is
+  constructed per `standards/process/subagent-dispatch.md` — the
+  per-invocation delta cites the target feature's existing artifacts as
+  required reading; the original `spec.md` and `design.md` are the
+  intent substrate. Run Step 6c's per-wave verify-green gate; route any
+  NON-COMPLIANT result through the existing remediation path. Do NOT
+  re-invoke Step 1 — the spec has already been DoR-passed once.
+
+- **Medium triage** — Run a micro-`/spec` (2-3 Socratic questions, not the
+  full 6 from `skills/spec/SKILL.md`) targeting ONLY the deltas the
+  `<problem>` introduces. The micro-spec output amends — does NOT replace
+  — the target's existing `spec.md` (append a `## Extension <extend_id>`
+  sub-section with the new ACs, if any). Re-decompose into 1-2 waves;
+  dispatch per Step 6's wave-by-wave loop above. Run Step 6c's verify-green
+  per wave. Same remediation routing as Light.
+
+- **Heavy triage with operator override** — Same dispatch shape as Medium
+  (micro-spec → decompose → waves), but record `triage: heavy` on the
+  `state.yaml.extends` entry so the audit trail shows the override was
+  conscious. `/metrics` (future) MAY surface override-heavy extends for
+  operator review.
+
+The dispatched subagents inherit F024's conditional system-overlay
+injection — extend dispatches get the same onboarding as fresh dispatches,
+no special-case wiring.
+
+**Step A10: Complete the extend on `state.yaml`.**
+
+After every dispatched task returns and the wave(s) pass Step 6c
+verify-green AND a spec-enforcer COMPLIANT result (Step 7 item 3 still
+applies to extend dispatches — the original `spec.md` + the optional
+extension sub-section together are the verification target), close the
+extension:
+
+```bash
+python3 ~/.claude/scripts/extend_resolver.py complete-extend \
+    --target-dir "$active_dir" \
+    --extend-id "$extend_id" \
+    --release-tag "etc/feature/F<NNN>/release/$extend_id"
+```
+
+Sets `state.yaml.extends[N].completed_at = <now>` and
+`state.yaml.extends[N].release_tag = etc/feature/F<NNN>/release_<extend_id>`.
+On extend-failure (subagent escalates, verify-green non-zero, spec-enforcer
+NON-COMPLIANT not remediated), `completed_at` STAYS null and the feature
+stays in `active/` per BR-010 (operator remediates manually + re-runs
+`/build --resume`; matches F022's three-branch failure shape).
+
+**Step A11: Write the versioned release tag (BR-007).**
+
+```bash
+python3 ~/.claude/scripts/git_tags.py write-tag \
+    "etc/feature/F<NNN>/release/$extend_id"
+```
+
+The original `etc/feature/F<NNN>/release` tag is NEVER modified or deleted
+(append-only per F021 BR-008). Both tags exist after a successful extend
+and both name distinct commits — the original at the post-Step-7c.1 close
+HEAD, the extension at the post-Step-A10 close HEAD.
+
+**Step A12: Append to `release-notes.md` (BR-008).**
+
+Invoke the F025-aware `scripts/release_notes.py` to add an append-only
+`## Extensions` section (or `### Extension <extend_id>` sub-section if the
+section already exists):
+
+```bash
+python3 ~/.claude/scripts/release_notes.py build "$active_dir" \
+    > "$active_dir/release-notes.md"
+```
+
+Pre-existing content is preserved byte-equivalent (AC-008 contract). The
+new sub-section includes: extend ID, triage, date, problem (verbatim),
+dispatched agents, AC pass/fail outcome, release tag.
+
+**Step A13: Close the extension — move active → shipped.**
+
+```bash
+python3 ~/.claude/scripts/extend_resolver.py close \
+    --target-dir "$active_dir" \
+    --etc-sdlc-root .etc_sdlc
+```
+
+Moves the feature dir back from `active/` to `shipped/` via the same
+three-branch failure shape used at Step 7c.1 (`git mv` preferred,
+`shutil.move` fallback for gitignored repos). The feature is now
+re-frozen at its terminal audit-frozen state — until the next `--extend`
+reopens it. Endpoint discipline (BR-010): a reopened extension MUST
+eventually reach Step A13; in-flight extends are surfaced by `/metrics`.
+
+**Step A14: Report the extend outcome.**
+
+Render a Step 8-shape summary scoped to the extension:
+
+```
+## Extend Complete
+
+**Feature:** F<NNN> — <slug>
+**Extension:** <extend_id>
+**Triage:** <light | medium | heavy>
+**Problem:** <verbatim>
+
+### Pipeline
+  ✓ Step A1–A4: parsed, resolved, classified, refusal-checked
+  ✓ Step A5–A8: ID generated, reopened, recorded, audit-logged
+  ✓ Step A9:    dispatched <K> task(s) in <W> wave(s)
+  ✓ Step A10:   completed-at recorded
+  ✓ Step A11:   release tag etc/feature/F<NNN>/release_<extend_id> written
+  ✓ Step A12:   release-notes.md ## Extensions section appended
+  ✓ Step A13:   feature re-closed to shipped/
+
+### Artifacts
+  .etc_sdlc/features/shipped/F<NNN>-<slug>/release-notes.md  — Extensions section
+  refs/tags/etc/feature/F<NNN>/release_<extend_id>            — extension tag
+  .etc_sdlc/efficiency/turn-events.jsonl                      — extend_dispatch row
+```
+
+Update `state.yaml.extends[N]` to reflect the final fields (already done at
+Step A10). The conductor does NOT re-render Step 1–8 summary content — Step
+A14 is the extension's terminal report and the original Step 8 summary for
+the parent feature remains unchanged.
+
+**EXTEND lifecycle exits here. The conductor does NOT fall through to Step 1.**
+
+---
+
 ### Step 1: VALIDATE — Definition of Ready gate
 
 This is the single quality gate at the entry to the build pipeline. You are
@@ -579,6 +900,14 @@ For each wave, in order:
 **6a. Dispatch wave N (Agent-tool rules from the Subagent Dispatch
 section above apply absolutely):**
 
+**Dispatch prompt construction:** follow `standards/process/subagent-dispatch.md`.
+The dispatch prompt is the per-invocation delta — Feature intent (lifted from
+spec.md Summary), Task intent (from task YAML if present), required reading
+(paths + ≤8-word commentary), files in scope, ACs verbatim, cross-task
+awareness, report-back format. Do NOT restate TDD, hooks-enforce, no-emoji,
+or architectural constraints already in design.md — those live in the system
+overlay and role manifest. Target: ≤1,000 tokens per dispatch.
+
 Before dispatching any subagent for wave N, write the phase-start tag
 for the feature so process metrics observe wave entry:
 
@@ -812,6 +1141,32 @@ do not serialize within a wave.
 - If any task status is `escalated`: STOP. Report the escalation to
   the user. **Do not write the phase-N/done tag.** The phase-N/start
   tag remains. Earlier successful phase tags are kept (no rollback).
+
+**Quality gate (per-wave, profile-dispatched) — F021 BR-003 + BR-004.**
+After per-wave tests pass and before the `phase-N/done` tag is written,
+invoke the F020 profile-aware dispatcher against the wave's working tree:
+
+```bash
+printf '{"cwd":"%s"}' "$CWD" | bash hooks/verify-green.sh
+```
+
+Inherits F020 exit semantics (per ADR-F021-004 — read-only inheritance,
+no modifications to verify-green.sh): exit 0 = pass (or no-profile
+warn-and-skip per ADR-F020-003); non-zero = quality-tool failure.
+**Zero-tolerance contract per F021 BR-004:** any non-zero exit fails the
+wave. The conductor MUST NOT write the `phase-N/done` tag. Surface
+verify-green's stdout and stderr verbatim to the operator in the wave's
+`verification.md` (Step 7), and STOP. There is NO threshold-based,
+delta-based, or count-based exception; "the wave produced fewer errors
+than the previous wave" is not a passing condition. Zero is zero. No
+exception flag is offered or accepted — by design, per ADR-F021-003.
+Pre-existing errors in the project are the operator's responsibility to
+resolve before the first `/build` invocation (BR-005); once etc is
+installed, no quality-tool error is ever permitted to ship through a
+wave boundary.
+
+See `standards/process/diagnostic-discipline.md` for the full rule and
+ADR-F021-003 + ADR-F021-005 for the design rationale.
 
 **6d. Checkpoint and phase-done tag:**
 
@@ -1154,25 +1509,64 @@ successfully at Step 6:
    verification.md written. These two writes are the marker of a
    successful terminal-phase close (BR-009, AC-009, AC-011).
 
+   Sub-steps run in this order: **c.0 → a → b → c.1**.
+
+<!-- forward-only: temp-ID allocation enforced from F023 release tag onward -->
+
+   c. **Step 7c.0: Resolve final F-ID (F023 BR-006).** This MUST run
+      first — before the release-tag write (sub-step a) and before the
+      active→shipped move (Step 7c.1) — because both subsequent steps
+      require the final `F<NNN>` path. The conductor invokes:
+
+      ```bash
+      final_id=$(python3 ~/.claude/scripts/feature_id.py resolve-final-id "Ftmp-<hex>-<slug>")
+      ```
+
+      Substitute `Ftmp-<hex>-<slug>` with the actual temp directory name
+      from `state.yaml`.
+
+      On exit 0, the dir is now at
+      `.etc_sdlc/features/active/<final_id>-<slug>/` and any ADRs under
+      `docs/adrs/Ftmp-<hex>-NNN-*.md` have been renamed to
+      `<final_id>-NNN-*.md` via `git mv` (since `docs/adrs/` IS tracked).
+      The `state.yaml.id_history` field is updated with the final-ID
+      entry. The subsequent active→shipped move (Step 7c.1) operates on
+      the final `<final_id>-<slug>` path — NOT the temp form.
+
+      On non-zero exit, surface stderr verbatim and abort with exit 1 —
+      operator remediates manually before re-running `/build --resume`.
+      Matches F022's three-branch failure-semantics shape.
+
+      **Legacy features (F001–F023).** If the feature directory is
+      already in `F<NNN>` form (no `Ftmp-` prefix), `resolve-final-id`
+      detects this and exits 0 with a stderr note: "feature already has
+      final ID; no rename needed" (EC-003). The conductor proceeds
+      without error; capture the returned `F<NNN>` into `final_id` for
+      the release-tag write at sub-step a. Forward-only per F023 BR-010:
+      F001–F023 keep their sequential names; only F024 and later features
+      produce `Ftmp-<hex>-<slug>` directories.
+
    a. Write the release tag via the git_tags.py write-tag CLI:
       ```
-      python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/F<NNN>/release"
+      python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/<final_id>/release"
       ```
-      Substitute `F<NNN>` with the feature ID from `state.yaml`. Exit
-      codes follow the same convention as Step 6 (0 created, 1 degrade
-      on non-git/no-HEAD, 2 hard fault).
+      Substitute `<final_id>` with the **final** `F<NNN>` returned by
+      Step 7c.0 above — NOT the `Ftmp-<hex>` temp form. Exit codes
+      follow the same convention as Step 6 (0 created, 1 degrade on
+      non-git/no-HEAD, 2 hard fault).
 
    b. Build and write `release-notes.md` via the release_notes.py build
       CLI. The CLI prints the rendered markdown to stdout; redirect to
       the feature directory:
       ```
-      python3 ~/.claude/scripts/release_notes.py build .etc_sdlc/features/active/F<NNN>-<slug> > .etc_sdlc/features/active/F<NNN>-<slug>/release-notes.md
+      python3 ~/.claude/scripts/release_notes.py build .etc_sdlc/features/active/<final_id>-<slug> > .etc_sdlc/features/active/<final_id>-<slug>/release-notes.md
       ```
-      Substitute `F<NNN>-<slug>` with the actual feature directory
-      name. This step runs BEFORE the active→shipped move at sub-step
-      c, so the path under `features/active/` is the correct source.
+      Substitute `<final_id>-<slug>` with the final feature directory
+      name (after Step 7c.0's resolve-final-id rename). This step runs
+      BEFORE the active→shipped move at Step 7c.1, so the path under
+      `features/active/` is the correct source.
       The result lands at
-      `.etc_sdlc/features/active/F<NNN>-<slug>/release-notes.md` and
+      `.etc_sdlc/features/active/<final_id>-<slug>/release-notes.md` and
       rolls up PRD title and ID, phases closed, per-phase AC pass/fail
       summary citing each completion-report path, deferred items, and
       known limitations.
@@ -1182,61 +1576,111 @@ successfully at Step 6:
       project, so import-style invocation (`from scripts.release_notes
       import build`) MUST NOT be used.
 
-   c. **Move the feature directory from `active/` to `shipped/`** (F009
+   **Step 7c.1: Move the feature directory from `active/` to `shipped/`** (F009
       BR-005). After the release tag and release-notes.md are written
-      and persisted under `features/active/F<NNN>-<slug>/`, the feature
+      and persisted under `features/active/<final_id>-<slug>/`, the feature
       transitions to its terminal audit-frozen state by relocating the
       entire directory tree under `features/shipped/`.
 
       First, ensure the `features/shipped/` parent exists. The
-      conductor MUST create it idempotently before invoking `git mv`:
+      conductor MUST create it idempotently before invoking the rename:
       ```python
       from pathlib import Path
       Path(".etc_sdlc/features/shipped").mkdir(parents=True, exist_ok=True)
       ```
 
-      Then perform the rename via `git mv`. The argv-style invocation
-      is mandatory — never a shell string — so operator-controlled
-      feature slugs cannot inject shell metacharacters:
+      Then perform the rename. `git mv` is preferred when possible (it
+      makes the rename canonical in the index so `git log --follow`
+      traces the directory history through the transition); `shutil.move`
+      is the sanctioned fallback when `.etc_sdlc/` is gitignored and the
+      source dir has no tracked files. The argv-style invocation is
+      mandatory — never a shell string — so operator-controlled feature
+      slugs cannot inject shell metacharacters:
       ```python
+      import shutil
       import subprocess
+      import sys
+
+      src = ".etc_sdlc/features/active/<final_id>-<slug>"
+      dst = ".etc_sdlc/features/shipped/<final_id>-<slug>"
+
       result = subprocess.run(
-          ["git", "mv",
-           ".etc_sdlc/features/active/F<NNN>-<slug>",
-           ".etc_sdlc/features/shipped/F<NNN>-<slug>"],
+          ["git", "mv", src, dst],
           capture_output=True, text=True,
       )
+
+      if result.returncode == 0:
+          pass  # branch (a): canonical git-tracked rename
+      elif "source directory is empty" in result.stderr:
+          # branch (b): .etc_sdlc/ is gitignored in this repo (the
+          # default in client projects and in etc itself outside the
+          # incidents/ + 4.7-audit/ whitelist), so the source dir has
+          # no tracked files and git mv refuses. Fall back to
+          # shutil.move so the audit-trail directory transition still
+          # happens, and log to stderr so the rename's filesystem-only
+          # nature is honest in the operator's terminal.
+          shutil.move(src, dst)
+          print(
+              f"[build] {src} -> {dst} (filesystem-only; "
+              ".etc_sdlc/ is gitignored)",
+              file=sys.stderr,
+          )
+      else:
+          # branches (c) and (d): destination exists, source missing,
+          # or any other git mv failure. Surface git's stderr verbatim
+          # and abort — edge case 6 preserved.
+          print(result.stderr, file=sys.stderr, end="")
+          sys.exit(1)
       ```
 
-      `git mv` is required (NOT `mv` + `git add`): it makes the rename
-      canonical in the index so `git log --follow` traces the directory
-      history through the transition. Substitute `F<NNN>-<slug>` with
-      the actual feature directory name from `state.yaml`.
+      Substitute `<final_id>-<slug>` with the final feature directory
+      name (after Step 7c.0's resolve-final-id rename). The conductor
+      MAY invoke `scripts/active_to_shipped_mv.py` (which implements
+      this exact three-branch shape, including the F022-shipped
+      `shutil.move` fallback) in place of inlining the recipe.
 
-      **Failure semantics (edge case 6).** If `git mv` exits non-zero —
-      most commonly because `features/shipped/F<NNN>-<slug>/` already
-      exists and git refuses to clobber it — /build aborts with exit
-      code 1 and surfaces git's stderr verbatim to the operator. The
-      release tag from sub-step a and the release-notes.md from
-      sub-step b have ALREADY been written and are NOT rolled back;
-      both are append-only / on-disk artifacts of the successful
-      terminal-phase close.
+      **Failure semantics (edge case 6 — three-branch shape).** `git mv`
+      can fail in three ways and the conductor handles each
+      distinctly:
 
-      **Discipline.** On Step 7.5c failure, the operator must remediate
-      manually (rm the conflicting target under `features/shipped/`,
-      then retry the mv) before re-running `/build --resume`. The
-      conductor does not retry automatically — silent recovery from a
-      pre-existing target would mask operator state the harness cannot
-      validate.
+      - **(a) source dir has no tracked files** — git's stderr contains
+        `source directory is empty`. This is the most common failure in
+        practice (fired on F021's build on 2026-05-20 and F022's build
+        on 2026-05-21) because `.etc_sdlc/` is gitignored in client
+        projects and in etc itself outside the whitelist. The conductor
+        falls back to `shutil.move`, logs a `filesystem-only` line to
+        stderr, and continues. The rename is real on disk but is NOT
+        canonical in the git index for this feature.
+      - **(b) destination already exists** — git refuses to clobber.
+        /build aborts with exit code 1 and surfaces git's stderr
+        verbatim to the operator. The release tag from sub-step a and
+        the release-notes.md from sub-step b have ALREADY been written
+        and are NOT rolled back; both are append-only / on-disk
+        artifacts of the successful terminal-phase close.
+      - **(c) any other failure** (source path missing entirely,
+        permission error, etc.) — same as (b): abort with exit code 1,
+        surface git's stderr verbatim, no rollback of the prior
+        sub-step a and b artifacts.
+
+      **Discipline.** On branches (b) and (c), the operator must
+      remediate manually (rm the conflicting target under
+      `features/shipped/`, or fix the source path in `state.yaml`) and
+      then re-run `/build --resume`. The conductor does not retry
+      automatically — silent recovery from a pre-existing target would
+      mask operator state the harness cannot validate. On branch (a),
+      no operator action is required; the audit-trail line is the
+      only observable signal that the rename was filesystem-only.
 
    **Discipline (edge case 4).** On mid-build failure — an escalated
    wave or a failing test at Step 6c, or a NON-COMPLIANT spec-enforcer
    result at Step 7 item 3 — neither the release tag nor
    release-notes.md is written, and the active→shipped move is NOT
-   attempted. Skip all three. Phase start/done tags written by earlier
-   successful waves remain in place; they are append-only and are not
-   rolled back. Re-run `/build --resume` after remediation; sub-steps
-   a, b, and c run only on the successful terminal-phase close.
+   attempted. Step 7c.0 (resolve-final-id) is also NOT invoked. Skip
+   all four sub-steps (7c.0, a, b, 7c.1). Phase start/done tags written
+   by earlier successful waves remain in place; they are append-only and
+   are not rolled back. Re-run `/build --resume` after remediation;
+   sub-steps 7c.0, a, b, and 7c.1 run only on the successful
+   terminal-phase close.
 
 ### Step 8: REPORT
 
@@ -1263,18 +1707,21 @@ Present final summary to user:
 {summary per task}
 
 ### Artifacts
-  .etc_sdlc/features/shipped/F<NNN>-<slug>/   — terminal audit-frozen location
-                                                (moved from features/active/ at
-                                                Step 7 sub-step c via `git mv`)
+  .etc_sdlc/features/shipped/<final_id>-<slug>/  — terminal audit-frozen location
+                                                   (renamed from Ftmp-<hex>-<slug>
+                                                   at Step 7c.0, then moved from
+                                                   features/active/ at Step 7c.1
+                                                   via git mv / shutil.move)
     spec.md            — the PRD
     tasks/             — {N} task files
     verification.md    — quality report
-    state.yaml         — pipeline state
+    state.yaml         — pipeline state (includes id_history mapping temp→final)
     release-notes.md   — roll-up of phases closed, AC pass/fail, deferred items
 
-  Git tags written under refs/tags/etc/feature/F<NNN>/:
-    build/phase-<N>/start, build/phase-<N>/done — one pair per wave
-    release tag: etc/feature/F<NNN>/release      — terminal phase close
+  Git tags written under refs/tags/etc/:
+    feature/Ftmp-<hex>/build/phase-<N>/start   — written during wave runs
+    feature/Ftmp-<hex>/build/phase-<N>/done    — written during wave runs
+    feature/<final_id>/release                 — terminal phase close (Step 7a)
 
 ### Deferred Items
 {anything escalated or out of scope}

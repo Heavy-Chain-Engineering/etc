@@ -1,0 +1,20 @@
+# ADR-F023-002: Final F-ID allocation happens at /build Step 7c, not at /spec or /architect
+
+**Date:** 2026-05-21
+**Status:** Accepted
+
+**Context:** F023 defers final `F<NNN>` allocation from `/spec` time to release time to eliminate the branch-collision class described in the F023 PRD. The question is: which step is the right allocation point? Three candidates: (a) `/spec` Phase 2 Step 0, where the feature directory is created; (b) `/architect`, where design is locked; (c) `/build` Step 7c, the `active→shipped` move that marks the feature as audit-frozen.
+
+Allocating at `/spec` (option a) preserves the current timing but doesn't eliminate collisions — two developers who both run `/spec` on separate branches still both call `allocate-next` against their local view of `features/active/` and receive the same next sequential ID. Introducing a lockfile or remote-allocator service to coordinate them adds a hard inter-process dependency and requires the lock holder to be available whenever `/spec` runs. It does not eliminate the multi-branch race; it replaces a silent collision with a blocked allocator.
+
+Allocating at `/architect` (option b) has no motivating property — it is not a lifecycle transition, and the feature directory has the same WIP status after `/architect` as it did before.
+
+Step 7c already performs a directory move: the F022-shipped `shutil.move` fallback transitions the feature directory from `features/active/` to `features/shipped/`. It is the single moment at which the feature crosses from work-in-progress to audit-frozen shipped artifact. The release tag (`etc/feature/<id>/release`) is written at Step 7a in the same `/build` session — so the final `F<NNN>` must be known before that tag is written.
+
+At Step 7c the allocation still races: two operators running `/build` on the same `Ftmp-<hex>` from different branches both call `allocate-next`. The existing POSIX-atomic `allocate-next` (F006 AC-002) handles this correctly — one wins, the other receives the next sequential ID. By Step 7c the work is being merged; conflict resolution at that point is the operator's lane (PR merge), not something the harness needs to prevent.
+
+**Decision:** Final `F<NNN>` allocation happens at `/build` Step 7c, immediately before the `active→shipped` directory move. The new `resolve-final-id` subcommand (Step 7c.0) calls `allocate-next`, renames the active directory from `Ftmp-<hex>-<slug>` to `F<NNN>-<slug>`, renames matching ADRs under `docs/adrs/`, and appends the final ID to `state.yaml.id_history`. The subsequent `active→shipped` move (Step 7c.1) operates on the final `F<NNN>-<slug>` path. All work during `/spec`, `/architect`, and `/build` waves runs against the branch-local `Ftmp-<hex>-<slug>` form.
+
+**Consequences:** *Positive:* allocation races only at the one moment when conflict resolution is already the operator's responsibility; Step 7c is semantically aligned with the lifecycle transition (temp form = in-flight work, final form = shipped artifact); adding `resolve-final-id` to Step 7c is incremental — it extends an existing directory-move step, not a new lifecycle event; `allocate-next` is preserved byte-equivalent for all pre-F023 callers; final `F<NNN>` form remains the only operator-visible ID (in release tags, shipped/ dir, /metrics rollups). *Negative:* ADR filenames carry the `Ftmp-<hex>` form during the in-flight period and are renamed at release (handled by ADR-F023-003); the release tag at Step 7a must be deferred or corrected to use the final ID, which requires Step 7c.0 to run first (enforced by ordering in the Step 7c block).
+
+**Alternatives considered:** Allocate at `/spec` + coordinate via lockfile or remote-allocator (rejected — adds an inter-process hard dependency with no clear lock-holder; does not eliminate the multi-branch race; requires the lock service to be available whenever any developer runs `/spec`; operationally complex for a tool that is intentionally single-process, local-filesystem only). Allocate at `/architect` (rejected — no lifecycle boundary at that step; same collision exposure as `/spec`; no motivating property beyond "earlier is earlier").

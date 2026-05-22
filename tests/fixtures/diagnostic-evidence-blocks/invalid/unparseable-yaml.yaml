@@ -1,0 +1,6 @@
+```yaml
+tool_rerun_command: [unterminated, list
+tool_rerun_output: still bad
+attribution: { malformed:: { mapping
+evidence_type: interpreter-diff
+```

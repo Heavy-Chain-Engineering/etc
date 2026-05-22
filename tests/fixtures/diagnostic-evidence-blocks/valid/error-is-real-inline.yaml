@@ -1,0 +1,4 @@
+tool_rerun_command: "uv run ruff check hooks/inject_standards.sh"
+tool_rerun_output: "hooks/inject_standards.sh:127:1: SC2086 Double quote to prevent globbing and word splitting."
+attribution: "Repro on a clean tree confirms the warning is real and reachable; will quote the expansion before continuing"
+evidence_type: error-is-real

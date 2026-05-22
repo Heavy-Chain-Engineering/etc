@@ -1,0 +1,4 @@
+tool_rerun_command: "uv run mypy scripts/value_hypothesis.py"
+tool_rerun_output: "Success: no issues found in 1 source file"
+attribution: "IDE's mypy daemon was launched under the system python3, not the project venv"
+evidence_type: interpreter-diff

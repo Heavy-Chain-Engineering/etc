@@ -1,0 +1,3 @@
+The diagnostic looks like host-env false positive noise from the IDE; nothing
+in the project files is actually affected, so I am moving on to the next edit
+without re-running any tool.

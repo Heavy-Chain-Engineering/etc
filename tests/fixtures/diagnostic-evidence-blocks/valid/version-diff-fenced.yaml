@@ -1,0 +1,6 @@
+```yaml
+tool_rerun_command: "uv run ruff --version && uv run ruff check scripts/diagnostic_evidence.py"
+tool_rerun_output: "ruff 0.6.9\nAll checks passed!"
+attribution: "IDE plugin shipped ruff 0.4.x; project pins 0.6.x via pyproject; the IDE flagged a rule the newer ruff has since removed"
+evidence_type: version-diff
+```
