@@ -44,7 +44,6 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import secrets
 import shutil
 import subprocess
 import sys
@@ -60,14 +59,30 @@ import yaml
 _FEATURE_DIR_PATTERN = re.compile(r"^F(\d{3})(?:-.*)?$")
 
 #: Regex matching a temp-form feature ID (no slug). Group 1 captures the hex value.
+#: LEGACY: superseded by date-based form (see _DATED_ID_PATTERN). Kept for
+#: backward-compat reads of any in-flight Ftmp-<hex> dirs from pre-revision
+#: builds (F021-F026 era). See ADR superseding F023-001 for the rationale.
 _TEMP_ID_PATTERN = re.compile(r"^Ftmp-([0-9a-f]{8})$")
 
 #: Regex matching a temp-form feature directory name (with optional slug suffix).
+#: LEGACY — see _TEMP_ID_PATTERN note.
 _TEMP_DIR_PATTERN = re.compile(r"^Ftmp-([0-9a-f]{8})(?:-(.*))?$")
 
 #: Regex matching an ADR filename written under the temp form.
 #: Captures: 1) hex, 2) the trailing portion after the hex (e.g. "001-foo.md").
+#: LEGACY — see _TEMP_ID_PATTERN note.
 _ADR_TEMP_PATTERN = re.compile(r"^Ftmp-([0-9a-f]{8})-(.+\.md)$")
+
+#: Regex matching a date-based feature ID / directory name.
+#: Captures: 1) the date YYYY-MM-DD, 2) the slug-and-optional-collision-suffix.
+#: Examples:
+#:   F-2026-05-22-installer-rewrite     -> ("2026-05-22", "installer-rewrite")
+#:   F-2026-05-22-fix-bug-2             -> ("2026-05-22", "fix-bug-2")
+#:
+#: Replaces the F023 Ftmp-<hex> form. The dir name IS the feature_id (no
+#: separate -<slug> suffix segment); same-day same-slug collisions auto-suffix
+#: with -2, -3, ... per the revision ADR.
+_DATED_ID_PATTERN = re.compile(r"^F-(\d{4}-\d{2}-\d{2})-(.+)$")
 
 #: Maximum feature ID supported by the v1 schema (3-digit zero-padded).
 #: Hitting this ceiling raises FeatureIdExhaustedError rather than overflowing
@@ -95,13 +110,14 @@ _SHIPPED_SUBDIR = "shipped"
 #: trails written by /spec's three-state classifier.
 _REJECTIONS_DIR = "rejections"
 
-#: F023 collision-retry budget (EC-001). 4 bytes of entropy gives ~4.3B
-#: distinct values; the 50% birthday-problem threshold sits at ~65k
-#: allocations, so 3 retries cover the operationally astronomical edge.
-_TEMP_ID_MAX_ATTEMPTS = 3
-
-#: Number of bytes passed to ``secrets.token_hex`` for temp IDs (4 -> 8 hex chars).
-_TEMP_ID_BYTES = 4
+# NOTE: F023 introduced ``Ftmp-<hex>`` temp IDs and the associated
+# ``_TEMP_ID_MAX_ATTEMPTS`` / ``_TEMP_ID_BYTES`` constants for the
+# collision-retry loop driven by ``secrets.token_hex``. The revision ADR
+# (supersedes F023-001) replaces that scheme with a date-based form
+# (``F-YYYY-MM-DD-<slug>``) that needs no retry budget — same-day
+# same-slug collisions auto-suffix deterministically. The constants and
+# their import are removed; the legacy regex patterns above are kept
+# for backward-compat reads of any Ftmp-<hex> dirs from F021-F026 era.
 
 
 # ── Errors ──────────────────────────────────────────────────────────────
@@ -203,60 +219,75 @@ def allocate_next(features_dir: Path, slug: str) -> tuple[str, Path]:
 
 
 def allocate_temp(slug: str, etc_sdlc_root: Path) -> tuple[str, Path]:
-    """Allocate a branch-local temp F-ID and create the active feature dir.
+    """Allocate a date-based feature ID and create the active feature dir.
 
-    F023 BR-001: returns ``Ftmp-<8-char-hex>`` from ``secrets.token_hex(4)``.
-    Side effect: creates ``<etc_sdlc_root>/features/active/<temp_id>-<slug>/``
-    with an initial ``state.yaml`` carrying
-    ``id_history[0] = {form: temp, value: <temp_id>, written_at: <utc>}``.
+    REVISION (supersedes F023 BR-001): returns ``F-YYYY-MM-DD-<slug>`` form
+    using the current UTC date. The dir name IS the feature_id (no separate
+    ``-<slug>`` suffix). On same-day same-slug collision, auto-suffixes
+    with ``-2``, ``-3``, ... until a free slot is found.
+
+    Side effect: creates ``<etc_sdlc_root>/features/active/<feature_id>/``
+    with an initial ``state.yaml`` carrying ``feature_id: <id>``.
+
+    Why the date-based form (vs the original ``Ftmp-<hex>``): the hex
+    form was opaque ("Ftmp-5afddbce-installer-rewrite" carries no
+    semantic content), required a temp→final rename at /build Step 7c
+    (extra plumbing), and was hard to scan in ``ls`` output. The date
+    form sorts chronologically by lexicographic order, is cross-machine
+    collision-safe (date + slug combo is near-unique), and never needs
+    a rename step.
+
+    Backward compatibility: this function is still called
+    ``allocate_temp`` and the CLI subcommand is still ``allocate-temp``
+    so existing skill bodies (SKILL.md) keep working unchanged. The
+    only observable change is the FORMAT of the returned feature_id.
 
     Args:
-        slug: Caller-provided kebab-case slug. Rejected (``ValueError``) if
-            it contains ``..``, is an absolute path, or exceeds 64 chars
-            (security boundary 1 in design.md).
-        etc_sdlc_root: Path to the project's ``.etc_sdlc/`` directory. The
-            ``features/active/`` subtree is created if absent.
+        slug: Caller-provided kebab-case slug. Rejected (``ValueError``)
+            if it contains ``..``, is an absolute path, or exceeds 64
+            chars (security boundary 1 in design.md).
+        etc_sdlc_root: Path to the project's ``.etc_sdlc/`` directory.
+            The ``features/active/`` subtree is created if absent.
 
     Returns:
-        ``(temp_id, feature_path)``. ``temp_id`` matches
-        ``^Ftmp-[0-9a-f]{8}$``; ``feature_path`` is the freshly-created
-        directory under ``.etc_sdlc/features/active/``.
+        ``(feature_id, feature_path)``. ``feature_id`` matches
+        ``^F-\\d{4}-\\d{2}-\\d{2}-.+$``; ``feature_path`` is the freshly-
+        created directory at ``.etc_sdlc/features/active/<feature_id>/``.
 
     Raises:
         ValueError: When ``slug`` fails the security checks.
-        TempIdCollisionError: When 3 consecutive ``token_hex`` calls collide
-            with pre-existing directories (EC-001 — astronomical).
-        AttributeError: When ``secrets.token_hex`` raises ``AttributeError``
-            (e.g., FIPS-restricted Python build — EC-009).
+        RuntimeError: When same-day same-slug collisions exhaust the
+            99-attempt safety bound (operationally impossible — would
+            require 99 features with the same slug shipped on the
+            same UTC day).
     """
     _validate_temp_slug(slug)
     active_dir = etc_sdlc_root / "features" / _ACTIVE_SUBDIR
     active_dir.mkdir(parents=True, exist_ok=True)
 
-    for _ in range(_TEMP_ID_MAX_ATTEMPTS):
-        hex_value = secrets.token_hex(_TEMP_ID_BYTES)
-        temp_id = f"Ftmp-{hex_value}"
-        # EC-001: collision-check on the temp-ID prefix, NOT just on the
-        # full <temp_id>-<slug> path. Two callers with the same hex but
-        # different slugs would otherwise produce two dirs with the same
-        # Ftmp-<hex>; resolve-final-id later assumes the prefix uniquely
-        # identifies a feature. The cheap pre-check is a glob; the
-        # os.mkdir on the final candidate path remains the atomic claim.
-        if any(active_dir.glob(f"{temp_id}-*")):
-            continue
-        candidate = active_dir / f"{temp_id}-{slug}"
+    today = _utc_now_iso8601()[:10]  # YYYY-MM-DD slice from ISO-8601
+    base_id = f"F-{today}-{slug}"
+
+    # Auto-suffix on collision: F-DATE-slug, then F-DATE-slug-2, -3, ...
+    candidate_id = base_id
+    suffix = 1
+    while True:
+        candidate = active_dir / candidate_id
         try:
             os.mkdir(candidate)
+            break
         except FileExistsError:
-            continue
-        _write_initial_state_yaml(candidate, temp_id)
-        return temp_id, candidate
+            suffix += 1
+            if suffix > 99:
+                raise RuntimeError(
+                    f"same-day same-slug collision exhausted after 99 "
+                    f"attempts at {base_id!r}; operationally impossible — "
+                    f"investigate systemic state."
+                )
+            candidate_id = f"{base_id}-{suffix}"
 
-    raise TempIdCollisionError(
-        f"failed to allocate a unique temp ID after "
-        f"{_TEMP_ID_MAX_ATTEMPTS} attempts; this is astronomically "
-        f"unlikely (EC-001) — check for systemic FS or RNG corruption"
-    )
+    _write_initial_state_yaml(candidate, candidate_id)
+    return candidate_id, candidate
 
 
 def resolve_final_id(
@@ -304,14 +335,24 @@ def resolve_final_id(
     """
     final_match = _FEATURE_DIR_PATTERN.match(temp_dir_name)
     if final_match is not None:
-        # EC-003: already in final form. No rename needed.
+        # EC-003: already in final F<NNN> form (legacy F001-F026 path).
+        # No rename needed.
         return f"F{int(final_match.group(1)):03d}"
+
+    dated_match = _DATED_ID_PATTERN.match(temp_dir_name)
+    if dated_match is not None:
+        # Date-based form is the final form by construction. No rename;
+        # /build Step 7c.0 treats this as a no-op. The dir name itself
+        # IS the feature_id.
+        return temp_dir_name
 
     temp_match = _TEMP_DIR_PATTERN.match(temp_dir_name)
     if temp_match is None:
         raise ValueError(
             f"unrecognized feature directory name {temp_dir_name!r}; "
-            f"expected Ftmp-<hex>-<slug> or F<NNN>-<slug>"
+            f"expected F-YYYY-MM-DD-<slug> (date-based) or "
+            f"F<NNN>-<slug> (legacy sequential) or "
+            f"Ftmp-<hex>-<slug> (legacy temp form)"
         )
 
     temp_hex = temp_match.group(1)
@@ -382,11 +423,21 @@ def resolve_feature_path(feature_id: str, etc_sdlc_root: Path) -> Path | None:
         features_root / _SHIPPED_SUBDIR,
         etc_sdlc_root / _REJECTIONS_DIR,
     )
+
+    # For date-based IDs, the dir name IS the feature_id (no separate
+    # ``-<slug>`` suffix). Check exact-match first; the legacy glob form
+    # below catches the F<NNN>/Ftmp-<hex> cases where the slug lives in
+    # a suffix segment.
+    is_dated = bool(_DATED_ID_PATTERN.match(feature_id))
     glob_pattern = f"{feature_id}-*"
 
     for location in search_locations:
         if not location.is_dir():
             continue
+        if is_dated:
+            exact = location / feature_id
+            if exact.is_dir():
+                return exact.resolve()
         for match in location.glob(glob_pattern):
             if match.is_dir():
                 return match.resolve()
@@ -398,10 +449,18 @@ def resolve_feature_path(feature_id: str, etc_sdlc_root: Path) -> Path | None:
 
 
 def _is_resolvable_feature_id(feature_id: str) -> bool:
-    """True iff ``feature_id`` matches either ID form regex."""
+    """True iff ``feature_id`` matches any of the three ID form regexes.
+
+    Recognized forms:
+      1. ``F<NNN>``                 (legacy sequential, F001-F026 era)
+      2. ``Ftmp-<8-hex>``           (legacy temp form, F023 era; superseded)
+      3. ``F-YYYY-MM-DD-<slug>``    (current — date-based)
+    """
     if _FEATURE_DIR_PATTERN.match(feature_id):
         return True
     if _TEMP_ID_PATTERN.match(feature_id):
+        return True
+    if _DATED_ID_PATTERN.match(feature_id):
         return True
     return False
 

@@ -307,32 +307,35 @@ Before writing any PRD content, gather information from three sources. Present
 a research summary to the user before proceeding to spec writing.
 
 <!-- forward-only: temp-ID allocation enforced from F023 release tag onward -->
-**Phase 2 Step 0: Allocate the feature directory (temp ID) FIRST.**
+**Phase 2 Step 0: Allocate the feature directory FIRST.**
 
-Allocate a branch-local temp feature ID at the very start of Phase 2 — BEFORE
+Allocate the feature ID + directory at the very start of Phase 2 — BEFORE
 any research runs, BEFORE Phase 2.5 gray-area resolution, and BEFORE any other
 write under `.etc_sdlc/features/`. Every subsequent file write in Phases 2,
-2.5, and 5 lands inside the freshly-allocated `Ftmp-<hex>-<slug>/` directory.
+2.5, and 5 lands inside the freshly-allocated `F-YYYY-MM-DD-<slug>/` directory.
 
-The final sequential `F<NNN>` is allocated at `/build` Step 7c (BR-006) when
-the feature transitions from active to shipped. All in-flight artifacts
-(spec.md, design.md, ADRs, tasks/) reference the temp ID. Rename from
-`Ftmp-<hex>-<slug>` to `F<NNN>-<slug>` happens automatically at release time;
-the operator does not manage it manually.
+The feature ID is date-based per the 2026-05-22 revision superseding F023-001
+(see `docs/adrs/F-2026-05-22-feature-id-naming-revision-001-date-based-format.md`).
+The dir name IS the feature_id — there is no temp→final rename. All in-flight
+artifacts (spec.md, design.md, ADRs, tasks/) reference the date-based ID from
+allocation through release.
 
 Derive the slug from the user's intent (Phase 1 answers) using the same
 kebab-case convention as `scripts/feature_id.py::slugify`. Then invoke the
-allocator CLI:
+allocator CLI (the subcommand is still named `allocate-temp` for
+source-compat with prior versions of this skill; the format of the
+returned ID has changed but the CLI shape is identical):
 
 ```
-python3 ~/.claude/scripts/feature_id.py allocate-temp .etc_sdlc/features "<slug>"
+python3 ~/.claude/scripts/feature_id.py allocate-temp .etc_sdlc "<slug>"
 ```
 
 The CLI prints a single space-separated line to stdout: `<feature_id> <feature_path>`
-(e.g. `Ftmp-jw3k7890 .etc_sdlc/features/Ftmp-jw3k7890-add-user-auth`). A
-runtime conductor parses the output as follows:
+(e.g. `F-2026-05-22-add-user-auth .etc_sdlc/features/active/F-2026-05-22-add-user-auth`).
+On same-day same-slug collision, the allocator auto-suffixes (`-2`, `-3`, ...).
+A runtime conductor parses the output as follows:
 
-- The **first token** is `<feature_id>` (e.g. `Ftmp-jw3k7890`).
+- The **first token** is `<feature_id>` (e.g. `F-2026-05-22-add-user-auth`).
 - The **second token** is `<feature_path>` (the freshly-created directory).
 
 Capture both into skill-local state. Reference them throughout the rest of

@@ -1516,35 +1516,38 @@ successfully at Step 6:
    c. **Step 7c.0: Resolve final F-ID (F023 BR-006).** This MUST run
       first — before the release-tag write (sub-step a) and before the
       active→shipped move (Step 7c.1) — because both subsequent steps
-      require the final `F<NNN>` path. The conductor invokes:
+      require the final feature_id path. The conductor invokes:
 
       ```bash
-      final_id=$(python3 ~/.claude/scripts/feature_id.py resolve-final-id "Ftmp-<hex>-<slug>")
+      final_id=$(python3 ~/.claude/scripts/feature_id.py resolve-final-id .etc_sdlc "<feature_dir_name>")
       ```
 
-      Substitute `Ftmp-<hex>-<slug>` with the actual temp directory name
-      from `state.yaml`.
+      Substitute `<feature_dir_name>` with the actual feature directory
+      basename from `state.yaml` (e.g.,
+      `F-2026-05-22-python-installer-rewrite`).
 
-      On exit 0, the dir is now at
-      `.etc_sdlc/features/active/<final_id>-<slug>/` and any ADRs under
-      `docs/adrs/Ftmp-<hex>-NNN-*.md` have been renamed to
-      `<final_id>-NNN-*.md` via `git mv` (since `docs/adrs/` IS tracked).
-      The `state.yaml.id_history` field is updated with the final-ID
-      entry. The subsequent active→shipped move (Step 7c.1) operates on
-      the final `<final_id>-<slug>` path — NOT the temp form.
+      **For date-based feature IDs** (current scheme per the 2026-05-22
+      revision superseding F023-001; see ADR
+      `docs/adrs/F-2026-05-22-feature-id-naming-revision-001-date-based-format.md`):
+      `resolve-final-id` is a no-op. The dir name IS the final feature_id
+      — there is no rename. The command exits 0 and prints the input
+      unchanged. The subsequent active→shipped move (Step 7c.1) operates
+      on the date-based path.
+
+      **For legacy `Ftmp-<hex>-<slug>` features (F021-F026 era, if any
+      remain in `active/`):** the original F023 rename semantics still
+      execute — `shutil.move` renames the dir to `F<NNN>-<slug>` and
+      `git mv` renames any `docs/adrs/Ftmp-<hex>-NNN-*.md` to
+      `F<NNN>-NNN-*.md`. The `state.yaml.id_history` field is updated.
+      Preserved for backward-compat; no new feature triggers this path.
+
+      **For legacy `F<NNN>` features (F001-F020 era):** EC-003 short
+      circuit — `resolve-final-id` detects the already-final form, exits
+      0 with a stderr note ("feature already has final ID; no rename
+      needed"), and returns the F<NNN> identifier unchanged.
 
       On non-zero exit, surface stderr verbatim and abort with exit 1 —
       operator remediates manually before re-running `/build --resume`.
-      Matches F022's three-branch failure-semantics shape.
-
-      **Legacy features (F001–F023).** If the feature directory is
-      already in `F<NNN>` form (no `Ftmp-` prefix), `resolve-final-id`
-      detects this and exits 0 with a stderr note: "feature already has
-      final ID; no rename needed" (EC-003). The conductor proceeds
-      without error; capture the returned `F<NNN>` into `final_id` for
-      the release-tag write at sub-step a. Forward-only per F023 BR-010:
-      F001–F023 keep their sequential names; only F024 and later features
-      produce `Ftmp-<hex>-<slug>` directories.
 
    a. Write the release tag via the git_tags.py write-tag CLI:
       ```

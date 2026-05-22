@@ -1,18 +1,59 @@
 # Feature ID Allocation
 
-Every feature that passes through the etc SDLC carries two sequential identifiers over its
-lifetime: a branch-local temp ID used during in-flight work and a final sequential ID
-assigned at release. This standard defines both forms, their exact timing, the audit-trail
-schema that records the transition, and the preservation rule that governs phase tags.
+Every feature that passes through the etc SDLC carries a single human-readable
+date-based identifier from `/spec` allocation through release. This standard
+defines the format, the timing, the audit-trail schema in `state.yaml`, and the
+backward-compatibility contract for legacy feature names.
 
 ## Status: MANDATORY
 
 ## Applies to: skills (/spec, /architect, /build), scripts/feature_id.py, /metrics
 
-Applies to all features authored after the F023 release tag. Legacy features (F001–F023)
-keep their existing `F<NNN>` names and are not retroactively affected (see Forward-Only).
+Applies to all features authored after the 2026-05-22 revision (see ADR
+`docs/adrs/F-2026-05-22-feature-id-naming-revision-001-date-based-format.md`).
+Legacy features (F001–F026) keep their existing `F<NNN>` names and are not
+retroactively affected (see Forward-Only).
 
-## Two ID forms
+## REVISION 2026-05-22 (supersedes F023 ADR-001..004)
+
+This standard was originally authored for F023's `Ftmp-<8-char-hex>` temp-ID
+format with a temp→final rename at `/build` Step 7c.0. That format is
+SUPERSEDED. The current scheme:
+
+**Format:** `F-YYYY-MM-DD-<slug>` where the date is the current UTC date at
+`/spec` allocation time, and `<slug>` is the operator-provided kebab-case
+feature name.
+
+**Examples:**
+- `F-2026-05-22-python-installer-rewrite` (typical)
+- `F-2026-05-22-fix-payment-bug` (short slug)
+- `F-2026-05-22-fix-bug-2` (auto-suffix on same-day same-slug collision)
+
+**Properties:**
+- The dir name IS the feature_id (no separate `-<slug>` suffix segment as
+  with the legacy F<NNN>-<slug> form).
+- Cross-machine collision-safe: two operators on different machines pick
+  different slugs near-trivially; the date+slug combo is near-unique.
+- Chronologically sortable: `ls features/active/` shows features in UTC
+  creation order via lexicographic sort.
+- No temp→final rename at `/build` Step 7c.0 — the date-based form is
+  final by construction. `resolve_final_id` is a no-op for these IDs.
+
+**Collision behavior:** same-day same-slug → auto-suffix `-2`, `-3`, ...
+up to a 99-attempt safety bound. Operationally rare.
+
+**Backward compatibility:** the legacy `Ftmp-<8-char-hex>` form and the
+sequential `F<NNN>` form are still recognized by readers
+(`resolve_feature_path`, `resolve_final_id`'s short-circuit paths) for
+any in-flight features from the F021-F026 era. No new feature is
+produced in either legacy form.
+
+The original F023 documentation below is preserved for archaeological
+context only. The CURRENT contract is what appears above.
+
+---
+
+## Two ID forms (LEGACY — F023 era; see REVISION above)
 
 **Temp form: `Ftmp-<hex>`**
 
