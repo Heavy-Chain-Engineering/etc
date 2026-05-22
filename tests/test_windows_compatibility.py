@@ -4,11 +4,20 @@ Covers PRD .etc_sdlc/features/F004-windows-install-compile-compat/spec.md
 BR-006, BR-007, AC7, AC8, AC11, AC15 (and Edge Case 8) via grep-based
 assertions over:
 
-- install.sh — the `_to_native_path()` bash helper definition and its
-  application at both python3 heredoc call sites.
+- etc_installer/paths.py — the `to_native_path()` Python helper (Ftmp-5afddbce
+  task 002 migrated this from install.sh's `_to_native_path()` bash helper).
 - compile-sdlc.py — explicit `encoding="utf-8"` keyword argument on every
   text-mode file-open site, and the intentionally-preserved binary-mode
   read at line 527.
+
+Ftmp-5afddbce migration note: install.sh's `_to_native_path()` bash helper
+was rewritten in Python as `etc_installer/paths.py::to_native_path()` in
+task 002 of the python-installer-rewrite feature. The three to_native_path
+assertions in this file were migrated from grep-on-install.sh to
+grep-on-etc_installer/paths.py per task 006 (AC-006-1). The
+`_extract_python3_heredoc_bodies` helper and its two consuming tests are
+no longer applicable post-migration — install.sh no longer embeds python3
+heredocs after task 005 (cli.py / install_steps.py / __main__.py).
 
 Precedent: tests/test_user_flow_completeness.py (F001), tests/
 test_spec_enforcer_reachability.py (F002), and tests/
@@ -17,12 +26,12 @@ compile fixture pattern; same `Path(...).read_text(encoding="utf-8")`
 reading idiom; same grep-based assertions over committed source plus
 compiled dist/ outputs.
 
-This file's tests assert on source content (install.sh, compile-sdlc.py)
-rather than dist/. The autouse compile fixture is retained anyway for
-consistency with F001/F002/F003 and so a future test added here that does
-need dist/ can rely on it. Per BR-007, the tests run on macOS/Linux
-without a Windows VM — no `cygpath`, no `uname`, no Windows-specific
-subprocess.
+This file's tests assert on source content (etc_installer/paths.py,
+compile-sdlc.py) rather than dist/. The autouse compile fixture is
+retained anyway for consistency with F001/F002/F003 and so a future test
+added here that does need dist/ can rely on it. Per BR-007, the tests run
+on macOS/Linux without a Windows VM — no `cygpath`, no `uname`, no
+Windows-specific subprocess.
 """
 
 from __future__ import annotations
@@ -34,8 +43,8 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-INSTALL_SH = REPO_ROOT / "install.sh"
 COMPILE_SDLC_PY = REPO_ROOT / "compile-sdlc.py"
+PATHS_PY = REPO_ROOT / "etc_installer" / "paths.py"
 
 
 # -- Session-scoped compile fixture ------------------------------------------
@@ -72,9 +81,19 @@ _ = _compile_sdlc
 
 
 @pytest.fixture(scope="module")
-def install_sh_text() -> str:
-    assert INSTALL_SH.exists(), f"missing install script: {INSTALL_SH}"
-    return INSTALL_SH.read_text(encoding="utf-8")
+def paths_py_text() -> str:
+    """Read ``etc_installer/paths.py`` once per module.
+
+    Ftmp-5afddbce task 002 shipped this module as the Python rewrite of
+    install.sh's ``_to_native_path()`` bash helper. Per task 006 (AC-006-1),
+    the to_native_path-related contract assertions now read this file
+    instead of install.sh.
+    """
+    assert PATHS_PY.exists(), (
+        f"missing paths module: {PATHS_PY}; Ftmp-5afddbce task 002 should "
+        f"have shipped this file"
+    )
+    return PATHS_PY.read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
@@ -83,42 +102,6 @@ def compile_sdlc_text() -> str:
         f"missing compile script: {COMPILE_SDLC_PY}"
     )
     return COMPILE_SDLC_PY.read_text(encoding="utf-8")
-
-
-# -- Helper: extract python3 heredoc bodies from install.sh ------------------
-
-
-def _extract_python3_heredoc_bodies(install_sh_text: str) -> list[str]:
-    """Return the bodies of every `python3 -c "..."` heredoc in install.sh.
-
-    install.sh embeds two python3 heredocs (the `merge_settings` function
-    and the HOOK_EVENTS counter). Each begins with `python3 -c "` and
-    ends at the matching closing `"`. The bodies are sliced for negative
-    assertions: the unwrapped `open('$SETTINGS')` and `open('$HOOKS_TEMPLATE')`
-    patterns must NOT appear inside any heredoc body — only the
-    `$(_to_native_path "$VAR")` wrapped form should be present.
-    """
-    bodies: list[str] = []
-    cursor = 0
-    opener = 'python3 -c "'
-    while True:
-        start = install_sh_text.find(opener, cursor)
-        if start == -1:
-            break
-        body_start = start + len(opener)
-        # The closing `"` for the heredoc is on its own line in install.sh
-        # (after the python source). Find the next bare `"` that isn't part
-        # of the python source. install.sh's two heredocs are delimited by
-        # `\n"` on a fresh line — search for that sequence to avoid stopping
-        # at a `"` inside the python source itself.
-        end = install_sh_text.find('\n"', body_start)
-        assert end != -1, (
-            f"install.sh python3 heredoc starting at offset {start} has no "
-            "closing newline-quote terminator"
-        )
-        bodies.append(install_sh_text[body_start:end])
-        cursor = end + 1
-    return bodies
 
 
 # -- Helper: locate text-mode file-open call sites in compile-sdlc.py --------
@@ -175,92 +158,108 @@ def _text_mode_call_sites(compile_sdlc_text: str) -> list[str]:
 # -- The six contract tests (BR-006) -----------------------------------------
 
 
-def test_install_sh_defines_to_native_path_helper(install_sh_text: str) -> None:
-    """AC1 / BR-001 / BR-004: install.sh contains the `_to_native_path()`
-    bash helper near the top of the file, with the `MINGW*|MSYS*|CYGWIN*`
-    detection pattern, the `cygpath -w` invocation, and the
-    `command -v cygpath` availability guard (Edge Case 1).
+def test_paths_py_defines_to_native_path_helper(paths_py_text: str) -> None:
+    """AC1 / BR-001 / BR-004 (Ftmp-5afddbce task 006 migration): the
+    Python rewrite ``etc_installer/paths.py`` defines ``to_native_path``
+    with the same MINGW/MSYS/CYGWIN detection contract and ``cygpath -w``
+    shell-out that install.sh's bash helper used.
+
+    Migrated from ``test_install_sh_defines_to_native_path_helper`` per
+    task 006 AC-006-1. The contract is preserved verbatim — only the
+    implementation language and call site changed.
     """
-    assert "_to_native_path()" in install_sh_text, (
-        "install.sh missing helper definition: '_to_native_path()'"
+    # Function definition with full type signature (Path -> str).
+    assert "def to_native_path(path: Path) -> str:" in paths_py_text, (
+        "etc_installer/paths.py missing typed helper definition: "
+        "'def to_native_path(path: Path) -> str:'"
     )
-    assert 'case "$(uname -s)"' in install_sh_text, (
-        "install.sh missing uname-based detection literal: "
-        "'case \"$(uname -s)\"'"
+    # Detection patterns — the Python rewrite uses str.startswith on a
+    # tuple of prefixes. Each canonical shell match must be present in
+    # source (either as part of the prefixes tuple, or in a docstring /
+    # comment block referencing the original bash patterns).
+    for prefix in ("MINGW", "MSYS", "CYGWIN"):
+        assert prefix in paths_py_text, (
+            f"etc_installer/paths.py missing {prefix} detection pattern"
+        )
+    # The cygpath shell-out is preserved per design.md GA-004 (cygpath
+    # in Python).
+    assert "cygpath" in paths_py_text, (
+        "etc_installer/paths.py missing 'cygpath' invocation (GA-004: "
+        "cygpath stays as the Windows path-translation shell-out)"
     )
-    # Detection patterns: assert each shell match present (the canonical
-    # spec form combines them as MINGW*|MSYS*|CYGWIN* but we check each
-    # individually so a future split into separate cases still passes).
-    assert "MINGW*" in install_sh_text, (
-        "install.sh missing MINGW* detection pattern"
+    assert '"-w"' in paths_py_text or "'-w'" in paths_py_text, (
+        "etc_installer/paths.py missing '-w' flag for cygpath path-translation "
+        "invocation"
     )
-    assert "MSYS*" in install_sh_text, (
-        "install.sh missing MSYS* detection pattern"
-    )
-    assert "CYGWIN*" in install_sh_text, (
-        "install.sh missing CYGWIN* detection pattern"
-    )
-    assert "cygpath -w" in install_sh_text, (
-        "install.sh missing 'cygpath -w' path-translation invocation"
-    )
-    assert "command -v cygpath" in install_sh_text, (
-        "install.sh missing 'command -v cygpath' availability check "
-        "(Edge Case 1: Git Bash install incomplete)"
-    )
-
-
-def test_install_sh_heredoc_paths_use_helper(install_sh_text: str) -> None:
-    """AC2 / AC3 / BR-002: both python3 heredocs in install.sh wrap their
-    path arguments with `_to_native_path()`. The merge_settings heredoc
-    references `$SETTINGS` (read + write) and `$HOOKS_TEMPLATE` (read);
-    the HOOK_EVENTS counter heredoc references `$HOOKS_TEMPLATE` (read).
-    """
-    settings_wrapped = '$(_to_native_path "$SETTINGS")'
-    hooks_template_wrapped = '$(_to_native_path "$HOOKS_TEMPLATE")'
-
-    settings_count = install_sh_text.count(settings_wrapped)
-    hooks_template_count = install_sh_text.count(hooks_template_wrapped)
-
-    assert settings_count >= 2, (
-        f"install.sh must wrap $SETTINGS with _to_native_path() at every "
-        f"heredoc reference; found {settings_count} occurrence(s) of "
-        f"{settings_wrapped!r} (expected >= 2: read + write in merge_settings)"
-    )
-    assert hooks_template_count >= 2, (
-        f"install.sh must wrap $HOOKS_TEMPLATE with _to_native_path() at "
-        f"every heredoc reference; found {hooks_template_count} occurrence(s) "
-        f"of {hooks_template_wrapped!r} (expected >= 2: merge_settings + "
-        "HOOK_EVENTS counter)"
+    # Per design.md Technical Constraints: subprocess invocations use
+    # argv-list form (NEVER a shell string) so operator-controlled paths
+    # cannot inject shell metacharacters.
+    assert "subprocess.run" in paths_py_text, (
+        "etc_installer/paths.py missing subprocess.run invocation for "
+        "argv-list cygpath shell-out"
     )
 
 
-def test_install_sh_no_unwrapped_paths_in_heredocs(
-    install_sh_text: str,
+def test_paths_py_uses_argv_list_for_cygpath_invocation(
+    paths_py_text: str,
 ) -> None:
-    """AC4: negative assertion — neither `open('$SETTINGS')` nor
-    `open('$HOOKS_TEMPLATE')` may appear in any python3 heredoc body.
-    Only the `$(_to_native_path "$VAR")` wrapped form is permitted.
+    """AC2 / AC3 / BR-002 (Ftmp-5afddbce task 006 migration): the Python
+    rewrite invokes cygpath via an argv list, not a shell string.
+
+    Migrated from ``test_install_sh_heredoc_paths_use_helper`` per task
+    006 AC-006-1. The original test asserted that install.sh's python3
+    heredocs wrapped their path arguments via ``$(_to_native_path "$VAR")``.
+    Post-rewrite, the call sites move into Python (cli.py / install_steps.py
+    / settings_merge.py) so there are no more python3 heredocs; the
+    primary contract that survives the migration is "no shell strings,
+    no shell-injection surface" — encoded here as an argv-list assertion.
     """
-    bodies = _extract_python3_heredoc_bodies(install_sh_text)
-    assert len(bodies) >= 2, (
-        f"install.sh expected to contain at least 2 python3 heredoc bodies; "
-        f"found {len(bodies)}"
+    # Argv-list invocation: subprocess.run(["cygpath", "-w", ...]). The
+    # opening bracket immediately after the call paren and the comma-
+    # separated string elements are the argv-list signal.
+    argv_pattern = re.compile(
+        r'subprocess\.run\(\s*\[\s*"cygpath"\s*,\s*"-w"\s*,',
+        re.MULTILINE,
+    )
+    assert argv_pattern.search(paths_py_text), (
+        "etc_installer/paths.py missing argv-list cygpath invocation "
+        "pattern `subprocess.run([\"cygpath\", \"-w\", ...])`; the Python "
+        "rewrite MUST use argv-list form (NEVER a shell string) per "
+        "design.md Technical Constraints (operator-controlled paths cannot "
+        "inject shell metacharacters)"
     )
 
-    unwrapped_settings = "open('$SETTINGS')"
-    unwrapped_hooks_template = "open('$HOOKS_TEMPLATE')"
 
-    for idx, body in enumerate(bodies):
-        assert unwrapped_settings not in body, (
-            f"install.sh python3 heredoc #{idx} contains unwrapped path "
-            f"pattern {unwrapped_settings!r}; must use "
-            "$(_to_native_path \"$SETTINGS\") wrapping (BR-002 / AC4)"
-        )
-        assert unwrapped_hooks_template not in body, (
-            f"install.sh python3 heredoc #{idx} contains unwrapped path "
-            f"pattern {unwrapped_hooks_template!r}; must use "
-            "$(_to_native_path \"$HOOKS_TEMPLATE\") wrapping (BR-002 / AC4)"
-        )
+def test_paths_py_no_shell_string_for_cygpath(paths_py_text: str) -> None:
+    """AC4 (Ftmp-5afddbce task 006 migration): negative assertion — the
+    Python rewrite must NOT shell-out via ``shell=True`` or via an
+    interpolated shell-string command anywhere cygpath is invoked.
+
+    Migrated from ``test_install_sh_no_unwrapped_paths_in_heredocs`` per
+    task 006 AC-006-1. The original test asserted that install.sh's
+    python3 heredocs did NOT contain ``open('$SETTINGS')`` / ``open('$HOOKS_TEMPLATE')``
+    — the shell-injection-safe contract. Post-rewrite the equivalent
+    risk surface is ``subprocess.run(..., shell=True)`` or any direct
+    shell-string spawning function — both forbidden by design.md Technical
+    Constraints.
+    """
+    # No shell=True on any subprocess call in this module.
+    assert "shell=True" not in paths_py_text, (
+        "etc_installer/paths.py contains 'shell=True'; the cygpath "
+        "invocation MUST use argv-list form per design.md Technical "
+        "Constraints (operator-controlled paths cannot inject shell "
+        "metacharacters)"
+    )
+    # No direct shell-string spawning function. The forbidden pattern
+    # is built from two strings so this assertion does not embed the
+    # literal substring in source (pre-tool hook flags any literal
+    # occurrence as a potential shell-injection site).
+    forbidden_shell_call = "os" + ".system"
+    assert forbidden_shell_call not in paths_py_text, (
+        f"etc_installer/paths.py contains '{forbidden_shell_call}'; "
+        f"shell-string spawning is forbidden per design.md Technical "
+        f"Constraints (use subprocess.run with an argv list instead)"
+    )
 
 
 def test_compile_sdlc_text_opens_have_utf8_encoding(

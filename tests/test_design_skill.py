@@ -34,9 +34,10 @@ Precedent:
   source-of-truth edits land in source files (compile-sdlc.py turns
   them into dist/ outputs as a downstream concern).
 - ``tests/test_build_stacked_prs.py`` (F010): grep-based assertions for
-  skill body + install.sh + synthetic git repo construction. The
-  ``INSTALL_SH``/``install_sh_text`` module-level constant + fixture
-  pattern is mirrored here.
+  skill body + preflights.py + synthetic git repo construction. Both
+  files were post-migrated by Ftmp-5afddbce task 006 — the install.sh
+  fixture became ``PREFLIGHTS_PATH`` + skip-conditional grepping of
+  ``etc_installer/preflights.py``.
 - ``tests/test_completion_report.py`` (F005): pytest ``tmp_path`` +
   ``subprocess.run`` invocation of helpers with ``cwd=tmp_path``.
 """
@@ -58,7 +59,6 @@ AGENT_DESIGN = REPO_ROOT / "agents" / "design.md"
 AGENT_UX = REPO_ROOT / "agents" / "ux-designer.md"
 AGENT_UI = REPO_ROOT / "agents" / "ui-designer.md"
 HOOK_TIER_0 = REPO_ROOT / "hooks" / "tier-0-design-preflight.sh"
-INSTALL_SH = REPO_ROOT / "install.sh"
 
 # Verbatim strings from spec.md and design.md the source artifacts must contain.
 # Per F011 spec.md BR-009 + AC15, the install.sh INFO line prefix is exact.
@@ -72,7 +72,7 @@ INSTALL_F011_PHRASE = "/design phase requires impeccable"
 # 2.75, 3, 4, 5) appear verbatim in the skill body. The task AC enumerates
 # all 7 because the .5 / .75 sub-phases are first-class headers in the
 # /design skill body (mirroring /architect's structure per BR-002).
-EXPECTED_PHASE_HEADERS = [
+EXPECTED_PHASE_HEADERS = (
     "### Phase 1: Intent Capture",
     "### Phase 2: Research",
     "### Phase 2.5: Gray Area Resolution",
@@ -80,14 +80,27 @@ EXPECTED_PHASE_HEADERS = [
     "### Phase 3: Iterative Spec Writing",
     "### Phase 4: Validation",
     "### Phase 5: Output",
-]
+)
 
 # Per F011 spec.md AC4: classifier constants identical to /spec and /architect.
-EXPECTED_CLASSIFIER_CONSTANTS = [
+EXPECTED_CLASSIFIER_CONSTANTS = (
     "FILL_RATIO_RESEARCH_ASSIST_MAX = 0.20",
     "FILL_RATIO_REJECT_MIN = 0.50",
     "UNFILLABLE_GAP_REJECT_CAP = 3",
-]
+)
+
+# Ftmp-5afddbce task 003 ships ``etc_installer/preflights.py`` as the
+# Python rewrite of install.sh's gh-stack / impeccable / mergiraf /
+# @google/design.md preflight blocks. Per task 006 AC-006-2, the F011
+# impeccable-preflight INFO assertions in this file migrate from
+# grep-on-install.sh to grep-on-preflights.py once task 003 ships.
+# Pre-task-003, the migrated tests SKIP via
+# skipif(not PREFLIGHTS_PATH.exists(), reason=PREFLIGHTS_PENDING_REASON).
+PREFLIGHTS_PATH = REPO_ROOT / "etc_installer" / "preflights.py"
+PREFLIGHTS_PENDING_REASON = (
+    "etc_installer/preflights.py not yet shipped (pending Ftmp-5afddbce "
+    "task 003 preflights.py)"
+)
 
 # Module-level reference so static analyzers see ``pytest`` as accessed via
 # the tmp_path fixture indirection. Mirrors test_build_stacked_prs precedent.
@@ -147,15 +160,6 @@ def agent_ui_text() -> str:
         f"keeps the file on disk for forward-only compatibility (BR-008)."
     )
     return AGENT_UI.read_text(encoding="utf-8")
-
-
-@pytest.fixture(scope="module")
-def install_sh_text() -> str:
-    """Read ``install.sh`` once per module."""
-    assert INSTALL_SH.exists(), (
-        f"missing installer: {INSTALL_SH}; F011 tests cannot run without it"
-    )
-    return INSTALL_SH.read_text(encoding="utf-8")
 
 
 # ── Synthetic-git-repo helpers (F005 + F008 + F010 precedent) ────────────
@@ -627,14 +631,18 @@ def test_agent_design_exists_with_required_frontmatter(
 # ─────────────────────────────────────────────────────────────────────────
 
 
-def test_install_sh_documents_impeccable_preflight_info(
-    install_sh_text: str,
-) -> None:
-    """Group (i): install.sh contains the verbatim INFO prefix
-    ``INFO: impeccable not detected`` AND the F011-specific phrase
-    ``/design phase requires impeccable``.
+@pytest.mark.skipif(
+    not PREFLIGHTS_PATH.exists(),
+    reason=PREFLIGHTS_PENDING_REASON,
+)
+def test_preflights_py_documents_impeccable_preflight_info() -> None:
+    """Group (i) (Ftmp-5afddbce task 006 migration): ``etc_installer/preflights.py``
+    declares the F011 impeccable INFO message verbatim.
 
-    Per F011 spec.md AC15 + BR-009. The full canonical line is:
+    Migrated from grep-on-install.sh to grep-on-preflights.py per task
+    006 AC-006-2. Per design.md ``preflights.py`` exposes verbatim
+    ``F011_INFO_LINE`` (BR-005, AC-005) plus the F010/F016/F018 siblings.
+    The full canonical line is preserved verbatim from install.sh:
 
         INFO: impeccable not detected. /design phase requires impeccable
         (etc F011+). Install via: npm install -g impeccable (or
@@ -643,88 +651,118 @@ def test_install_sh_documents_impeccable_preflight_info(
     Note: F010's INFO line ends with "Single-wave builds work without it"
     — that's a DIFFERENT feature's contract. F011's line ends with
     "Features without a /design phase work without it." (different
-    closing clause). Both INFO lines coexist in install.sh after F011
-    ships; this test asserts F011's distinguishing phrase.
+    closing clause). Both INFO lines coexist in preflights.py after task
+    003 ships; this test asserts F011's distinguishing phrase.
     """
-    assert INSTALL_INFO_PREFIX in install_sh_text, (
-        f"install.sh missing verbatim INFO message prefix "
+    preflights_text = PREFLIGHTS_PATH.read_text(encoding="utf-8")
+
+    assert "F011_INFO_LINE" in preflights_text, (
+        "etc_installer/preflights.py missing 'F011_INFO_LINE' module-level "
+        "constant; design.md mandates the verbatim INFO_LINE constants "
+        "(BR-005 / AC-005)"
+    )
+    assert INSTALL_INFO_PREFIX in preflights_text, (
+        f"etc_installer/preflights.py missing verbatim INFO message prefix "
         f"{INSTALL_INFO_PREFIX!r}; expected per F011 spec.md AC15 / BR-009"
     )
-    assert INSTALL_F011_PHRASE in install_sh_text, (
-        f"install.sh missing F011-specific phrase {INSTALL_F011_PHRASE!r}; "
-        f"this phrase distinguishes the F011 INFO line from F010's gh-stack "
-        f"INFO line per F011 AC15 / BR-009"
+    assert INSTALL_F011_PHRASE in preflights_text, (
+        f"etc_installer/preflights.py missing F011-specific phrase "
+        f"{INSTALL_F011_PHRASE!r}; this phrase distinguishes the F011 INFO "
+        f"line from F010's gh-stack INFO line per F011 AC15 / BR-009"
     )
     # Install instruction verbatim per BR-009.
-    assert "npm install -g impeccable" in install_sh_text, (
-        "install.sh missing literal install instruction 'npm install -g "
-        "impeccable'; F011 BR-009 + AC15 mandate the verbatim text"
+    assert "npm install -g impeccable" in preflights_text, (
+        "etc_installer/preflights.py missing literal install instruction "
+        "'npm install -g impeccable'; F011 BR-009 + AC15 mandate the "
+        "verbatim text"
     )
 
 
-def test_install_sh_impeccable_preflight_after_gh_stack_preflight(
-    install_sh_text: str,
-) -> None:
-    """Group (i) ordering: install.sh's F011 impeccable preflight INFO
-    lands AFTER F010's gh-stack preflight block.
+@pytest.mark.skipif(
+    not PREFLIGHTS_PATH.exists(),
+    reason=PREFLIGHTS_PENDING_REASON,
+)
+def test_preflights_py_impeccable_after_gh_stack_preflight() -> None:
+    """Group (i) ordering (Ftmp-5afddbce task 006 migration): F011's
+    impeccable INFO constant declaration lands AFTER F010's gh-stack
+    INFO constant declaration in ``etc_installer/preflights.py``.
 
-    Per F011 spec.md BR-009: chain order is client-detect → gh-stack →
-    impeccable. The position is documented in BR-009 ("after the existing
-    line-67 client-detection block AND after F010's gh-stack preflight").
-    Test asserts the offset ordering so future install.sh edits don't
-    accidentally re-order the preflight chain.
+    Migrated from grep-on-install.sh to grep-on-preflights.py per task
+    006 AC-006-2. Per F011 spec.md BR-009: chain order is client-detect
+    → gh-stack → impeccable. Post-rewrite, the preflight chain still
+    runs in the same order — `preflights.py` exposes the constants and
+    the orchestrator (`install_steps.py`) calls `offer_install` for each
+    in chain order. Asserting the source-declaration order of the
+    constants encodes the chain order in the rewrite's source-of-truth.
 
     F010's INFO line is detectable by its distinguishing closing clause
     "Single-wave builds work without it" (different from F011's). Both
     INFO lines coexist post-F011-ship; the F010 line's offset must be
     LESS than the F011 line's offset.
     """
+    preflights_text = PREFLIGHTS_PATH.read_text(encoding="utf-8")
+
     f010_phrase = "Single-wave builds work without it"
-    f010_idx = install_sh_text.find(f010_phrase)
-    f011_idx = install_sh_text.find(INSTALL_F011_PHRASE)
+    f010_idx = preflights_text.find(f010_phrase)
+    f011_idx = preflights_text.find(INSTALL_F011_PHRASE)
 
     assert f010_idx != -1, (
-        f"install.sh missing F010 gh-stack INFO closing clause "
-        f"{f010_phrase!r}; F010 baseline must remain in install.sh"
+        f"etc_installer/preflights.py missing F010 gh-stack INFO closing "
+        f"clause {f010_phrase!r}; F010 baseline must remain in preflights.py"
     )
     assert f011_idx != -1, (
-        f"install.sh missing F011 impeccable INFO phrase "
+        f"etc_installer/preflights.py missing F011 impeccable INFO phrase "
         f"{INSTALL_F011_PHRASE!r}; F011 BR-009 mandates this line"
     )
     assert f010_idx < f011_idx, (
-        f"install.sh preflight chain order violated: F010 gh-stack INFO "
-        f"(offset {f010_idx}) must appear BEFORE F011 impeccable INFO "
-        f"(offset {f011_idx}). F011 BR-009 mandates chain order "
-        f"client-detect → gh-stack → impeccable."
+        f"etc_installer/preflights.py preflight chain order violated: F010 "
+        f"gh-stack INFO (offset {f010_idx}) must appear BEFORE F011 "
+        f"impeccable INFO (offset {f011_idx}). F011 BR-009 mandates chain "
+        f"order client-detect → gh-stack → impeccable."
     )
 
 
-def test_install_sh_impeccable_preflight_is_non_blocking(
-    install_sh_text: str,
-) -> None:
-    """Group (i) non-blocking: F011's impeccable preflight is INFO-level —
-    install.sh continues regardless of detection outcome.
+@pytest.mark.skipif(
+    not PREFLIGHTS_PATH.exists(),
+    reason=PREFLIGHTS_PENDING_REASON,
+)
+def test_preflights_py_impeccable_preflight_is_non_blocking() -> None:
+    """Group (i) non-blocking (Ftmp-5afddbce task 006 migration): F011's
+    impeccable preflight implementation in ``etc_installer/preflights.py``
+    is INFO-level — the offer_install helper does not abort installation.
 
-    Per F011 spec.md AC15 / BR-009 ("The check is INFO-level — install.sh
-    continues regardless. Matches F010's gh-stack preflight pattern.").
-    Mirrors test_install_sh_preflight_is_non_blocking from F010 tests.
+    Migrated from grep-on-install.sh to grep-on-preflights.py per task
+    006 AC-006-2. Per F011 spec.md AC15 / BR-009 ("The check is INFO-level
+    — install.sh continues regardless. Matches F010's gh-stack preflight
+    pattern."). Post-rewrite, the Python implementation must NOT call
+    sys.exit (the rewrite's equivalent of bash's `exit 1`) anywhere near
+    the F011 INFO message.
     """
-    info_idx = install_sh_text.find(INSTALL_F011_PHRASE)
-    assert info_idx != -1, (
-        f"install.sh missing F011 INFO phrase {INSTALL_F011_PHRASE!r}; "
-        f"cannot verify non-blocking behavior"
-    )
-    # Scope is tight: catch an ``exit 1`` in the same conditional block
-    # immediately surrounding the INFO message. The installer has other
-    # ``exit 1`` calls elsewhere (e.g., missing dist/) which are unrelated.
-    region_start = max(0, info_idx - 400)
-    region_end = min(len(install_sh_text), info_idx + 400)
-    region = install_sh_text[region_start:region_end]
+    preflights_text = PREFLIGHTS_PATH.read_text(encoding="utf-8")
 
-    assert "exit 1" not in region, (
-        f"install.sh INFO region contains 'exit 1' near the F011 impeccable "
-        f"preflight message; preflight must be non-blocking per AC15. "
-        f"region={region!r}"
+    info_idx = preflights_text.find(INSTALL_F011_PHRASE)
+    assert info_idx != -1, (
+        f"etc_installer/preflights.py missing F011 INFO phrase "
+        f"{INSTALL_F011_PHRASE!r}; cannot verify non-blocking behavior"
+    )
+    # Scope is tight: catch a `sys.exit` (or `raise SystemExit`) in the
+    # same module region immediately surrounding the INFO message. The
+    # rewrite's `preflights.py` is informational-only — abort behavior
+    # lives in `install_steps.py` for hard-fail conditions (missing dist/,
+    # etc.) which are unrelated.
+    region_start = max(0, info_idx - 400)
+    region_end = min(len(preflights_text), info_idx + 400)
+    region = preflights_text[region_start:region_end]
+
+    assert "sys.exit" not in region, (
+        f"etc_installer/preflights.py region contains 'sys.exit' near the "
+        f"F011 impeccable preflight message; preflight must be non-blocking "
+        f"per AC15. region={region!r}"
+    )
+    assert "raise SystemExit" not in region, (
+        f"etc_installer/preflights.py region contains 'raise SystemExit' "
+        f"near the F011 impeccable preflight message; preflight must be "
+        f"non-blocking per AC15. region={region!r}"
     )
 
 

@@ -40,6 +40,18 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_NAME = "init-project"
 
+# Ftmp-5afddbce task 005 ships ``etc_installer/install_steps.py`` as the
+# Python rewrite of install.sh's 11 step functions, including the
+# recursive skill-deploy step. Per task 006 AC-006-5, the install-script
+# recursive-copy assertion migrates from grep-on-install.sh to
+# grep-on-install_steps.py once task 005 ships. Pre-task-005, the
+# migrated test SKIPS via skipif(not INSTALL_STEPS_PATH.exists(), ...).
+INSTALL_STEPS_PATH = REPO_ROOT / "etc_installer" / "install_steps.py"
+INSTALL_STEPS_PENDING_REASON = (
+    "etc_installer/install_steps.py not yet shipped (pending Ftmp-5afddbce "
+    "task 005 install_steps.py)"
+)
+
 # The full template set deployed by compile-sdlc.py: SKILL.md + 14 templates.
 EXPECTED_FILES: tuple[str, ...] = (
     "SKILL.md",
@@ -888,30 +900,43 @@ class TestInstallSkillSubdirs:
                 f"The install script must recursively copy skill subdirs."
             )
 
-    def test_install_script_uses_recursive_copy(self) -> None:
-        """install.sh must not use non-recursive cp for skill directories.
+    @pytest.mark.skipif(
+        not INSTALL_STEPS_PATH.exists(),
+        reason=INSTALL_STEPS_PENDING_REASON,
+    )
+    def test_install_steps_py_uses_recursive_copy(self) -> None:
+        """Install-steps module must not use non-recursive cp for skill
+        directories.
 
-        This is a source-level guard: the bug was that line 79 used
-        `cp "$skill_dir"/*` which silently drops subdirectories. A
-        replacement must use rsync or cp -R.
+        Ftmp-5afddbce task 006 migration: this source-level guard now
+        targets ``etc_installer/install_steps.py`` (task 005) instead of
+        ``install.sh``. The bug being guarded against was install.sh
+        line 79's ``cp "$skill_dir"/*`` glob, which silently dropped
+        subdirectories like ``templates/``. The Python rewrite invokes
+        ``subprocess.run`` with rsync or ``cp -R`` (argv-list, never a
+        shell string per design.md Technical Constraints).
         """
-        install_text = (REPO_ROOT / "install.sh").read_text()
-        # Find the install-skills section
-        skill_section_start = install_text.find("# ── 3. Install skills")
-        skill_section_end = install_text.find("# ── 4.")
-        assert skill_section_start != -1 and skill_section_end != -1, (
-            "install.sh is missing the skill-install section"
-        )
-        skill_section = install_text[skill_section_start:skill_section_end]
+        install_steps_text = INSTALL_STEPS_PATH.read_text(encoding="utf-8")
 
-        # The broken pattern — cp of a glob without -R — must not be present
-        assert 'cp "$skill_dir"/*' not in skill_section, (
-            "install.sh still uses non-recursive glob copy for skills. "
-            "This silently drops subdirectories like templates/."
+        # The broken bash glob pattern must NOT be present in the
+        # rewrite (it cannot be — the rewrite is Python — but the guard
+        # is symmetric to the original install.sh contract).
+        assert 'cp "$skill_dir"/*' not in install_steps_text, (
+            "etc_installer/install_steps.py still references the non-"
+            "recursive glob copy pattern; the rewrite must use rsync or "
+            "cp -R via subprocess.run argv list."
         )
-        # Some form of recursive copy must be present
-        uses_rsync = "rsync" in skill_section
-        uses_cp_r = "cp -R" in skill_section or "cp -r" in skill_section
+        # Some form of recursive copy must be present somewhere in the
+        # module. The rewrite calls subprocess.run with either rsync or
+        # cp -R / cp -r as the argv[0].
+        uses_rsync = "rsync" in install_steps_text
+        uses_cp_r = (
+            '"cp", "-R"' in install_steps_text
+            or '"cp", "-r"' in install_steps_text
+            or "'cp', '-R'" in install_steps_text
+            or "'cp', '-r'" in install_steps_text
+        )
         assert uses_rsync or uses_cp_r, (
-            "install.sh must use rsync or cp -R to install skill subdirs."
+            "etc_installer/install_steps.py must invoke rsync or cp -R / "
+            "cp -r (via subprocess.run argv list) to install skill subdirs."
         )

@@ -1,0 +1,6 @@
+{
+  "include": ["etc_installer", "scripts", "hooks/helpers", "tests"],
+  "extraPaths": ["."],
+  "pythonVersion": "3.11",
+  "reportMissingImports": "warning"
+}
