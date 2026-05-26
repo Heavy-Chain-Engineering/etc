@@ -65,6 +65,21 @@ def _seed_minimal_dist(dist: Path) -> None:
             f"# {category}\n", encoding="utf-8"
         )
 
+    # Non-markdown standards that are loaded at RUNTIME. The
+    # layered-architecture-review feature (fc83132) added a .yaml rubric
+    # registry that layer_review.py reads via REPO_ROOT-relative path; a
+    # markdown-only install silently strands it. ruff-reference.toml is the
+    # second orphan. Both must land in the installed standards tree.
+    arch = dist / "standards" / "architecture"
+    arch.mkdir(parents=True)
+    (arch / "layer-boundaries.md").write_text("# layers\n", encoding="utf-8")
+    (arch / "layer-rubrics.yaml").write_text(
+        "layers: []\n", encoding="utf-8"
+    )
+    (dist / "standards" / "code" / "ruff-reference.toml").write_text(
+        "[tool.ruff]\n", encoding="utf-8"
+    )
+
     # standards/code/profiles/<lang>/
     profiles_dir = dist / "standards" / "code" / "profiles" / "python"
     profiles_dir.mkdir(parents=True)
@@ -298,6 +313,67 @@ class TestStepInstallStandards:
                 )
             )
             assert len(md) >= 1, f"no {category}/ standards installed"
+
+
+class TestStepInstallStandardsNonMarkdown:
+    """Step 4 must carry runtime-loaded non-markdown standards.
+
+    Regression guard for the install gap where step_install_standards
+    globbed only ``*.md``, stranding ``layer-rubrics.yaml`` (read by
+    ``layer_review.py``) and ``ruff-reference.toml`` so /architect's
+    Phase 2.9 layer-review engine degraded to advisory mode in every
+    installed (non-repo) environment.
+    """
+
+    def test_should_install_runtime_yaml_registry_when_step_runs(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        install_steps.step_directory_structure(install_context)
+
+        result = install_steps.step_install_standards(install_context)
+
+        assert result.status == "ok"
+        rubrics = (
+            install_context.target_dir
+            / "standards"
+            / "architecture"
+            / "layer-rubrics.yaml"
+        )
+        assert rubrics.is_file(), (
+            "layer-rubrics.yaml must land — layer_review.py reads it at runtime"
+        )
+
+    def test_should_install_toml_reference_when_step_runs(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        install_steps.step_directory_structure(install_context)
+
+        result = install_steps.step_install_standards(install_context)
+
+        assert result.status == "ok"
+        toml = (
+            install_context.target_dir
+            / "standards"
+            / "code"
+            / "ruff-reference.toml"
+        )
+        assert toml.is_file(), "ruff-reference.toml must land"
+
+    def test_should_still_install_category_markdown_alongside_data_files(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        install_steps.step_directory_structure(install_context)
+
+        install_steps.step_install_standards(install_context)
+
+        # The markdown sibling in the same category dir must still land —
+        # broadening the glob must not regress the original behavior.
+        assert (
+            install_context.target_dir
+            / "standards"
+            / "architecture"
+            / "layer-boundaries.md"
+        ).is_file()
 
 
 class TestStepInstallProfiles:

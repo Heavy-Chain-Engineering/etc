@@ -35,9 +35,10 @@ import json
 import shutil
 import stat
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from rich.console import Console
 
@@ -164,8 +165,16 @@ def step_install_skills(ctx: InstallContext) -> StepResult:
 def step_install_standards(ctx: InstallContext) -> StepResult:
     """Step 4: install standards (recursive subdir discovery, install.sh:325-340).
 
-    The standards/code/profiles/ subtree (F020) is deeper than the
-    top-level .md copy; install_profiles handles it as a sibling step.
+    Carries both prose standards (``*.md``) and the declarative standards
+    loaded at runtime (``*.yaml``/``*.yml``/``*.toml`` — e.g.
+    ``architecture/layer-rubrics.yaml`` read by ``layer_review.py``, and
+    ``code/ruff-reference.toml``). A markdown-only copy silently stranded
+    the rubric registry, degrading /architect's Phase 2.9 layer-review
+    engine to advisory mode in every installed environment.
+
+    The standards/code/profiles/ subtree (F020) is deeper than this
+    top-level copy; install_profiles handles it as a sibling step. The
+    per-category scan is non-recursive, so profiles/ is untouched here.
     """
     src = ctx.dist_dir / "standards"
     dest = ctx.target_dir / "standards"
@@ -175,8 +184,13 @@ def step_install_standards(ctx: InstallContext) -> StepResult:
     for category_dir in sorted(p for p in src.iterdir() if p.is_dir()):
         category_dest = dest / category_dir.name
         category_dest.mkdir(parents=True, exist_ok=True)
-        for md_file in sorted(category_dir.glob("*.md")):
-            shutil.copy2(md_file, category_dest / md_file.name)
+        standard_files = sorted(
+            f
+            for f in category_dir.iterdir()
+            if f.is_file() and f.suffix in _STANDARDS_EXTENSIONS
+        )
+        for standard_file in standard_files:
+            shutil.copy2(standard_file, category_dest / standard_file.name)
             count += 1
     return StepResult(status="ok", message=f"Installed {count} standards")
 
@@ -357,11 +371,20 @@ assert len(STEPS) == STEP_COUNT, (
 )
 
 
-_GLYPHS: dict[str, str] = {
-    "ok": "[green]✓[/green]",
-    "warn": "[yellow]⚠[/yellow]",
-    "error": "[red]✗[/red]",
-}
+# Standards file extensions carried by step_install_standards. Markdown is
+# prose; yaml/yml/toml are declarative standards loaded at runtime (the
+# layer-rubrics.yaml registry, ruff-reference.toml). Non-recursive per
+# category dir, so the profiles/ subtree (own step) is never swept in.
+_STANDARDS_EXTENSIONS: frozenset[str] = frozenset({".md", ".yaml", ".yml", ".toml"})
+
+
+_GLYPHS: Mapping[str, str] = MappingProxyType(
+    {
+        "ok": "[green]✓[/green]",
+        "warn": "[yellow]⚠[/yellow]",
+        "error": "[red]✗[/red]",
+    }
+)
 
 
 def run_all(ctx: InstallContext, console: Console) -> int:
@@ -377,7 +400,7 @@ def run_all(ctx: InstallContext, console: Console) -> int:
         console: rich.Console used for status line emission.
     """
     final_exit = 0
-    for _name, fn in STEPS:
+    for _, fn in STEPS:
         result = fn(ctx)
         glyph = _GLYPHS[result.status]
         console.print(f"  {glyph} {result.message}")
