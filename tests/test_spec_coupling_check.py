@@ -284,3 +284,67 @@ class TestDesignMdScanned:
         result = _run(feature_dir)
         assert result.returncode == 2
         assert "design.md:" in result.stdout
+
+
+class TestRelativeFeatureDirPath:
+    """#38 regression: the gate must not crash when invoked with a feature_dir
+    passed as a path relative to the repo root.
+
+    `repo_root_from()` resolves to an absolute path, but a memo discovered
+    under a relative `feature_dir` stays relative. `memo.relative_to(repo_root)`
+    then raises ValueError (mixed absolute/relative operands), crashing the
+    gate with an uncaught traceback. Every memo-cleared build that passed a
+    relative feature path tripped this. The display-path computation must be
+    robust to mixed path kinds.
+    """
+
+    def _run_relative(self, repo: Path, rel_feature_dir: str):
+        return subprocess.run(
+            ["python3", str(SCRIPT), rel_feature_dir],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+    def test_memo_covered_finding_with_relative_feature_dir_does_not_crash(
+        self, tmp_path: Path
+    ) -> None:
+        feature_dir = _make_feature(
+            tmp_path,
+            spec_body="# Feature\n\n- AC-12: Normalizer **deferred** to F999.\n",
+            decisions={
+                "ac-12-decision.md": (
+                    "# Decision: defer AC-12\n\n"
+                    "AC-12 was deferred because backend research revealed no real "
+                    "user demand. Options considered: (a) ship, (b) defer, (c) drop.\n"
+                ),
+            },
+        )
+        rel = str(feature_dir.relative_to(tmp_path))
+        result = self._run_relative(tmp_path, rel)
+        # The memo covers AC-12, so the gate passes (exit 0) — but only if the
+        # relative_to() display computation does not raise.
+        assert "Traceback" not in result.stderr, result.stderr
+        assert "ValueError" not in result.stderr, result.stderr
+        assert result.returncode == 0, (result.returncode, result.stderr)
+
+    def test_adr_covered_finding_with_relative_feature_dir_does_not_crash(
+        self, tmp_path: Path
+    ) -> None:
+        feature_dir = _make_feature(
+            tmp_path,
+            spec_body="# Feature\n\n- BR-007: ETL backfill **scope-narrowed** to addresses only.\n",
+            adrs={
+                "F999-001.md": (
+                    "# ADR-F999-001: ETL backfill scope\n\n"
+                    "## Scope clarification\n\n"
+                    "BR-007 narrowed: only address-shaped entries are backfilled.\n"
+                ),
+            },
+        )
+        rel = str(feature_dir.relative_to(tmp_path))
+        result = self._run_relative(tmp_path, rel)
+        assert "Traceback" not in result.stderr, result.stderr
+        assert "ValueError" not in result.stderr, result.stderr
+        assert result.returncode == 0, (result.returncode, result.stderr)

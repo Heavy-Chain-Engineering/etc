@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # AC-02 markers (case-insensitive)
-MARKERS = [
+MARKERS: tuple[str, ...] = (
     "deferred",
     "scope-narrowed",
     "scope narrowed",
@@ -37,7 +37,7 @@ MARKERS = [
     "not in scope",
     "explicitly excluded",
     "no longer in scope",
-]
+)
 MARKER_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(m) for m in MARKERS) + r")\b",
     re.IGNORECASE,
@@ -56,11 +56,11 @@ OUT_OF_SCOPE_HEADER_PATTERN = re.compile(
 )
 
 # ADR coverage requires one of these phrases near the AC/BR
-ADR_COVERAGE_PHRASES = [
+ADR_COVERAGE_PHRASES: tuple[str, ...] = (
     "scope clarification",
     "scope-narrowed",
     "appendix",
-]
+)
 
 
 @dataclass
@@ -92,6 +92,22 @@ def repo_root_from(feature_dir: Path) -> Path:
             return cur
         cur = cur.parent
     return feature_dir.parent  # best-effort
+
+
+def display_path(path: Path, root: Path) -> str:
+    """Render `path` relative to `root` for display, robust to mixed
+    absolute/relative operands.
+
+    `repo_root_from()` always returns a resolved (absolute) path, but a
+    memo discovered under a caller-supplied *relative* feature_dir stays
+    relative. `path.relative_to(root)` would then raise ValueError (#38),
+    crashing the gate with an uncaught traceback. Resolve both sides
+    before computing the relative path, and fall back to the raw path
+    string when `path` genuinely lies outside `root`."""
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path)
 
 
 def get_spec_at_tag(
@@ -249,7 +265,7 @@ def check_coverage(
                 continue
             for ref in finding.references:
                 if re.search(rf"\b{re.escape(ref)}\b", content, re.IGNORECASE):
-                    return CoverageResult(True, str(memo.relative_to(repo_root)))
+                    return CoverageResult(True, display_path(memo, repo_root))
 
     # Check ADRs (AC-08)
     adrs_dir = repo_root / "docs" / "adrs"
@@ -265,7 +281,7 @@ def check_coverage(
                 continue
             for ref in finding.references:
                 if re.search(rf"\b{re.escape(ref)}\b", content, re.IGNORECASE):
-                    return CoverageResult(True, str(adr.relative_to(repo_root)))
+                    return CoverageResult(True, display_path(adr, repo_root))
 
     return CoverageResult(False, "")
 
