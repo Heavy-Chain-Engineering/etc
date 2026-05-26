@@ -645,6 +645,82 @@ above triggers only when /spec wrote the explicit
 state.yaml files without a `spec_phase` block fall through to the soft
 warning path.
 
+**Layer Impact Analysis completeness check (F-2026-05-26).** This
+sub-check composes onto the F006 design-coupling logic above. It runs
+ONLY when `design.md` is present in the feature directory (the same file
+located by the Presence check above). When `design.md` is absent, this
+check does not run at all — the F006 soft-warning / hard-fail paths above
+are unchanged. The check verifies that `/architect`'s Layer Impact
+Analysis table (BR-008) is complete — that every rubric item of every
+touched layer carries an explicit answer or a reasoned N/A — without
+restating the layer or rubric logic, which lives entirely in
+`scripts/layer_review.py` and `standards/architecture/layered-architecture-review.md`.
+
+**Invocation.** With `design.md` present, run the shared engine
+(BR-009/AC-008 — single source of truth; do NOT reimplement detection or
+completeness here):
+
+```
+python3 ~/.claude/scripts/layer_review.py check --design <feature_path>/design.md
+```
+
+where `<feature_path>` is the feature directory holding the spec.md being
+built. Interpret the exit code:
+
+- **Exit 0 — complete (or nothing to check).** Every touched layer's
+  rubric is filled, or detection found no touched layers (EC-001). No
+  warning, no record; proceed to Step 2.
+- **Exit 2 — incomplete.** stdout lists each unfilled cell as
+  `<layer>/<item-id>: <severity>`, one per line. Apply the
+  advisory-vs-mandatory branch below.
+- **Exit 1 — IO / registry error.** A hard fault (design unreadable, or
+  the registry is absent / malformed — EC-003). Surface the engine's
+  stderr verbatim to the operator and STOP; do not proceed to Step 2 and
+  do not silently treat the analysis as complete. This is an
+  infrastructure failure, not an advisory finding.
+
+**Advisory-vs-mandatory branch (ADR-003, BR-010, EC-007, EC-008).** Read
+`state.yaml.architect_phase.layer_review_mandatory` (a boolean recorded
+by /architect; mirrors F006's `design_mandatory`). Treat a missing key,
+a missing `architect_phase` block, or `false` as advisory.
+
+- **Advisory (default — `layer_review_mandatory` absent or false).** On
+  exit 2, emit a WARNING to stderr naming the unfilled cells, RECORD each
+  unfilled cell in `verification.md` under a `## Layer Impact Analysis`
+  subsection (one bullet per cell: `<layer>/<item-id> (<severity>) — unfilled`),
+  then PROCEED to Step 2. Do NOT block. This is the cry-wolf-avoidance
+  default per ADR-003 — the matrix walk at /architect time is the primary
+  forcing function; this gate is the recorded backstop.
+
+  Emit this EXACT warning text to stderr (followed by the cell list from
+  the engine's stdout):
+
+  ```
+  WARNING: Layer Impact Analysis is incomplete. Unfilled rubric cells recorded in verification.md. Proceeding (advisory).
+  ```
+
+- **Mandatory (`layer_review_mandatory` is true).** Partition the exit-2
+  unfilled cells by the `<severity>` reported on each line:
+  - If ANY unfilled cell has severity `CRITICAL`, HARD-fail: STOP, do not
+    proceed to Step 2, record the cells in `verification.md` as above, and
+    report which CRITICAL cells must be filled. The build stays blocked
+    until the architect fills them (re-run /architect, or the operator
+    explicitly overrides) and `check` returns exit 0 (EC-007).
+  - If NO unfilled cell is CRITICAL (only HIGH / MEDIUM / LOW remain),
+    WARN + record exactly as in the advisory path and PROCEED. Mandatory
+    mode's hard block is reserved for CRITICAL severity to avoid friction
+    on hygiene-level criteria (EC-008).
+  - A complete analysis (exit 0) proceeds regardless of mode (EC-007).
+
+**Forward-only posture (BR-013).** This check is forward-only by
+construction: it fires only when `design.md` is present AND contains a
+`## Layer Impact Analysis` section authored from the F-2026-05-26 release
+tag onward. A legacy design with no Layer Impact Analysis section yields
+no touched-layer answers, so the engine finds nothing to block on for
+designs that predate this feature — the check is cosmetic / a no-op on
+them and never retroactively blocks. Designs authored after the release
+tag carry the section that `check` parses.
+
 ### Step 2: SETUP
 
 Determine the feature slug from the spec title (lowercase, hyphens).

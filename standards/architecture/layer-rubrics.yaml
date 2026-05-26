@@ -1,0 +1,360 @@
+# Layer Rubric Registry — F-2026-05-26 Layered Architecture Review
+#
+# Declarative source of truth (ADR-001) for the /architect Layer Impact
+# Analysis phase and the /build Step 1c completeness gate. scripts/layer_review.py
+# parses this file; standards/architecture/layered-architecture-review.md is the
+# prose rationale anchor. Adding a layer or criterion is a data edit here,
+# reviewed in a PR — no skill-prose rewrite, no code change.
+#
+# Schema (enforced by scripts/layer_review.py load_registry + tests):
+#   layers: list of
+#     id: str                       (stable kebab-case identifier)
+#     name: str                     (human-readable)
+#     detection_signals: list[str]  (literal/anchored tokens; matched case-
+#                                    insensitively as whole-word substrings —
+#                                    NOT user-supplied regex, ReDoS-safe)
+#     rubric: list of rubric items
+#   cross_cutting_concerns: list of (same shape as a layer)
+#
+# Rubric item:
+#   id: str                  (stable; appears in the design.md table first column)
+#   criterion: str           (the question the architect must answer)
+#   quality_attribute: str   (one of the 8 ISO/IEC 25010 product-quality
+#                             characteristics — closed vocabulary)
+#   severity_if_missed: str  (CRITICAL | HIGH | MEDIUM | LOW)
+#   mechanizable: bool       (roadmap metadata — can this graduate to an
+#                             automated /build fitness function later? ADR-004)
+#
+# ISO/IEC 25010 closed vocabulary for quality_attribute:
+#   functional_suitability, performance_efficiency, compatibility, usability,
+#   reliability, security, maintainability, portability
+
+layers:
+  # ── Flagship: data-access (the proven gap — unindexed queries shipped) ──
+  - id: data-access
+    name: Data Access Layer
+    detection_signals:
+      - table
+      - column
+      - index
+      - migration
+      - migrate
+      - SELECT
+      - INSERT
+      - UPDATE
+      - DELETE
+      - JOIN
+      - WHERE
+      - schema
+      - ALTER
+      - foreign key
+      - query
+      - SQL
+      - ORM
+      - repository
+      - transaction
+    rubric:
+      - id: da-index-coverage
+        criterion: "Does every new query-filter / JOIN / ORDER BY column have a backing index?"
+        quality_attribute: performance_efficiency
+        severity_if_missed: CRITICAL
+        mechanizable: true
+      - id: da-row-estimates
+        criterion: "What are the estimated and worst-case actual row counts for each new query, and is the result set bounded?"
+        quality_attribute: performance_efficiency
+        severity_if_missed: HIGH
+        mechanizable: false
+      - id: da-full-table-scan
+        criterion: "Does any new query risk a full-table scan (no sargable predicate, leading-wildcard LIKE, function on an indexed column)?"
+        quality_attribute: performance_efficiency
+        severity_if_missed: CRITICAL
+        mechanizable: true
+      - id: da-n-plus-one
+        criterion: "Does the access pattern introduce an N+1 query (per-row lookups in a loop instead of a batched/joined fetch)?"
+        quality_attribute: performance_efficiency
+        severity_if_missed: HIGH
+        mechanizable: true
+      - id: da-pagination
+        criterion: "Are list / collection endpoints paginated with a bounded page size (no unbounded SELECT *)?"
+        quality_attribute: performance_efficiency
+        severity_if_missed: HIGH
+        mechanizable: true
+      - id: da-migration-safety
+        criterion: "Is every schema migration online/concurrent and lock-light on large tables (no blocking ALTER, concurrent index build, backfill batched)?"
+        quality_attribute: reliability
+        severity_if_missed: CRITICAL
+        mechanizable: false
+      - id: da-transaction-boundaries
+        criterion: "Are transaction boundaries correct — no external/network calls inside a transaction, no over-broad locks held across slow work?"
+        quality_attribute: reliability
+        severity_if_missed: HIGH
+        mechanizable: false
+
+  - id: domain-service
+    name: Domain / Service Layer
+    detection_signals:
+      - service
+      - use case
+      - usecase
+      - business rule
+      - workflow
+      - orchestrat
+      - idempoten
+      - retry
+      - side effect
+      - side-effect
+      - domain
+    rubric:
+      - id: ds-idempotency
+        criterion: "Are write operations idempotent (safe to retry) or explicitly guarded against duplicate application?"
+        quality_attribute: reliability
+        severity_if_missed: HIGH
+        mechanizable: false
+      - id: ds-error-retry
+        criterion: "Are failure modes classified (expected vs unexpected) with a defined error/retry/backoff policy?"
+        quality_attribute: reliability
+        severity_if_missed: HIGH
+        mechanizable: false
+      - id: ds-service-boundaries
+        criterion: "Does the change respect service/module boundaries (no reaching across into another context's internals)?"
+        quality_attribute: maintainability
+        severity_if_missed: MEDIUM
+        mechanizable: false
+      - id: ds-side-effect-isolation
+        criterion: "Are side effects (emails, events, external calls) isolated so a partial failure cannot leave inconsistent state?"
+        quality_attribute: reliability
+        severity_if_missed: HIGH
+        mechanizable: false
+
+  - id: api-contract
+    name: API Contract Layer
+    detection_signals:
+      - endpoint
+      - route
+      - REST
+      - GraphQL
+      - request
+      - response
+      - payload
+      - API
+      - versioning
+      - rate limit
+      - rate-limit
+      - status code
+      - OpenAPI
+    rubric:
+      - id: api-versioning
+        criterion: "Is the change versioned appropriately, and does it avoid breaking existing API consumers?"
+        quality_attribute: compatibility
+        severity_if_missed: CRITICAL
+        mechanizable: false
+      - id: api-backward-compat
+        criterion: "Is every response-shape / field change backward compatible (additive, not removal/rename of in-use fields)?"
+        quality_attribute: compatibility
+        severity_if_missed: HIGH
+        mechanizable: true
+      - id: api-input-validation
+        criterion: "Are all request inputs validated at the boundary (types, ranges, required fields) before reaching domain logic?"
+        quality_attribute: security
+        severity_if_missed: HIGH
+        mechanizable: true
+      - id: api-pagination-contract
+        criterion: "Do collection responses expose a stable pagination contract (cursor/limit, total semantics documented)?"
+        quality_attribute: functional_suitability
+        severity_if_missed: MEDIUM
+        mechanizable: false
+      - id: api-rate-limits
+        criterion: "Are new endpoints subject to rate limiting / abuse protection appropriate to their cost?"
+        quality_attribute: security
+        severity_if_missed: MEDIUM
+        mechanizable: false
+
+  - id: presentation-frontend
+    name: Presentation / Frontend Layer
+    detection_signals:
+      - component
+      - UI
+      - frontend
+      - render
+      - loading state
+      - empty state
+      - accessibility
+      - a11y
+      - responsive
+      - viewport
+      - client-side
+      - "react"
+    rubric:
+      - id: fe-async-states
+        criterion: "Are loading, error, and empty states explicitly designed for every async view?"
+        quality_attribute: usability
+        severity_if_missed: HIGH
+        mechanizable: false
+      - id: fe-accessibility
+        criterion: "Does the UI meet accessibility requirements (keyboard nav, ARIA roles, contrast, focus management)?"
+        quality_attribute: usability
+        severity_if_missed: HIGH
+        mechanizable: true
+      - id: fe-performance-budget
+        criterion: "Does the change stay within the performance budget (bundle size, render cost, no layout thrash)?"
+        quality_attribute: performance_efficiency
+        severity_if_missed: MEDIUM
+        mechanizable: true
+      - id: fe-responsive
+        criterion: "Does the layout behave correctly across the supported viewport range (mobile through desktop)?"
+        quality_attribute: usability
+        severity_if_missed: MEDIUM
+        mechanizable: false
+      - id: fe-state-ownership
+        criterion: "Is state ownership clear (server vs client, single source of truth, no duplicated derived state)?"
+        quality_attribute: maintainability
+        severity_if_missed: MEDIUM
+        mechanizable: false
+
+  - id: infra-ops
+    name: Infrastructure / Operations Layer
+    detection_signals:
+      - deploy
+      - rollback
+      - infrastructure
+      - terraform
+      - kubernetes
+      - container
+      - scaling
+      - resource limit
+      - metrics
+      - alerting
+      - config
+      - environment variable
+    rubric:
+      - id: ops-deploy-rollback
+        criterion: "Is the change safe to deploy and roll back (no irreversible step, backward-compatible during rollout)?"
+        quality_attribute: reliability
+        severity_if_missed: CRITICAL
+        mechanizable: false
+      - id: ops-config-secrets
+        criterion: "Are configuration and secrets handled correctly (no hardcoded secrets, env-bound config, validated at startup)?"
+        quality_attribute: security
+        severity_if_missed: CRITICAL
+        mechanizable: true
+      - id: ops-observability
+        criterion: "Does the change emit the metrics, logs, and traces needed to operate and debug it in production?"
+        quality_attribute: maintainability
+        severity_if_missed: HIGH
+        mechanizable: false
+      - id: ops-scaling-limits
+        criterion: "Are resource limits and scaling behavior defined (CPU/memory bounds, autoscaling signals, no unbounded growth)?"
+        quality_attribute: performance_efficiency
+        severity_if_missed: MEDIUM
+        mechanizable: false
+
+cross_cutting_concerns:
+  - id: authn-authz
+    name: Authentication / Authorization
+    detection_signals:
+      - auth
+      - login
+      - session
+      - token
+      - permission
+      - role
+      - authorize
+      - access control
+    rubric:
+      - id: cc-authz-enforcement
+        criterion: "Is authorization enforced at the right layer for every new access path (no missing permission check)?"
+        quality_attribute: security
+        severity_if_missed: CRITICAL
+        mechanizable: true
+      - id: cc-authn-session
+        criterion: "Are authentication/session lifetimes and revocation handled correctly for the change?"
+        quality_attribute: security
+        severity_if_missed: HIGH
+        mechanizable: false
+
+  - id: caching
+    name: Caching
+    detection_signals:
+      - cache
+      - caching
+      - memoize
+      - TTL
+      - invalidation
+      - redis
+    rubric:
+      - id: cc-cache-invalidation
+        criterion: "Is cache invalidation correct and bounded (no stale reads on the critical path, defined TTL)?"
+        quality_attribute: reliability
+        severity_if_missed: HIGH
+        mechanizable: false
+      - id: cc-cache-stampede
+        criterion: "Is the cache protected against stampede / thundering-herd on expiry or cold start?"
+        quality_attribute: performance_efficiency
+        severity_if_missed: MEDIUM
+        mechanizable: false
+
+  - id: observability
+    name: Observability / Logging
+    detection_signals:
+      - logging
+      - log
+      - trace
+      - telemetry
+      - monitor
+      - dashboard
+    rubric:
+      - id: cc-structured-logs
+        criterion: "Are logs structured, correlation-ID-bearing, and free of secrets/PII?"
+        quality_attribute: maintainability
+        severity_if_missed: HIGH
+        mechanizable: true
+      - id: cc-actionable-alerts
+        criterion: "Do new failure modes surface as actionable signals (metrics/alerts), not just buried logs?"
+        quality_attribute: maintainability
+        severity_if_missed: MEDIUM
+        mechanizable: false
+
+  - id: i18n
+    name: Internationalization / Localization
+    detection_signals:
+      - i18n
+      - l10n
+      - localization
+      - localisation
+      - translation
+      - locale
+      - timezone
+    rubric:
+      - id: cc-i18n-externalized
+        criterion: "Are user-facing strings externalized for translation (no hardcoded copy in logic)?"
+        quality_attribute: usability
+        severity_if_missed: MEDIUM
+        mechanizable: false
+      - id: cc-i18n-formatting
+        criterion: "Are dates, numbers, currencies, and timezones formatted per the user locale?"
+        quality_attribute: usability
+        severity_if_missed: MEDIUM
+        mechanizable: false
+
+  - id: secrets-security
+    name: Secrets / Security Hygiene
+    detection_signals:
+      - secret
+      - credential
+      - encryption
+      - encrypt
+      - key rotation
+      - vault
+      - sanitize
+      - injection
+    rubric:
+      - id: cc-secret-handling
+        criterion: "Are secrets stored and accessed via the secret manager (never committed, never logged)?"
+        quality_attribute: security
+        severity_if_missed: CRITICAL
+        mechanizable: true
+      - id: cc-input-sanitization
+        criterion: "Is untrusted input sanitized/escaped at every sink (SQL, shell, HTML, template) to prevent injection?"
+        quality_attribute: security
+        severity_if_missed: CRITICAL
+        mechanizable: true

@@ -755,6 +755,207 @@ Triggered only when Phase 2.75 classifies the design as rejected.
    `design.md`; the two files are mutually exclusive at the architect
    layer.
 
+### Phase 2.9: Layer Impact Analysis
+
+Runs AFTER Phase 2 research (and the Phase 2.75 classifier / Phase 2.5
+gray-area resolution) and BEFORE Phase 3 section drafting. By this point
+you understand the codebase; now reason about which architectural layers
+the change touches and whether you are doing a good job at each. The
+output of this phase feeds the Phase 3 Data Model, Module Structure, and
+Trade-offs sections — do not draft those until this walk is done.
+
+This phase is governed by `standards/architecture/layered-architecture-review.md`
+(the layer model, the ISO/IEC 25010 quality-attribute vocabulary, the
+per-cell forcing rule, the severity scale, and the rubric-authoring
+guide). Read that doc; do NOT duplicate the layer list, the rubric
+items, or the quality-attribute vocabulary into this skill. The registry
+`standards/architecture/layer-rubrics.yaml` is the source of truth for
+the layer/rubric data; the engine reads it for you.
+
+**This phase is INTERACTIVE and MUST NOT Agent-dispatch.** Like every
+other phase of `/architect` (see "Subagent Dispatch (Non-Applicable)",
+lines 45-52), the matrix-walk happens in your own context using Pattern A
+(`AskUserQuestion`) and Pattern B (the `---` visual marker). You MUST NOT
+dispatch a subagent, a reviewer agent, or the `agents/architect.md` agent
+to perform layer detection, the rubric walk, or the table authoring. The
+architect MAKES each decision interactively (BR-014); `layer_review.py`
+only detects touched layers and (later, at /build) checks completeness —
+it never fabricates or auto-fills an answer (ADR-003,
+`docs/adrs/F-2026-05-26-layered-architecture-review-003-architect-reasons-build-enforces.md`).
+
+**Phase 2.9 Step 1: Detect the touched layers.**
+
+Run the detection engine against the draft design (use the in-progress
+`<feature_path>/.draft-design.md` if it exists, else the `spec.md` —
+the engine scans the design/spec text against the registry's per-layer
+detection signals, excluding fenced code blocks and Out-of-Scope/Future
+sections):
+
+```
+python3 ~/.claude/scripts/layer_review.py detect --design <design-draft-path>
+```
+
+The registry defaults to the harness-shipped
+`standards/architecture/layer-rubrics.yaml` (resolved relative to the
+script) — no `--registry` flag is needed in the common case. The command
+prints a JSON array of touched layer ids to stdout, e.g.
+`["data-access","api-contract"]`, and exits 0. An empty array `[]` means
+no recognized layer is touched (EC-001).
+
+Error handling (EC-003): if the engine exits non-zero (`registry not
+found`, `registry parse error: <detail>`, or a missing/unreadable design
+file), surface the stderr message to the user via Pattern B and STOP this
+phase — do not reason against a missing or malformed registry, and do not
+hand-author a layer list to work around it:
+
+```
+
+---
+
+**▶ Action required:** Layer Impact Analysis cannot run — `layer_review.py`
+reported: `<stderr>`. Fix the registry / design path, then re-run
+`/architect`. (Skipping this phase ships the quality-gap class it exists
+to prevent.)
+
+```
+
+**Phase 2.9 Step 2: Walk each touched layer's rubric — the forcing function.**
+
+For EACH layer id returned by `detect`, read that layer's rubric from
+`standards/architecture/layer-rubrics.yaml` and walk it item by item. For
+each rubric item, the architect produces EITHER an explicit answer OR a
+reasoned N/A (BR-007, BR-014). An unanswered item is not permitted — the
+walk is the forcing function (per the per-cell forcing rule in
+`standards/architecture/layered-architecture-review.md`).
+
+Surface each item's `criterion` to the user and capture the decision.
+Use Pattern B (the `---` marker) for the open-ended "what is your answer
+to this criterion" elicitation, one item at a time:
+
+```
+
+---
+
+**▶ Your answer needed:** [<layer-id> / <item-id>] <criterion>
+(Answer directly, or reply `N/A: <reason>` if this criterion does not
+apply to this change. A bare "N/A" with no reason is not accepted.)
+
+```
+
+Where a criterion reduces to a small enumerable decision, Pattern A
+(`AskUserQuestion`) may be used instead. Either way, YOU never fabricate
+the answer — you force the human to make it (BR-014). A **reasoned N/A**
+(`N/A: <non-empty justification>`) is a first-class valid answer; an empty
+cell or a bare unjustified "N/A" is not (EC-002).
+
+**Cross-cutting concerns (EC-005):** `detect` returns only the layer
+rows. If the change also touches a cross-cutting concern (authn/authz,
+caching, observability, i18n, secrets — see the `cross_cutting_concerns`
+section of the registry), walk that concern's rubric the same way and
+give it its OWN `### <concern-id>` subsection in the table below.
+
+**No layer touched (EC-001):** if `detect` returned `[]` and no
+cross-cutting concern applies, still write the `## Layer Impact Analysis`
+section, with a single line stating "No architectural layers touched."
+and no per-layer subsections. /build's gate then finds nothing to check
+and proceeds.
+
+**Phase 2.9 Step 3: Write the `## Layer Impact Analysis` section into the design.**
+
+Append a `## Layer Impact Analysis` section to the in-progress draft (and,
+in Phase 5, the final `design.md`). The section's format is a HARD
+CONTRACT — `scripts/layer_review.py check` (run later by /build Step 1c)
+parses it, and `skills/build/SKILL.md` enforces it. It MUST be authored
+exactly as follows or the gate silently mis-parses:
+
+- The top-level heading is exactly `## Layer Impact Analysis`.
+- Under it, ONE subsection per touched layer (and per touched
+  cross-cutting concern), whose heading is `### <layer-id>` — the
+  heading line contains ONLY the layer id (the exact id string `detect`
+  returned, e.g. `### data-access`), nothing else after it. Do not write
+  `### Data Access Layer` or `### data-access (Data Access)`; the parser
+  reads the lone id.
+- Inside each subsection, exactly ONE GitHub-flavored markdown table with
+  four columns in this order: **Item | Criterion | Answer / N/A |
+  Severity**. Column 1 is the rubric item id (verbatim from the
+  registry), column 2 is the criterion, column 3 is the architect's
+  answer-or-reasoned-N/A, column 4 is the item's `severity_if_missed`.
+  The parser keys on column 1 (item id) and column 3 (answer); columns 2
+  and 4 are for the human reader.
+- One row per rubric item of that layer. Column 3 (Answer / N/A) MUST be
+  non-empty for every row — a reasoned N/A is written as
+  `N/A: <reason>`, which counts as filled. An empty column-3 cell is an
+  unfilled cell and fails the /build completeness check.
+- The header row (`| Item | Criterion | Answer / N/A | Severity |`) and
+  the separator row (`|------|...|`) are recognized and skipped by the
+  parser; keep them.
+
+Example (this exact shape is what `check()` parses):
+
+```markdown
+## Layer Impact Analysis
+
+### data-access
+| Item | Criterion | Answer / N/A | Severity |
+|------|-----------|--------------|----------|
+| da-index-coverage | Does every new query-filter / JOIN column have a backing index? | Yes — added a composite index on (tenant_id, created_at). | CRITICAL |
+| da-migration-safety | Is the migration online / lock-safe on large tables? | N/A: new table only; no ALTER on an existing populated table. | HIGH |
+
+### api-contract
+| Item | Criterion | Answer / N/A | Severity |
+|------|-----------|--------------|----------|
+| ac-versioning | Is the wire contract versioned / backward-compatible? | Additive field only; no version bump needed. | HIGH |
+
+### Risks / Sensitivity / Tradeoffs
+[ATAM-style: each risk the walk surfaced, as decision → quality-attribute
+scenario → risk. e.g. "Decision: composite index on (tenant_id,
+created_at). Sensitivity: read latency on the dashboard query. Risk: write
+amplification on high-ingest tenants — accepted; ingest is bounded."]
+```
+
+The `### Risks / Sensitivity / Tradeoffs` subsection (BR-008) captures
+any risks, sensitivity points, or tradeoffs the walk surfaced, in the
+ATAM tradition. It is prose, not a parsed table — but it lives inside the
+`## Layer Impact Analysis` section. Note its heading is NOT a bare layer
+id, so the parser does not treat it as a layer subsection.
+
+The decisions captured here feed Phase 3: data-access answers inform the
+**Data Model** section, layer/module answers inform **Module Structure**,
+and every risk/tradeoff surfaced here is carried into **Trade-offs**
+(and, where load-bearing, becomes an ADR in Phase 5).
+
+**Phase 2.9 Step 4: Record the mandatory-mode flag.**
+
+Ask the user (Pattern A) whether this feature's Layer Impact Analysis
+should be a HARD /build gate on unfilled CRITICAL items, or advisory
+(warn-only) — mirroring F006's `design_mandatory`:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Layer Impact Analysis enforcement for this feature?",
+    header: "Layer gate",
+    multiSelect: false,
+    options: [
+      {
+        label: "Advisory (Recommended)",
+        description: "/build WARNS on any unfilled rubric cell and records it in verification.md, then proceeds. The matrix walk you just did is the primary forcing function."
+      },
+      {
+        label: "Mandatory",
+        description: "/build HARD-BLOCKS the build when a touched layer has an unfilled CRITICAL-severity rubric item, until it is filled or explicitly overridden. Non-critical unfilled items still only warn."
+      }
+    ]
+  }]
+)
+```
+
+Capture the answer as a boolean. Phase 5 records it in
+`<feature_path>/state.yaml` under the `architect_phase` block as
+`layer_review_mandatory: <true|false>` (default `false` / advisory when
+the user does not opt in), using the F006 merge-preserve pattern (BR-011)
+— see Phase 5 Step 5.
+
 ### Phase 3: Section drafting
 
 Write the design section by section. For EACH section:
@@ -910,6 +1111,14 @@ but with architecture-tier items:
       `standards/architecture/adr-process.md` "When to Write an ADR"
       criteria has a corresponding entry in the Phase 3 ADR-candidates
       list.
+- [ ] **Layer Impact Analysis is complete.** The `## Layer Impact
+      Analysis` section exists (Phase 2.9). For every layer `detect`
+      returned (and every touched cross-cutting concern), every rubric
+      item has a non-empty Answer / N/A cell (a reasoned `N/A: <reason>`
+      counts; a bare "N/A" or empty cell does not). If no layer was
+      touched, the section states "No architectural layers touched." The
+      `layer_review_mandatory` flag has been captured for the
+      `architect_phase` state block.
 
 **If all items pass:** Tell the user the design is ready and proceed
 to output.
@@ -1015,13 +1224,21 @@ directory.
        filled_by_research: <M>
        unfillable_gaps: <K>
        fill_ratio: <ratio>
+     layer_review_mandatory: <true|false>
      completed_at: <ISO-8601 timestamp>
    ```
 
    Use the merge-preserve pattern (F006 BR-008): if `state.yaml`
    already has `spec_phase`, `build`, or other top-level blocks, leave
    them untouched and add `architect_phase` alongside. Do not overwrite
-   the file wholesale.
+   the file wholesale. Likewise, within the `architect_phase` block,
+   merge-preserve any existing keys when adding `layer_review_mandatory`.
+
+   `layer_review_mandatory` (BR-011) is the boolean captured in Phase 2.9
+   Step 4. It defaults to `false` (advisory) when the user did not opt
+   into mandatory mode. `/build` Step 1c reads it: advisory (`false`)
+   warns + records to verification.md and proceeds; mandatory (`true`)
+   hard-blocks the build on an unfilled `CRITICAL`-severity rubric item.
 
 6. **Append `architect_author_role` to `value-hypothesis.yaml`.** Add
    the field at top level alongside any existing `spec_author_role`,
@@ -1140,6 +1357,17 @@ crossings. Implementation-tier security lives in spec.md.]
 [Explicit list of trade-offs. Each major architectural decision has
 what becomes easier and what becomes harder. Each major decision has
 a corresponding ADR in the index below.]
+
+## Layer Impact Analysis
+[Authored in Phase 2.9. One `### <layer-id>` subsection per touched layer
+(and per touched cross-cutting concern), each with a four-column GFM table
+(Item | Criterion | Answer / N/A | Severity), one row per rubric item,
+every Answer / N/A cell non-empty. Plus a `### Risks / Sensitivity /
+Tradeoffs` subsection (ATAM-style). Parsed by `scripts/layer_review.py
+check` at /build Step 1c — the exact format is a hard contract; see
+Phase 2.9 Step 3 and `standards/architecture/layered-architecture-review.md`.
+If no layer is touched, the section reads "No architectural layers
+touched."]
 
 ## ADR Index
 - ADR-001 [Title] — docs/adrs/F<NNN>-<slug>.md
@@ -1279,13 +1507,17 @@ paths, and item 11 applies to the rejected path (in which case items
    schema (`Decided by` enum = `research` | `user` | `rejected`,
    with `Citation` and `Resolution rationale` required for
    `research` entries).
-4. `<feature_path>/design.md` exists with all 7 sections from the
+4. `<feature_path>/design.md` exists with all sections from the
    Design Output Format (Architecture Overview, Data Model, API
    Contracts, Module Structure, Technical Constraints, Security
-   Considerations, Trade-offs) AND has passed the architect-specific
-   Definition of Ready checklist from Phase 4. Every DoR item is
-   checked. Exists ONLY on the well-architected and research-assisted
-   paths.
+   Considerations, Trade-offs, Layer Impact Analysis) AND has passed the
+   architect-specific Definition of Ready checklist from Phase 4. Every
+   DoR item is checked. The `## Layer Impact Analysis` section is
+   present and complete per Phase 2.9 (every touched layer's rubric
+   items answered-or-reasoned-N/A, or "No architectural layers touched."),
+   and `state.yaml`'s `architect_phase` block records
+   `layer_review_mandatory`. Exists ONLY on the well-architected and
+   research-assisted paths.
 5. `docs/adrs/F<NNN>-<slug>.md` files exist for every ADR identified
    during Phase 3. The design.md "ADR Index" section names every
    one. Each ADR follows the template in
