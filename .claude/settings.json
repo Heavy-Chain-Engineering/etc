@@ -28,5 +28,19 @@
         "*"
       ]
     }
+  },
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre-compact-checkpoint.sh",
+            "timeout": 15000,
+            "statusMessage": "Auto-checkpoints session state before every /compact (manual or\nauto)..."
+          }
+        ]
+      }
+    ]
   }
 }

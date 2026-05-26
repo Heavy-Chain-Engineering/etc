@@ -92,6 +92,7 @@ etc closes the loop:
 | **Decompose before you dispatch** | `/build` scores every task and recurses until each leaf scores ≤ 7 on the WBS scale. |
 | **Verify adversarially** | A spec-enforcer agent reviews every shipped task against the original PRD. |
 | **Measure the outcome** | Each feature writes a `value-hypothesis.yaml`; `/metrics` reports % validated by author role. |
+| **Never lose session state** | A `PreCompact` hook auto-checkpoints `.etc_sdlc/checkpoint.md` before every `/compact` (manual or auto), preserving a fresher model-written checkpoint if one exists. |
 | **Defend in depth** | When a bug escapes, the fix is layered enforcement at three independent SDLC phases — never a single patch. |
 
 The harness does not replace your engineers. It makes their disciplines mechanical.

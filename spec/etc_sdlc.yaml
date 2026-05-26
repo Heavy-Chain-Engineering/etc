@@ -526,6 +526,21 @@ gates:
     type: command
     script: reinject-context.sh
 
+  precompact-checkpoint:
+    description: >
+      Auto-checkpoints session state before every /compact (manual or
+      auto). etc's first PreCompact hook. Writes a best-effort
+      .etc_sdlc/checkpoint.md + journal entry UNLESS a fresh
+      model-written checkpoint already exists (freshness guard,
+      default 5 min). Never blocks compaction (fail-open, always
+      exit 0). Pairs with reinject-context.sh on SessionStart:compact.
+      #36 / 2026-05-26.
+    event: PreCompact
+    type: command
+    script: pre-compact-checkpoint.sh
+    timeout: 15
+    on_failure: continue
+
 # ─── Agents ────────���─────────────────────────────────────────────────────
 # Agent definitions that compile to .md files in dist/agents/.
 # Each agent has a role, tools, and behavioral constraints.

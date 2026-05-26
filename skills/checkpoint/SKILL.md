@@ -8,6 +8,15 @@ description: Save current session state to disk before compaction or session end
 Save all current session state to disk so the session can be safely compacted
 or resumed later. Run this before `/compact` or when ending a long session.
 
+> **Auto-checkpoint on `/compact`:** As of F-2026-05-26 (#36), the `PreCompact`
+> hook (`pre-compact-checkpoint.sh`) writes a best-effort
+> `.etc_sdlc/checkpoint.md` + journal entry automatically before every
+> `/compact` (manual or auto). You can still run `/checkpoint` for a richer,
+> reasoned checkpoint — the hook will NOT clobber a model-written checkpoint
+> within its freshness window (default 5 min). So `/compact` alone never loses
+> resumable state, but `/checkpoint` first is still better when you want the
+> Decisions / Discovered / Pending sections reasoned.
+
 ## Response Format (Verbosity)
 
 Terse and structured. Use tables for task data, fenced code blocks for the

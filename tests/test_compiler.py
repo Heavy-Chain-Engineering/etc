@@ -230,6 +230,20 @@ def test_should_include_all_gate_events(hooks_json: dict[str, Any]) -> None:
     assert not missing, f"Missing gate events in settings-hooks.json: {missing}"
 
 
+def test_should_compile_precompact_gate_without_matcher(hooks_json: dict[str, Any]) -> None:
+    """A no-matcher PreCompact gate compiles to a hooks entry with no matcher key."""
+    # Arrange
+    precompact = hooks_json["hooks"]["PreCompact"]
+
+    # Act
+    entry = precompact[0]
+    commands = [h["command"] for h in entry["hooks"]]
+
+    # Assert
+    assert "matcher" not in entry
+    assert any("pre-compact-checkpoint.sh" in c for c in commands)
+
+
 # -- Test 3: Role text in prompt hooks ----------------------------------------
 
 
@@ -524,7 +538,7 @@ def _extract_all_hooks_by_type(
 ) -> list[dict[str, Any]]:
     """Extract all hooks of a specific type across all events."""
     result: list[dict[str, Any]] = []
-    for _event, entries in hooks_json.get("hooks", {}).items():
+    for entries in hooks_json.get("hooks", {}).values():
         result.extend(_extract_hooks_by_type(entries, hook_type))
     return result
 
