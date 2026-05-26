@@ -16,7 +16,10 @@
 # jq dependency broke fresh Windows installs). CWD for script resolution
 # is read via a small inline python fallback.
 #
-# Exit code: always 0.
+# Exit code: 0 in every path EXCEPT the one intentional manual-compact block
+# (the python writer returns 2 to abort a manual /compact that lacks a fresh
+# reasoned checkpoint — BR-002). The wrapper PROPAGATES the child's exit code
+# so that block reaches Claude Code; it does not hard-code exit 0.
 
 INPUT=$(cat)
 
@@ -37,7 +40,9 @@ if [[ -z "$SCRIPT" ]]; then
   exit 0
 fi
 
-# Replay the original stdin to the python writer. Tolerate any failure.
-printf '%s' "$INPUT" | python3 "$SCRIPT" || true
-
-exit 0
+# Replay the original stdin to the python writer and PROPAGATE its exit code.
+# The writer is fail-open (exit 0) on every uncontrolled error; the ONLY
+# nonzero it returns is the intentional manual-compact block (exit 2), which
+# must reach Claude Code to abort the compaction.
+printf '%s' "$INPUT" | python3 "$SCRIPT"
+exit $?

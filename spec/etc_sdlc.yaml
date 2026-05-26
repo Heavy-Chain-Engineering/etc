@@ -528,18 +528,23 @@ gates:
 
   precompact-checkpoint:
     description: >
-      Auto-checkpoints session state before every /compact (manual or
-      auto). etc's first PreCompact hook. Writes a best-effort
-      .etc_sdlc/checkpoint.md + journal entry UNLESS a fresh
-      model-written checkpoint already exists (freshness guard,
-      default 5 min). Never blocks compaction (fail-open, always
-      exit 0). Pairs with reinject-context.sh on SessionStart:compact.
-      #36 / 2026-05-26.
+      Auto-checkpoints session state before /compact. etc's first
+      PreCompact hook. On an AUTO compaction it always writes a
+      best-effort .etc_sdlc/checkpoint.md + journal entry (fail-open,
+      exit 0) UNLESS a fresh checkpoint already exists. On a MANUAL
+      /compact it is a forcing gate: it BLOCKS (exit 2) when no fresh
+      model-reasoned checkpoint exists, with an actionable message, so
+      the operator runs /checkpoint first. Pairs with reinject-context.sh
+      on SessionStart:compact. #36 + F-2026-05-26-checkpoint-template-and-gate.
     event: PreCompact
     type: command
     script: pre-compact-checkpoint.sh
     timeout: 15
-    on_failure: continue
+    # Descriptive only: the compiler does not wrap command-hook exit codes
+    # (see compile-sdlc.py compile_hooks — on_failure is not emitted to
+    # settings-hooks.json), so Claude Code honors the script's exit 2
+    # directly. "block" documents the gate's intentional manual-block path.
+    on_failure: block
 
 # ─── Agents ────────���─────────────────────────────────────────────────────
 # Agent definitions that compile to .md files in dist/agents/.

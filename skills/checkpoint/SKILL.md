@@ -105,38 +105,54 @@ use the named tool — do not rely on memory of prior reads.
 
 ### Step 2: Write Checkpoint File
 
-Write the gathered state to `.etc_sdlc/checkpoint.md` using the Write
-tool. The file is overwritten each invocation (it represents current
-state, not history). Use exactly this structure:
+Fill the canonical template `templates/checkpoint.md.tmpl` with the gathered
+state and write the result to `.etc_sdlc/checkpoint.md` using the Write tool.
+The file is overwritten each invocation (it represents current state, not
+history).
+
+`templates/checkpoint.md.tmpl` is the SINGLE SOURCE OF TRUTH for the checkpoint
+document structure. The same template is rendered by the PreCompact hook
+(`scripts/precompact_checkpoint.py`) on the auto path, so the reasoned
+(`/checkpoint`) path and the floor (auto) path share one structure. Do NOT
+re-declare or invent the section structure inline — read the structure from the
+template (in-repo at `templates/checkpoint.md.tmpl`, installed at
+`~/.claude/templates/checkpoint.md.tmpl`) and substitute its placeholders.
+
+Read the template and replace its `string.Template` placeholders with your
+model-reasoned values:
+
+- `$saved` → the current `{YYYY-MM-DD HH:MM}` timestamp
+- `$objective` → the current objective (Step 1, item 1)
+- `$phase` → the SDLC phase (or `not initialized`)
+- `$trigger` → a one-line provenance note, e.g.
+  `_Checkpoint captured (trigger: manual /checkpoint)._`
+- `${head_sha}` → the short Git HEAD SHA (`git rev-parse --short HEAD`)
+- `$task_status` → the Markdown task table you build from the `tasks.py` output
+  (columns: ID, Title, Status, Agent)
+- `$decisions` → reasoned bullets for **Decisions Made This Session** (Step 1,
+  item 4)
+- `$discovered` → reasoned bullets for **Discovered Context** (Step 1, item 5)
+- `$pending` → reasoned bullets for **Pending Items** (Step 1, item 6)
+
+The rendered file must preserve the template's section structure exactly — the
+header line `# Session Checkpoint` and the four sections in template order:
 
 ```markdown
 # Session Checkpoint
 
-**Saved:** {YYYY-MM-DD HH:MM}
-**Objective:** {current objective}
-**SDLC Phase:** {phase or "not initialized"}
-
 ## Task Status
-
-| ID | Title | Status | Agent |
-|----|-------|--------|-------|
-| {id} | {title} | {status} | {agent} |
 
 ## Decisions Made This Session
 
-- {decision 1}
-- {decision 2}
-
 ## Discovered Context
 
-- {finding 1}
-- {finding 2}
-
 ## Pending Items
-
-- {item 1}
-- {item 2}
 ```
+
+Because you write reasoned prose (not the auto-floor placeholders), the
+rendered `$trigger` line MUST NOT contain the floor's auto-capture signature
+(`_AUTO-captured by the PreCompact hook`); that absence is how the forcing gate
+recognizes a reasoned checkpoint.
 
 ### Step 3: Append to Governance Journal
 
