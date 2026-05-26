@@ -192,9 +192,15 @@ python3 ~/.claude/scripts/git_tags.py list-etc-tags
 Each line is `<tag_name>\t<sha>\t<iso8601_date>` (tab-separated).
 Categorize each tag and roll up:
 
-- Total `etc/feature/*` tags by category: `spec`, `build/phase-*/start`,
-  `build/phase-*/done`, `release`, `hotfix/H*`. Counts only —
-  no cross-reference to outcome or cost.
+- Total `etc/feature/*` tags by category: `spec`, `build-phase`,
+  `release`, `hotfix/H*`. The `build-phase` bucket counts BOTH the legacy
+  flat form `build/phase-<N>/{start,done}` AND the nested
+  `build/phase-<P>/wave-<W>/{start,done}` form introduced by
+  F-2026-05-26 (phase/wave decoupling) — use
+  `scripts/sdlc_timing.py`'s `categorize_tag_suffix(suffix)` helper to
+  bucket each tag suffix so both forms land under `build-phase` without
+  crashing (BR-07/AC-08). Counts only — no cross-reference to outcome or
+  cost.
 - Features that have a `spec` tag but no `release` tag are listed
   under "In flight" with their feature_id.
 - Features that have any `hotfix/H*` tag are listed under

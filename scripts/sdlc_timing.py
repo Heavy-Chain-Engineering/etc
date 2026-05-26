@@ -49,6 +49,14 @@ from pathlib import Path
 from typing import Any
 
 FEATURE_TAG_PATTERN = re.compile(r"^etc/feature/(F\d+)/(.+)$")
+# Phase-tag suffix forms (F-2026-05-26 phase/wave decoupling):
+#   flat:   build/phase-<N>/{start,done}            (178 legacy tags)
+#   nested: build/phase-<P>/wave-<W>/{start,done}   (new builds)
+# Both must parse without crashing and roll up to "build/phase-<P>" (BR-07).
+FLAT_PHASE_TAG_PATTERN = re.compile(r"^build/phase-(\d+)/(start|done)$")
+NESTED_PHASE_TAG_PATTERN = re.compile(
+    r"^build/phase-(\d+)/wave-(\d+)/(start|done)$"
+)
 # Match `feat(F017):` or `feat(F017-slug):` or `fix(F012):` at start of line.
 FEAT_COMMIT_PATTERN = re.compile(r"^(?:feat|fix)\((F\d+)[^)]*\)", re.MULTILINE)
 # Parse `git show --shortstat` output:
@@ -58,6 +66,67 @@ FEAT_COMMIT_PATTERN = re.compile(r"^(?:feat|fix)\((F\d+)[^)]*\)", re.MULTILINE)
 SHORTSTAT_FILES_PATTERN = re.compile(r"(\d+) files? changed")
 SHORTSTAT_INSERTIONS_PATTERN = re.compile(r"(\d+) insertions?\(\+\)")
 SHORTSTAT_DELETIONS_PATTERN = re.compile(r"(\d+) deletions?\(-\)")
+
+
+def categorize_tag_suffix(suffix: str) -> str:
+    """Bucket an `etc/feature/<id>/` tag SUFFIX into a metrics category.
+
+    Used by the /metrics process layer (AC-08): BOTH the flat
+    `build/phase-<N>/{start,done}` form AND the nested
+    `build/phase-<P>/wave-<W>/{start,done}` form bucket under
+    ``build-phase``. Other suffixes map to their own category. Returns
+    ``"other"`` for anything unrecognized (never raises — BR-07).
+    """
+    if FLAT_PHASE_TAG_PATTERN.match(suffix) or NESTED_PHASE_TAG_PATTERN.match(
+        suffix
+    ):
+        return "build-phase"
+    if suffix in ("spec", "spec/start", "spec/done"):
+        return "spec"
+    if suffix in ("architect/start", "architect/done"):
+        return "architect"
+    if suffix == "release":
+        return "release"
+    if suffix.startswith("hotfix/"):
+        return "hotfix"
+    return "other"
+
+
+def _phase_spans(
+    raw_tags: list[tuple[str, datetime]],
+) -> dict[str, tuple[datetime, datetime]]:
+    """Return {phase_key: (earliest_start, latest_done)} across both tag forms.
+
+    Flat `build/phase-<N>/{start,done}` and nested
+    `build/phase-<P>/wave-<W>/{start,done}` tags are folded into the same
+    `build/phase-<P>` key, so a feature built with progressive wave tags
+    still yields a phase-level span (min wave-start → max wave-done) and a
+    legacy flat feature keeps its existing start→done span (BR-07/AC-07).
+    """
+    starts: dict[str, datetime] = {}
+    dones: dict[str, datetime] = {}
+    for suffix, dt in raw_tags:
+        match = NESTED_PHASE_TAG_PATTERN.match(suffix) or FLAT_PHASE_TAG_PATTERN.match(
+            suffix
+        )
+        if not match:
+            continue
+        phase_key = f"build/phase-{match.group(1)}"
+        edge = match.groups()[-1]
+        if edge == "start":
+            existing = starts.get(phase_key)
+            if existing is None or dt < existing:
+                starts[phase_key] = dt
+        else:
+            existing = dones.get(phase_key)
+            if existing is None or dt > existing:
+                dones[phase_key] = dt
+    spans: dict[str, tuple[datetime, datetime]] = {}
+    for phase_key, start in starts.items():
+        done = dones.get(phase_key)
+        if done is not None:
+            spans[phase_key] = (start, done)
+    return spans
 
 
 def git(repo: Path, *args: str) -> str:
@@ -443,17 +512,10 @@ def compute_phase_intervals(
         if arch_start and arch_done:
             phases["architect"] = (arch_done - arch_start).total_seconds()
 
-        # ── build/phase-N ──
-        # Find every "build/phase-K/start" suffix and pair with its done.
-        build_phase_pattern = re.compile(r"^build/phase-(\d+)/start$")
-        for suffix, dt in raw_tags:
-            m = build_phase_pattern.match(suffix)
-            if not m:
-                continue
-            n = m.group(1)
-            done = by_suffix.get(f"build/phase-{n}/done")
-            if done:
-                phases[f"build/phase-{n}"] = (done - dt).total_seconds()
+        # ── build/phase-N ── (dual-form: flat phase tags AND nested wave tags
+        # both roll up to "build/phase-<P>"; see _phase_spans — BR-07/AC-07).
+        for phase_key, (start, done) in _phase_spans(raw_tags).items():
+            phases[phase_key] = (done - start).total_seconds()
 
         # ── spec ── (single-point in the legacy shape; span until next phase)
         spec_tag = by_suffix.get("spec") or by_suffix.get("spec/done")

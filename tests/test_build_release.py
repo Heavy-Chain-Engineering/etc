@@ -144,23 +144,39 @@ class TestStep2StateYamlMerge:
 
 
 class TestStep6PhaseTags:
-    """AC-008, BR-007: phase-N start/done tags on wave entry/exit."""
+    """AC-008, BR-007 + F-2026-05-26 phase/wave decoupling: nested
+    phase/wave start/done tags on wave entry/exit.
 
-    def test_step6_describes_phase_start_tag_at_wave_entry(
+    The fused phase==wave model (flat ``build/phase-<N>``) was replaced by
+    the nested ``build/phase-<P>/wave-<W>`` form when #35 introduced the
+    explicit phase->wave mapping. Step 6 now writes a phase-boundary tag at
+    the first/last wave of each phase AND a wave tag for every wave.
+    """
+
+    def test_step6_describes_wave_start_tag_at_wave_entry(
         self, skill_text: str
     ) -> None:
         block = _step6_block(skill_text)
-        assert "etc/feature/F<NNN>/build/phase-<N>/start" in block, (
-            "Step 6 must describe writing the phase-N/start tag at wave entry"
+        assert "build/phase-<P>/wave-<W>/start" in block, (
+            "Step 6 must describe writing the nested wave-start tag at wave "
+            "entry"
+        )
+        assert "build/phase-<P>/start" in block, (
+            "Step 6 must describe writing the phase-start boundary tag at the "
+            "first wave of a phase"
         )
 
-    def test_step6_describes_phase_done_tag_at_wave_exit(
+    def test_step6_describes_wave_done_tag_at_wave_exit(
         self, skill_text: str
     ) -> None:
         block = _step6_block(skill_text)
-        assert "etc/feature/F<NNN>/build/phase-<N>/done" in block, (
-            "Step 6 must describe writing the phase-N/done tag at successful "
-            "wave exit"
+        assert "build/phase-<P>/wave-<W>/done" in block, (
+            "Step 6 must describe writing the nested wave-done tag at "
+            "successful wave exit"
+        )
+        assert "build/phase-<P>/done" in block, (
+            "Step 6 must describe writing the phase-done boundary tag after "
+            "the last wave of a phase"
         )
 
     def test_step6_phase_tags_use_git_tags_cli(self, skill_text: str) -> None:

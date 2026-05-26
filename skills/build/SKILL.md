@@ -908,6 +908,45 @@ Wave plan:
   Total waves: {W}
 ```
 
+**Phase plan (F-2026-05-26 phase/wave decoupling).** After the flat wave
+plan, compute the phase grouping so Step 6 can iterate `phase → wave`:
+
+```
+python3 ~/.claude/scripts/tasks.py phases
+```
+
+A *phase* is a top-level WBS group (the depth-1 ancestor of its leaf
+tasks). A flat, undecomposed feature collapses to a single `phase-0`
+containing all waves (zero-regression fallback); a decomposed feature
+yields one phase per top-level group, ordered by cross-phase
+dependency, each with its own intra-phase waves. Write the computed plan
+into `state.yaml.build.phase_plan` (merge-preserve every other key per
+the Step 2 merge discipline) as an ordered list:
+
+```yaml
+build:
+  phase_plan:
+    - phase_id: 0
+      name: "<top-level task title or phase-0>"
+      top_level_task_id: "001"   # or null for the flat fallback
+      waves:
+        - wave_num: 0
+          task_ids: ["001.001"]
+        - wave_num: 1
+          task_ids: ["001.002"]
+    - phase_id: 1
+      name: "..."
+      top_level_task_id: "002"
+      waves:
+        - wave_num: 0
+          task_ids: ["002.001"]
+```
+
+Print the phase plan beneath the wave plan so the operator sees the
+phase boundaries. Step 6 executes phases in order, and waves in order
+within each phase; the per-wave verify-green gate (Step 6c, F021) is
+unchanged.
+
 **Cross-feature collision check (F016 R2):** Run the collision detector
 after the wave plan is printed and BEFORE the operator confirmation. The
 detector compares the current feature's `files_in_scope` against every
@@ -978,24 +1017,39 @@ section above apply absolutely):**
 
 **Dispatch prompt construction.** Assemble the per-task dispatch prompt via `python3 ~/.claude/scripts/dispatch_prompt.py assemble --feature-path <feature_path> --task-id <task_id>` (F-2026-05-23). The assembler mechanizes `standards/process/subagent-dispatch.md`'s 8-section template; per-section content sourcing, the conditional User-flow wiring clause, and the ≤1000-token budget warning are documented there. Capture stdout into the Agent-tool `prompt` argument. On non-zero exit, surface the assembler's stderr verbatim and STOP — dispatch construction MUST NOT fall back to hand-authored prose silently.
 
-Before dispatching any subagent for wave N, write the phase-start tag
-for the feature so process metrics observe wave entry:
+Before dispatching any subagent for wave W of phase P, write the
+phase/wave-start tags so process metrics observe phase AND wave entry.
 
-- Treat the current wave as phase-N for tag-naming purposes. (If the
-  build does not yet maintain an explicit phase->wave mapping, each
-  wave is its own phase. This assumption is documented here so the
-  metrics layer can rely on it.)
-- Invoke the git_tags.py write-tag CLI with the name
-  `etc/feature/F<NNN>/build/phase-<N>/start` at the current HEAD:
+The execution hierarchy is `feature → phase → wave → task` (F-2026-05-26
+phase/wave decoupling). The phase plan computed at Step 5 (and stored in
+`state.yaml.build.phase_plan`) maps each wave to its phase. A *phase* is
+a top-level WBS group (the depth-1 ancestor of its leaf tasks); a flat,
+undecomposed feature collapses to a single `phase-0` containing all
+waves (zero-regression fallback). Phases run in dependency order; waves
+run in dependency order within their phase.
+
+- **At the first wave of a phase** (wave W == 0 within phase P), write
+  the phase-start tag:
   ```
-  python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/F<NNN>/build/phase-<N>/start"
+  python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/<feature_id>/build/phase-<P>/start"
   ```
-  Substitute `F<NNN>` with the feature ID from `state.yaml`'s
-  top-level metadata (set by /spec) and `<N>` with the wave number.
-  The CLI degrades gracefully on non-git directories or repos without
-  a HEAD commit (exit code 1 with a stderr warning); treat exit codes
-  0 (created) and 1 (degrade) as both acceptable advisory outcomes
-  and continue. Only exit code 2 (hard error) is a real fault.
+- **Before every wave**, write the nested wave-start tag:
+  ```
+  python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/<feature_id>/build/phase-<P>/wave-<W>/start"
+  ```
+  Substitute `<feature_id>` with the feature ID from `state.yaml`'s
+  top-level metadata (set by /spec), `<P>` with the 0-based phase id,
+  and `<W>` with the 0-based wave number WITHIN that phase. The CLI
+  degrades gracefully on non-git directories or repos without a HEAD
+  commit (exit code 1 with a stderr warning); treat exit codes 0
+  (created) and 1 (degrade) as both acceptable advisory outcomes and
+  continue. Only exit code 2 (hard error) is a real fault.
+
+  The nested form is additive and forward-only: legacy features carry
+  flat `build/phase-<N>/{start,done}` tags (where N was the wave
+  number); those remain valid and readable. `sdlc_timing.py` and the
+  `/metrics` process layer parse BOTH forms — see ADR
+  `docs/adrs/F-2026-05-26-phase-wave-decoupling-001-phase-wave-model.md`.
 
   The CLI form is required because the helpers are installed under
   `~/.claude/scripts/`, not the user's project — `from scripts.git_tags
@@ -1229,18 +1283,26 @@ wave boundary.
 See `standards/process/diagnostic-discipline.md` for the full rule and
 ADR-F021-003 + ADR-F021-005 for the design rationale.
 
-**6d. Checkpoint and phase-done tag:**
+**6d. Checkpoint and phase/wave-done tags:**
 
 Only after step 6c confirms tests pass and no task is escalated — i.e.
-on a successful wave exit — write the phase-done tag and update state:
+on a successful wave exit — write the wave-done tag (and, when this was
+the LAST wave of the phase, the phase-done tag) and update state:
 
-- Invoke the git_tags.py write-tag CLI with the name
-  `etc/feature/F<NNN>/build/phase-<N>/done` at HEAD:
+- **After every successful wave**, write the nested wave-done tag at HEAD:
   ```
-  python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/F<NNN>/build/phase-<N>/done"
+  python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/<feature_id>/build/phase-<P>/wave-<W>/done"
   ```
-  Use the same `F<NNN>` and `<N>` values as 6a. Same exit-code
-  semantics as 6a (0 created, 1 degrade, 2 hard fault).
+- **After the LAST wave of phase P** completes successfully, also write
+  the phase-done tag:
+  ```
+  python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/<feature_id>/build/phase-<P>/done"
+  ```
+  Use the same `<feature_id>`, `<P>`, and `<W>` values as 6a. Same
+  exit-code semantics as 6a (0 created, 1 degrade, 2 hard fault). Do
+  NOT write the phase-done tag if any wave of the phase escalated — the
+  absence of `phase-<P>/done` is the existing failure signal, now at
+  phase granularity.
 
 **6d.5: Write per-phase completion report.**
 

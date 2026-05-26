@@ -7,12 +7,33 @@ deterministic.
 
 from __future__ import annotations
 
+import datetime as _datetime
+import importlib.util
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
+from types import ModuleType
 
 SCRIPT = Path(__file__).parent.parent / "scripts" / "sdlc_timing.py"
+
+
+def _load_timing_module() -> ModuleType:
+    """Import scripts/sdlc_timing.py for direct function access."""
+    spec = importlib.util.spec_from_file_location("sdlc_timing_under_test", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _utc(minute: int) -> _datetime.datetime:
+    """Fixed UTC timestamp at 2026-05-26T10:<minute>:00 for deterministic deltas."""
+    return _datetime.datetime(
+        2026, 5, 26, 10, minute, 0, tzinfo=_datetime.timezone.utc
+    )
 
 
 def _commit(
@@ -283,3 +304,84 @@ class TestSinceFilter:
         _commit(repo, "feat(F001): a", "2026-05-01T10:00:00+00:00")
         result = _run(repo, "--since", "garbage")
         assert result.returncode == 1
+
+
+class TestDualFormPhaseTagParsing:
+    """AC-07 / BR-07: compute_phase_intervals must parse BOTH the legacy flat
+    `build/phase-<N>/{start,done}` form AND the new nested
+    `build/phase-<P>/wave-<W>/{start,done}` form without crashing, attributing
+    each tag to the correct feature/phase."""
+
+    def test_should_measure_flat_phase_interval_when_legacy_form(self) -> None:
+        timing = _load_timing_module()
+        tags_by_feature = {
+            "F001": [
+                ("build/phase-1/start", _utc(0)),
+                ("build/phase-1/done", _utc(5)),
+            ]
+        }
+
+        intervals = timing.compute_phase_intervals(tags_by_feature)
+
+        assert intervals["F001"]["build/phase-1"] == 300.0
+
+    def test_should_measure_nested_phase_interval_when_wave_form(self) -> None:
+        timing = _load_timing_module()
+        tags_by_feature = {
+            "F002": [
+                ("build/phase-0/wave-1/start", _utc(0)),
+                ("build/phase-0/wave-1/done", _utc(3)),
+            ]
+        }
+
+        intervals = timing.compute_phase_intervals(tags_by_feature)
+
+        # The nested tag is attributed to phase-0 (the wave rolls up into it).
+        assert intervals["F002"]["build/phase-0"] == 180.0
+
+    def test_should_attribute_both_forms_without_crash_in_mixed_set(
+        self,
+    ) -> None:
+        timing = _load_timing_module()
+        tags_by_feature = {
+            "F001": [
+                ("build/phase-1/start", _utc(0)),
+                ("build/phase-1/done", _utc(5)),
+            ],
+            "F002": [
+                ("build/phase-0/wave-1/start", _utc(0)),
+                ("build/phase-0/wave-1/done", _utc(3)),
+            ],
+        }
+
+        intervals = timing.compute_phase_intervals(tags_by_feature)
+
+        assert intervals["F001"]["build/phase-1"] == 300.0
+        assert intervals["F002"]["build/phase-0"] == 180.0
+
+
+class TestTagCategorizer:
+    """AC-08 / BR-07: the tag categorizer (used by /metrics) must bucket BOTH
+    flat and nested build-phase tags under the build-phase category."""
+
+    def test_should_bucket_flat_phase_tag_under_build_phase(self) -> None:
+        timing = _load_timing_module()
+        assert timing.categorize_tag_suffix("build/phase-1/start") == "build-phase"
+        assert timing.categorize_tag_suffix("build/phase-2/done") == "build-phase"
+
+    def test_should_bucket_nested_wave_tag_under_build_phase(self) -> None:
+        timing = _load_timing_module()
+        assert (
+            timing.categorize_tag_suffix("build/phase-0/wave-1/start")
+            == "build-phase"
+        )
+        assert (
+            timing.categorize_tag_suffix("build/phase-3/wave-2/done")
+            == "build-phase"
+        )
+
+    def test_should_bucket_non_phase_tags_to_their_own_category(self) -> None:
+        timing = _load_timing_module()
+        assert timing.categorize_tag_suffix("spec") == "spec"
+        assert timing.categorize_tag_suffix("release") == "release"
+        assert timing.categorize_tag_suffix("hotfix/H001") == "hotfix"

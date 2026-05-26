@@ -14,6 +14,7 @@ Usage:
     python3 tasks.py score [TASK_ID]
     python3 tasks.py tree
     python3 tasks.py waves [--feature NAME]
+    python3 tasks.py phases [--feature NAME]
     python3 tasks.py ready-to-decompose
     python3 tasks.py create --task-id ID --title T --agent A --file F --ac C [...]
     python3 tasks.py bulk-create [--feature NAME]
@@ -30,6 +31,7 @@ import re
 import sys
 import tempfile
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,7 +39,7 @@ import yaml
 
 # ── Shared constants ────────────────────────────────────────────────────
 
-VALID_STATUSES = {
+VALID_STATUSES = {  # cq-exempt: CQ-001
     "pending",
     "in_progress",
     "completed",
@@ -55,7 +57,7 @@ REQUIRED_FIELDS = (
 )
 
 # ── Complexity scoring thresholds (from DSL changeset_budget) ────────────
-COMPLEXITY_THRESHOLDS = {
+COMPLEXITY_THRESHOLDS = {  # cq-exempt: CQ-001
     "target_loc": 300,
     "warn_loc": 500,
     "max_loc": 1000,
@@ -384,6 +386,253 @@ def compute_waves(
     return waves, promoted_edges
 
 
+# ── F-2026-05-26: phase/wave decoupling ──────────────────────────────────
+#
+# A *phase* is a top-level WBS group — the depth-1 ancestor of a leaf task.
+# A *wave* is a dependency-ordered group of leaf tasks computed WITHIN a
+# phase (reusing compute_waves' algorithm scoped to that phase). When a
+# feature is fully flat (no decomposition), the whole build is one phase
+# (``phase-0``) so today's behavior is preserved exactly.
+
+# Statuses that count as already-satisfied for dependency purposes.
+_SATISFIED_STATUSES: tuple[str, ...] = ("completed", "decomposed")
+
+
+@dataclass(frozen=True)
+class PhaseWave:
+    """A dependency-ordered group of leaf tasks WITHIN a phase.
+
+    ``wave_num`` is 0-based within its phase (not globally). ``task_ids``
+    lists the leaf-task ids assigned to this wave, in the order
+    ``compute_waves`` packed them.
+    """
+
+    wave_num: int
+    task_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Phase:
+    """A top-level WBS group carrying its ordered intra-phase waves.
+
+    ``phase_id`` is the 0-based dependency-ordered position. ``name`` is the
+    top-level task title (or its id) for a decomposed group, or ``phase-0``
+    for the flat-fallback single phase. ``top_level_task_id`` is the depth-1
+    ancestor id, or ``None`` for the flat fallback.
+    """
+
+    phase_id: int
+    name: str
+    top_level_task_id: str | None
+    waves: tuple[PhaseWave, ...] = ()
+
+
+def _pending_leaf_tasks(tasks: list[dict]) -> list[dict]:
+    """Return pending (not completed/decomposed) leaf tasks.
+
+    Mirrors ``compute_waves``: leaf tasks whose status is not in
+    ``_SATISFIED_STATUSES``.
+    """
+    leaf_tasks = get_leaf_tasks(tasks)
+    return [t for t in leaf_tasks if t.get("status") not in _SATISFIED_STATUSES]
+
+
+def _top_level_ancestor(task_id: str, parent_of: dict[str, str | None]) -> str:
+    """Walk ``parent_task`` links up to the depth-1 ancestor (the root)."""
+    current = task_id
+    while True:
+        parent = parent_of.get(current)
+        if not parent:
+            return current
+        current = parent
+
+
+def _waves_to_phase_waves(waves: dict[int, list[dict]]) -> tuple[PhaseWave, ...]:
+    """Convert a ``compute_waves`` wave-map into ordered ``PhaseWave`` tuples,
+    re-indexing wave numbers to a contiguous 0-based sequence."""
+    phase_waves: list[PhaseWave] = []
+    for new_num, original_num in enumerate(sorted(waves)):
+        task_ids = tuple(
+            t.get("task_id", "") for t in waves[original_num]
+        )
+        phase_waves.append(PhaseWave(wave_num=new_num, task_ids=task_ids))
+    return tuple(phase_waves)
+
+
+def _is_flat(tasks: list[dict]) -> bool:
+    """True when NO task declares a non-empty ``parent_task`` (no WBS)."""
+    return not any(t.get("parent_task") for t in tasks)
+
+
+def _group_by_phase(
+    pending: list[dict], parent_of: dict[str, str | None]
+) -> dict[str, list[dict]]:
+    """Group pending leaf tasks by their depth-1 ancestor (phase key)."""
+    groups: dict[str, list[dict]] = {}
+    for task in pending:
+        ancestor = _top_level_ancestor(task.get("task_id", ""), parent_of)
+        groups.setdefault(ancestor, []).append(task)
+    return groups
+
+
+def _phase_dependency_edges(
+    groups: dict[str, list[dict]], task_to_phase: dict[str, str]
+) -> dict[str, set[str]]:
+    """Map each phase key → set of phase keys it depends on (cross-phase)."""
+    edges: dict[str, set[str]] = {key: set() for key in groups}
+    for phase_key, phase_tasks in groups.items():
+        for task in phase_tasks:
+            for dep in task.get("dependencies") or []:
+                dep_phase = task_to_phase.get(dep)
+                if dep_phase is not None and dep_phase != phase_key:
+                    edges[phase_key].add(dep_phase)
+    return edges
+
+
+def _order_phases(
+    groups: dict[str, list[dict]], edges: dict[str, set[str]]
+) -> list[str]:
+    """Topologically order phase keys (dependencies first).
+
+    On a cycle, mirror ``compute_waves``' circular-dep handling: dump the
+    still-unresolvable phase keys (in ancestor-id order) at the end.
+    """
+    ordered: list[str] = []
+    placed: set[str] = set()
+    remaining = sorted(groups)
+
+    while remaining:
+        ready = [
+            key for key in remaining if edges[key] <= placed
+        ]
+        if not ready:
+            # Circular cross-phase dependency — append the rest in id order.
+            ordered.extend(remaining)
+            break
+        ordered.extend(ready)
+        placed.update(ready)
+        remaining = [key for key in remaining if key not in placed]
+
+    return ordered
+
+
+def _phase_name(top_level_id: str, tasks_by_id: dict[str, dict]) -> str:
+    """Human-readable phase name: the top-level task title, else its id."""
+    top_task = tasks_by_id.get(top_level_id)
+    if top_task:
+        title = top_task.get("title")
+        if isinstance(title, str) and title.strip():
+            return title
+    return top_level_id
+
+
+def compute_phase_plan(tasks: list[dict]) -> list[Phase]:
+    """Group pending leaf tasks into dependency-ordered phases of waves.
+
+    Flat fallback (BR-02): if NO task declares a ``parent_task``, the whole
+    build is ONE phase (``phase-0``) whose waves are exactly those
+    ``compute_waves`` produces — preserving today's behavior with zero
+    regression.
+
+    Decomposed (BR-03/BR-04): each distinct depth-1 ancestor of a pending
+    leaf task defines one phase. Phases are emitted in cross-phase
+    dependency order; within each phase, waves are computed over that
+    phase's leaf tasks using the SAME algorithm as ``compute_waves`` with
+    tasks in earlier phases counted as satisfied.
+
+    Every pending leaf task appears in exactly one (phase, wave) cell
+    (BR-01/BR-10). Empty / all-done inputs yield ``[]`` (EC-1/EC-2); a
+    circular cross-phase dependency does not loop forever (EC-4).
+    """
+    pending = _pending_leaf_tasks(tasks)
+    if not pending:
+        return []
+
+    if _is_flat(tasks):
+        waves, _ = compute_waves([dict(t) for t in tasks])
+        return [
+            Phase(
+                phase_id=0,
+                name="phase-0",
+                top_level_task_id=None,
+                waves=_waves_to_phase_waves(waves),
+            )
+        ]
+
+    parent_of: dict[str, str | None] = {
+        t.get("task_id", ""): t.get("parent_task") for t in tasks
+    }
+    tasks_by_id: dict[str, dict] = {t.get("task_id", ""): t for t in tasks}
+
+    groups = _group_by_phase(pending, parent_of)
+    task_to_phase: dict[str, str] = {
+        t.get("task_id", ""): _top_level_ancestor(t.get("task_id", ""), parent_of)
+        for t in pending
+    }
+    edges = _phase_dependency_edges(groups, task_to_phase)
+    order = _order_phases(groups, edges)
+
+    return _build_phases(order, groups, tasks, tasks_by_id)
+
+
+def _build_phases(
+    order: list[str],
+    groups: dict[str, list[dict]],
+    tasks: list[dict],
+    tasks_by_id: dict[str, dict],
+) -> list[Phase]:
+    """Compute intra-phase waves for each phase in dependency order.
+
+    Tasks placed in earlier phases are marked completed (in a per-phase
+    copy) so ``compute_waves`` treats them as satisfied deps (BR-04).
+    """
+    satisfied: set[str] = {
+        t.get("task_id", "")
+        for t in tasks
+        if t.get("status") in _SATISFIED_STATUSES
+    }
+    phases: list[Phase] = []
+
+    for phase_id, phase_key in enumerate(order):
+        phase_tasks = groups[phase_key]
+        scoped = _scope_tasks_for_phase(phase_tasks, satisfied)
+        waves, _ = compute_waves(scoped)
+        phases.append(
+            Phase(
+                phase_id=phase_id,
+                name=_phase_name(phase_key, tasks_by_id),
+                top_level_task_id=phase_key,
+                waves=_waves_to_phase_waves(waves),
+            )
+        )
+        satisfied.update(t.get("task_id", "") for t in phase_tasks)
+
+    return phases
+
+
+def _scope_tasks_for_phase(
+    phase_tasks: list[dict], satisfied: set[str]
+) -> list[dict]:
+    """Build the task list ``compute_waves`` runs over for one phase.
+
+    Includes copies of this phase's leaf tasks plus zero-cost ``completed``
+    placeholders for every already-satisfied id referenced as a dependency,
+    so cross-phase deps resolve to Wave 0 inside this phase.
+    """
+    scoped: list[dict] = [dict(t) for t in phase_tasks]
+    own_ids = {t.get("task_id", "") for t in phase_tasks}
+    referenced: set[str] = set()
+    for task in phase_tasks:
+        for dep in task.get("dependencies") or []:
+            if dep in satisfied and dep not in own_ids:
+                referenced.add(dep)
+    for dep_id in sorted(referenced):
+        scoped.append(
+            {"task_id": dep_id, "status": "completed", "dependencies": []}
+        )
+    return scoped
+
+
 # ── Commands ─────────────────────────────────────────────────────────────
 
 
@@ -638,6 +887,35 @@ def cmd_waves(root: Path, feature: str | None = None) -> None:
             title = t.get("title", "(no title)")
             agent = t.get("assigned_agent", "-")
             print(f"    {tid}  {title}  ({agent})")
+
+
+def cmd_phases(root: Path, feature: str | None = None) -> None:
+    """Print the ordered phase→wave plan, one block per phase.
+
+    Mirrors ``cmd_waves`` scoping semantics: when ``feature`` is given, the
+    plan is computed over that feature's tasks only. Human-readable; exits 0.
+    """
+    tasks = load_all_tasks(root, feature=feature)
+    plan = compute_phase_plan(tasks)
+
+    if not plan:
+        print("No tasks found.")
+        return
+
+    for phase in plan:
+        wave_count = len(phase.waves)
+        print(
+            f"\n  ══ Phase {phase.phase_id}: {phase.name} "
+            f"({wave_count} wave{'s' if wave_count != 1 else ''}) ══"
+        )
+        for wave in phase.waves:
+            task_count = len(wave.task_ids)
+            print(
+                f"    ── Wave {wave.wave_num} "
+                f"({task_count} task{'s' if task_count != 1 else ''}) ──"
+            )
+            for task_id in wave.task_ids:
+                print(f"      {task_id}")
 
 
 def cmd_ready_to_decompose(root: Path) -> None:
@@ -1509,6 +1787,13 @@ def main() -> None:
             if idx + 1 < len(sys.argv):
                 feature = sys.argv[idx + 1]
         cmd_waves(root, feature=feature)
+    elif command == "phases":
+        feature = None
+        if "--feature" in sys.argv:
+            idx = sys.argv.index("--feature")
+            if idx + 1 < len(sys.argv):
+                feature = sys.argv[idx + 1]
+        cmd_phases(root, feature=feature)
     elif command == "ready-to-decompose":
         cmd_ready_to_decompose(root)
     elif command == "create":
@@ -1521,7 +1806,8 @@ def main() -> None:
         print(f"Unknown command: {command}")
         print(
             "Commands: list, next, status, board, set-status, deps, score, "
-            "tree, waves, ready-to-decompose, create, bulk-create, validate"
+            "tree, waves, phases, ready-to-decompose, create, bulk-create, "
+            "validate"
         )
         sys.exit(1)
 

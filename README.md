@@ -31,6 +31,7 @@ Some high-level features:
 - **SME-led MVP definition** — domain experts capture real work via `/journey` in plain English; the intersection of journeys IS the MVP.
 - **Parallel research at every intake** — LSP-anchored navigation (definitions, references, call graphs) where the query is symbolic; grep where the query is textual; plus web fetch and antipatterns lookup. All run in parallel before drafting begins. Findings cite source files, URLs, or ADRs.
 - **Recursive work-breakdown decomposition** — `/build` scores every task and recurses until each leaf is small enough to dispatch (score ≤ 7 on the WBS scale). Arbitrarily large problems land as arbitrarily deep trees.
+- **Phase → wave → task execution hierarchy** — `/build` groups waves into phases derived from the top-level work-breakdown (a flat feature collapses to one phase, zero-regression); progress, resumability, and timing are tracked at phase *and* wave granularity via additive nested git tags.
 - **Wave planning with cross-feature collision detection** — parallel-safe dispatch by file-set isolation; overlaps with other in-flight features caught at plan time, not at merge time.
 - **Stacked-PR delivery** — multi-wave builds emit one squash commit per wave on a stacked branch chain (~500 LOC per layer), so review can keep up with agentic throughput.
 - **Mechanical TDD enforcement** — a PreToolUse hook blocks edits to production code without a sibling test. No exemption flag.
