@@ -93,7 +93,27 @@ This convention applies to dispatches authored from F024 onward. Earlier dispatc
 - F022 added the "intent gap" observation (per-dispatch carries WHAT but not WHY).
 - The dispatch examples saved at `.etc_sdlc/incidents/2026-05-22-dispatch-examples/` informed this standard.
 - This standard is the prose anchor; the actual prompt assembly is the orchestrator's job at /build Step 6a.
-- Full dynamic prompt assembly (machine-driven via `scripts/dispatch_prompt.py`) is deferred to a future PRD (task #30).
+- Full dynamic prompt assembly is mechanized via `scripts/dispatch_prompt.py` (F-2026-05-23). See §Implementation below for the CLI invocation. The assembler embodies the eight required sections above; section ordering is embedded in code per ADR-Ftmp-19e49f7c-002 with this doc as the canonical rationale source.
+
+## Implementation
+
+The canonical implementation lives at `scripts/dispatch_prompt.py`. Invocation:
+
+```bash
+python3 ~/.claude/scripts/dispatch_prompt.py assemble \
+    --feature-path <path> --task-id <id>
+```
+
+The CLI emits the assembled dispatch prompt on stdout. Token-budget
+warnings (per §Token budget) emit to stderr without affecting stdout.
+Two ADRs document load-bearing design decisions:
+
+- `docs/adrs/Ftmp-19e49f7c-001-cite-design-md-not-inline.md` — design.md is referenced via `requires_reading`, never inlined.
+- `docs/adrs/Ftmp-19e49f7c-002-embed-section-ordering-in-code.md` — section ordering is embedded in the script with this doc as the rationale source.
+
+`skills/build/SKILL.md` Step 6a invokes the assembler. Forward-only:
+applies to dispatches authored from the F-2026-05-23 release tag
+onward. F001-F024 dispatches are not retroactively re-authored.
 
 ## Anti-pattern catalog
 

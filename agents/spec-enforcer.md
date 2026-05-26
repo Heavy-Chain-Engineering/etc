@@ -1,5 +1,10 @@
 ---
 name: spec-enforcer
+# Pin to opus (200K context standard) — sonnet's 1M-context default
+# triggers API "Usage credits required for 1M context" failure for
+# operators without 1M-context credits. Per memory feedback-subagent-
+# model-selection.md (2026-05-12), substantive-work agents must be
+# opus to avoid mid-build credit-gated stalls.
 description: >
   Adversarial spec compliance reviewer. Compares agent outputs and deliverables
   against PRD acceptance criteria. Assumes non-compliance until proven otherwise.
@@ -20,7 +25,7 @@ description: >
   <commentary>Per-task compliance checking on demand.</commentary>
   </example>
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: opus
 disallowedTools: [Write, Edit, NotebookEdit]
 maxTurns: 8
 ---

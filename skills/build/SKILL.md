@@ -900,13 +900,7 @@ For each wave, in order:
 **6a. Dispatch wave N (Agent-tool rules from the Subagent Dispatch
 section above apply absolutely):**
 
-**Dispatch prompt construction:** follow `standards/process/subagent-dispatch.md`.
-The dispatch prompt is the per-invocation delta — Feature intent (lifted from
-spec.md Summary), Task intent (from task YAML if present), required reading
-(paths + ≤8-word commentary), files in scope, ACs verbatim, cross-task
-awareness, report-back format. Do NOT restate TDD, hooks-enforce, no-emoji,
-or architectural constraints already in design.md — those live in the system
-overlay and role manifest. Target: ≤1,000 tokens per dispatch.
+**Dispatch prompt construction.** Assemble the per-task dispatch prompt via `python3 ~/.claude/scripts/dispatch_prompt.py assemble --feature-path <feature_path> --task-id <task_id>` (F-2026-05-23). The assembler mechanizes `standards/process/subagent-dispatch.md`'s 8-section template; per-section content sourcing, the conditional User-flow wiring clause, and the ≤1000-token budget warning are documented there. Capture stdout into the Agent-tool `prompt` argument. On non-zero exit, surface the assembler's stderr verbatim and STOP — dispatch construction MUST NOT fall back to hand-authored prose silently.
 
 Before dispatching any subagent for wave N, write the phase-start tag
 for the feature so process metrics observe wave entry:
@@ -1079,27 +1073,18 @@ For each task in the current wave:
 - Update task status via `python3 ~/.claude/scripts/tasks.py set-status
   --id {task_id} --status in_progress`
 - Invoke the Agent tool ONCE with `subagent_type` set to the task's
-  `assigned_agent` field. The prompt MUST include: the task YAML path,
-  the list of `requires_reading` file paths, the list of
-  `files_in_scope` paths, the acceptance criteria, and the instruction
-  "Dispatch hooks will enforce TDD, invariants, required reading, and
-  phase gate — do not circumvent them."
-- **spec.md + design.md briefing context (F006 BR-005).** The
-  briefing prompt's spec-content section embeds the contents of
-  `.etc_sdlc/features/{slug}/spec.md` so the dispatched subagent has
-  the intent in front of it. When
-  `.etc_sdlc/features/{slug}/design.md` ALSO exists in the same
-  feature directory (i.e., the feature went through /architect per
-  F006), the orchestrator MUST additionally embed design.md's
-  contents alongside spec.md in the briefing prompt — clearly
-  delimited so the subagent can tell which artifact is which (intent
-  vs. architecture). Both artifacts are read-at-dispatch-time so the
-  subagent sees the latest committed versions. When design.md is
-  absent, the prompt embeds spec.md alone (the legacy F001-F009 shape
-  and the soft-default path from Step 1c). The rest of the per-task
-  briefing structure — task YAML path, requires_reading,
-  files_in_scope, acceptance criteria, and the hooks reminder — is
-  unchanged by this rule.
+  `assigned_agent` field. The prompt argument is the stdout of
+  `python3 ~/.claude/scripts/dispatch_prompt.py assemble --feature-path
+  <feature_path> --task-id <task_id>` (per Step 6a "Dispatch prompt
+  construction" above). The assembler emits the eight required sections
+  from `standards/process/subagent-dispatch.md` — task identifier,
+  required reading, files in scope, acceptance criteria, feature intent,
+  cross-task awareness, report-back format, and (conditionally) task
+  intent + wiring-contract. Do NOT append "Dispatch hooks will enforce
+  TDD..." or any other system-overlay reminder — those live in the
+  hooks (`hooks/inject-standards.sh`) and the role manifest, per
+  standards-doc anti-pattern #4.
+- **spec.md + design.md briefing context (F006 BR-005, revised by ADR-Ftmp-19e49f7c-001).** The assembler embeds the contents of `<feature_path>/spec.md`'s Summary first paragraph as the Feature intent section (per `standards/process/subagent-dispatch.md` item 1). When `<feature_path>/design.md` ALSO exists, the assembler does NOT inline its body — instead, the task YAML's `requires_reading` list includes the design.md path, and the subagent Reads it on demand (cite-only). This matches the standards doc's anti-pattern #2 ("Inlining design.md content") and the observed pattern in `.etc_sdlc/incidents/2026-05-22-dispatch-examples/`. The rest of the per-task briefing structure — task YAML path, requires_reading, files_in_scope, acceptance criteria, and the cross-task awareness section — is sourced from the task YAML by the assembler.
 - For User-flow-sentenced tasks (those detected at sub-step 6a.5), the
   prompt MUST also include the wiring-contract clause from
   `standards/process/user-flow-completeness.md` (Dispatch-time Wiring

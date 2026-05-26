@@ -440,32 +440,35 @@ def test_build_skill_preserves_existing_dispatch_shape(
     build_skill_dist_text: str,
 ) -> None:
     """AC9 / BR-008: dist/skills/build/SKILL.md Step 6 preserves the
-    pre-edit dispatch shape verbatim — the Agent-tool call header, the
+    structural dispatch shape — the Agent-tool call header, the
     `subagent_type` argument bound to the task's `assigned_agent` field,
-    the prompt-content list (`requires_reading`, `files_in_scope`), the
-    standard "Dispatch hooks will enforce..." instruction, the Step 6b
-    "Wait for wave completion" header, and the parallel fan-out language.
+    the prompt-content fields (`requires_reading`, `files_in_scope`),
+    the Step 6b "Wait for wave completion" header, and the parallel
+    fan-out language.
 
     Adversarial: a refactor that drops or rewrites any of these literals
     (even while adding the new wiring-contract logic) would silently
     break the existing dispatch contract. This test is the regression
     canary.
+
+    Note (F-2026-05-23): the historical "Dispatch hooks will enforce TDD,
+    invariants, required reading, and phase gate" sentence was REMOVED
+    from Step 6 prose intentionally as part of the dispatch-prompt
+    assembler feature — per `standards/process/subagent-dispatch.md`
+    §Anti-patterns item #4, that instruction lives in
+    `hooks/inject-standards.sh` (the system overlay) and the role
+    manifest, not in per-dispatch prose. The assembler omits it. This
+    test no longer asserts the legacy literal; the structural Agent-tool
+    + subagent_type + assigned_agent + requires_reading + files_in_scope
+    + wait/parallel-fanout literals remain load-bearing.
     """
     section = _step_6_section(build_skill_dist_text)
-    # The dispatch-hook instruction wraps across a line break in the prose
-    # ("...required reading, and\nphase gate..."), so the whole-sentence
-    # canonical literal needs the whitespace-normalized text to match.
-    normalized = _normalize_whitespace(section)
 
     agent_tool_header = "Invoke the Agent tool ONCE with"
     subagent_type_arg = "subagent_type"
     assigned_agent_field = "assigned_agent"
     requires_reading_field = "requires_reading"
     files_in_scope_field = "files_in_scope"
-    dispatch_hook_instruction = (
-        "Dispatch hooks will enforce TDD, invariants, required reading, and "
-        "phase gate"
-    )
     wait_header = "Wait for wave completion"
     parallel_fanout_phrase = "parallel fan-out"
     single_turn_phrase = "single turn"
@@ -489,10 +492,6 @@ def test_build_skill_preserves_existing_dispatch_shape(
     assert files_in_scope_field in section, (
         f"Step 6 missing existing prompt-content field: "
         f"{files_in_scope_field!r}"
-    )
-    assert dispatch_hook_instruction in normalized, (
-        f"Step 6 missing existing standard dispatch-hook instruction: "
-        f"{dispatch_hook_instruction!r}"
     )
     assert wait_header in section, (
         f"Step 6 missing existing 6b header: {wait_header!r}"

@@ -57,13 +57,40 @@ class _FakeStdoutPipe:
         return None
 
 
-class TestPrintBanner:
-    """print_banner() -> None. TTY-gated raw-bytes write."""
+import os  # noqa: E402 — used by the width-mock fixture below
 
-    def test_should_write_raw_asset_bytes_to_stdout_buffer_when_stdout_is_tty(
-        self,
+
+def _wide_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub shutil.get_terminal_size() to report 200 cols wide.
+
+    Required for tests that assert the banner DOES write — without this
+    stub, the real terminal in CI / pytest is often 80 cols, and the
+    width-gate in banner.py (banner is 106 cols visible) would skip
+    the write. Tests of the wide-terminal happy path use this; tests
+    of the narrow-terminal skip path use _narrow_terminal below.
+    """
+    monkeypatch.setattr(
+        "shutil.get_terminal_size",
+        lambda fallback=(80, 24): os.terminal_size((200, 50)),
+    )
+
+
+def _narrow_terminal(monkeypatch: pytest.MonkeyPatch, cols: int = 80) -> None:
+    """Stub shutil.get_terminal_size() to report a narrow terminal."""
+    monkeypatch.setattr(
+        "shutil.get_terminal_size",
+        lambda fallback=(80, 24): os.terminal_size((cols, 24)),
+    )
+
+
+class TestPrintBanner:
+    """print_banner() -> None. TTY-gated + width-gated raw-bytes write."""
+
+    def test_should_write_raw_asset_bytes_to_stdout_buffer_when_stdout_is_tty_and_terminal_is_wide(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange
+        # Arrange — wide-terminal stub so width-gate passes
+        _wide_terminal(monkeypatch)
         fake_stdout = _FakeStdoutTty()
         expected_bytes = BANNER_ASSET.read_bytes()
 
@@ -74,8 +101,12 @@ class TestPrintBanner:
         # Assert — buffer holds the exact bytes of the asset
         assert fake_stdout.buffer.getvalue() == expected_bytes
 
-    def test_banner_skipped_when_not_tty(self) -> None:
-        # Arrange — non-TTY stdout (piped/redirected)
+    def test_banner_skipped_when_not_tty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange — non-TTY stdout (piped/redirected). Width-gate also
+        # stubbed wide so the only gating signal is the isatty() check.
+        _wide_terminal(monkeypatch)
         fake_stdout = _FakeStdoutPipe()
 
         # Act
@@ -85,10 +116,60 @@ class TestPrintBanner:
         # Assert — no bytes written
         assert fake_stdout.buffer.getvalue() == b""
 
+    def test_banner_skipped_when_terminal_narrower_than_banner_width(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange — TTY=True but terminal is 80 cols (banner needs 106).
+        # The width-gate must skip; wrapping jp2a output on narrow
+        # terminals produces visual garbage. This test was missing in
+        # the original F026 ship — operator caught the gap 2026-05-23.
+        _narrow_terminal(monkeypatch, cols=80)
+        fake_stdout = _FakeStdoutTty()
+
+        # Act
+        with mock.patch.object(sys, "stdout", fake_stdout):
+            banner.print_banner()
+
+        # Assert — no bytes written because the terminal is too narrow
+        assert fake_stdout.buffer.getvalue() == b""
+
+    def test_banner_skipped_when_terminal_exactly_one_col_narrower_than_width(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange — edge case: terminal is 105 cols, banner is 106 cols.
+        # The gate is `columns < banner_width` (strict less-than), so
+        # 105 cols MUST skip (105 < 106).
+        _narrow_terminal(monkeypatch, cols=105)
+        fake_stdout = _FakeStdoutTty()
+
+        # Act
+        with mock.patch.object(sys, "stdout", fake_stdout):
+            banner.print_banner()
+
+        # Assert — no bytes written (105 < 106 → skip)
+        assert fake_stdout.buffer.getvalue() == b""
+
+    def test_banner_writes_when_terminal_exactly_matches_banner_width(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange — edge case: terminal is exactly 106 cols. The gate
+        # is `columns < banner_width`, so 106 == 106 → write proceeds.
+        _narrow_terminal(monkeypatch, cols=106)
+        fake_stdout = _FakeStdoutTty()
+
+        # Act
+        with mock.patch.object(sys, "stdout", fake_stdout):
+            banner.print_banner()
+
+        # Assert — bytes written at the boundary
+        assert len(fake_stdout.buffer.getvalue()) > 0
+
     def test_should_not_raise_when_asset_missing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange — point banner at a non-existent file; isatty=True
+        # Arrange — point banner at a non-existent file; isatty=True,
+        # terminal wide enough.
+        _wide_terminal(monkeypatch)
         missing = tmp_path / "no-such-banner.ascii"
         monkeypatch.setattr(banner, "BANNER_ASSET_PATH", missing)
         fake_stdout = _FakeStdoutTty()
@@ -100,9 +181,12 @@ class TestPrintBanner:
         # Assert — nothing went to the buffer (graceful degrade)
         assert fake_stdout.buffer.getvalue() == b""
 
-    def test_should_use_sys_stdout_buffer_not_text_write(self) -> None:
+    def test_should_use_sys_stdout_buffer_not_text_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Arrange — explicit guard that the raw-bytes write path is used
         # (per ADR-005, NOT sys.stdout.write(text)).
+        _wide_terminal(monkeypatch)
         fake_stdout = _FakeStdoutTty()
 
         # Act

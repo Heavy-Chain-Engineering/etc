@@ -12,6 +12,7 @@ this module MUST NOT import from cli or install_steps.
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -24,19 +25,26 @@ BANNER_ASSET_PATH: Path = (
     Path(__file__).resolve().parent.parent / "assets" / "etsy-logo.ascii"
 )
 
+# Visible width of the pre-rendered jp2a output (106 cols × 66 lines,
+# measured via `re.sub(r'\x1b\[[0-9;]*m', '', line)` ANSI-strip).
+# Terminals narrower than this wrap the banner into garbled lines.
+_BANNER_VISIBLE_WIDTH: int = 106
+
 
 def print_banner() -> None:
     """Write the raw bytes of the banner asset to sys.stdout.buffer.
 
-    Gated by `paths.is_stdout_tty()`. When stdout is not a TTY (piped,
-    redirected, or in CI), the function returns without writing
-    anything. When the banner asset is missing, the function returns
-    silently — the banner is decorative, not load-bearing (per spec
-    Edge Case 4).
+    Gated by three checks in order:
+    1. `paths.is_stdout_tty()` — non-TTY (piped, redirected, CI) skips.
+    2. Asset file exists — missing asset is silent skip per ADR-005.
+    3. Terminal width >= banner visible width (106 cols, strict less-than
+       skips). Narrow terminals wrap jp2a output into visual garbage.
     """
     if not paths.is_stdout_tty():
         return
     if not BANNER_ASSET_PATH.is_file():
+        return
+    if shutil.get_terminal_size(fallback=(80, 24)).columns < _BANNER_VISIBLE_WIDTH:
         return
     banner_bytes = BANNER_ASSET_PATH.read_bytes()
     sys.stdout.buffer.write(banner_bytes)
