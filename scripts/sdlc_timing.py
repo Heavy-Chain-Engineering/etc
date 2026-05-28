@@ -48,7 +48,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-FEATURE_TAG_PATTERN = re.compile(r"^etc/feature/(F\d+)/(.+)$")
+# Feature-id forms (#39): legacy sequential `F<NNN>` AND current date-based
+# `F-YYYY-MM-DD-<slug>`. `F\d+` alone silently dropped every dated-ID feature
+# from the timing report.
+_FEATURE_ID_RE = r"(?:F\d+|F-\d{4}-\d{2}-\d{2}-[a-z0-9-]+)"
+FEATURE_TAG_PATTERN = re.compile(r"^etc/feature/(" + _FEATURE_ID_RE + r")/(.+)$")
 # Phase-tag suffix forms (F-2026-05-26 phase/wave decoupling):
 #   flat:   build/phase-<N>/{start,done}            (178 legacy tags)
 #   nested: build/phase-<P>/wave-<W>/{start,done}   (new builds)
@@ -57,8 +61,11 @@ FLAT_PHASE_TAG_PATTERN = re.compile(r"^build/phase-(\d+)/(start|done)$")
 NESTED_PHASE_TAG_PATTERN = re.compile(
     r"^build/phase-(\d+)/wave-(\d+)/(start|done)$"
 )
-# Match `feat(F017):` or `feat(F017-slug):` or `fix(F012):` at start of line.
-FEAT_COMMIT_PATTERN = re.compile(r"^(?:feat|fix)\((F\d+)[^)]*\)", re.MULTILINE)
+# Match `feat(F017):`, `feat(F017-slug):`, `fix(F012):`, or the dated form
+# `feat(F-2026-05-26-slug):` at start of line (#39).
+FEAT_COMMIT_PATTERN = re.compile(
+    r"^(?:feat|fix)\((" + _FEATURE_ID_RE + r")[^)]*\)", re.MULTILINE
+)
 # Parse `git show --shortstat` output:
 #   " 5 files changed, 100 insertions(+), 20 deletions(-)"
 #   " 1 file changed, 3 insertions(+)"        (no deletions case)

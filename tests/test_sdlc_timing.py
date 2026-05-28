@@ -385,3 +385,56 @@ class TestTagCategorizer:
         assert timing.categorize_tag_suffix("spec") == "spec"
         assert timing.categorize_tag_suffix("release") == "release"
         assert timing.categorize_tag_suffix("hotfix/H001") == "hotfix"
+
+
+class TestDatedFeatureIdParsing:
+    """#39: FEATURE_TAG_PATTERN and FEAT_COMMIT_PATTERN must capture BOTH the
+    legacy sequential `F<NNN>` form AND the current date-based
+    `F-YYYY-MM-DD-<slug>` form. Before the fix `F\\d+` silently dropped every
+    dated-ID feature from the timing report."""
+
+    def test_tag_pattern_matches_dated_feature_id(self) -> None:
+        timing = _load_timing_module()
+        m = timing.FEATURE_TAG_PATTERN.match(
+            "etc/feature/F-2026-05-27-reasoned-checkpoint-agent-hook/spec"
+        )
+        assert m is not None, "dated feature-id tag did not match FEATURE_TAG_PATTERN"
+        assert m.group(1) == "F-2026-05-27-reasoned-checkpoint-agent-hook"
+        assert m.group(2) == "spec"
+
+    def test_tag_pattern_still_matches_legacy_sequential_id(self) -> None:
+        timing = _load_timing_module()
+        m = timing.FEATURE_TAG_PATTERN.match("etc/feature/F042/build/phase-1/done")
+        assert m is not None
+        assert m.group(1) == "F042"
+        assert m.group(2) == "build/phase-1/done"
+
+    def test_commit_pattern_matches_dated_feature_id(self) -> None:
+        timing = _load_timing_module()
+        m = timing.FEAT_COMMIT_PATTERN.search(
+            "feat(F-2026-05-26-checkpoint-template-and-gate): add gate\n"
+        )
+        assert m is not None, "dated feature-id commit did not match FEAT_COMMIT_PATTERN"
+        assert m.group(1) == "F-2026-05-26-checkpoint-template-and-gate"
+
+    def test_commit_pattern_still_matches_legacy_sequential_id(self) -> None:
+        timing = _load_timing_module()
+        m = timing.FEAT_COMMIT_PATTERN.search("fix(F007): stub grep\n")
+        assert m is not None
+        assert m.group(1) == "F007"
+
+    def test_list_feature_tags_attributes_dated_feature(self, tmp_path: Path) -> None:
+        """End-to-end via a real repo: list_feature_tags must bucket a
+        dated-ID feature under its full id (not silently drop it)."""
+        timing = _load_timing_module()
+        repo = _init_repo(tmp_path)
+        _commit(repo, "feat(F-2026-05-27-foo): seed", "2026-05-27T10:00:00+00:00")
+        for suffix in ("spec", "release"):
+            subprocess.run(
+                ["git", "-C", str(repo), "tag", f"etc/feature/F-2026-05-27-foo/{suffix}"],
+                check=True, capture_output=True,
+            )
+        tags_by_feature = timing.list_feature_tags(repo)
+        assert "F-2026-05-27-foo" in tags_by_feature
+        suffixes = {suffix for suffix, _ in tags_by_feature["F-2026-05-27-foo"]}
+        assert suffixes == {"spec", "release"}

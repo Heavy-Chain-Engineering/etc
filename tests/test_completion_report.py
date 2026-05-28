@@ -289,6 +289,68 @@ def test_completion_report_creates_phase_directory(tmp_path: Path) -> None:
     )
 
 
+def test_completion_report_accepts_phase_zero(tmp_path: Path) -> None:
+    """#43: phase 0 is the flat-fallback phase introduced by the phase→wave
+    decoupling (#35). ``--phase 0`` MUST be accepted and write to
+    ``build/phase-0/``; only NEGATIVE phases are rejected.
+    """
+    feature_dir = _make_feature_dir(tmp_path, "F999-phase0")
+    inputs_dir = tmp_path / "inputs"
+    inputs_dir.mkdir()
+
+    ac_passed_file = _write_bullet_file(inputs_dir / "ac_passed.txt", ["AC-1 — ok"])
+    ac_failed_file = _write_bullet_file(inputs_dir / "ac_failed.txt", [])
+    deferred_file = _write_bullet_file(inputs_dir / "deferred.txt", [])
+    limitations_file = _write_bullet_file(inputs_dir / "limitations.txt", [])
+
+    completed = _invoke_write(
+        cwd=tmp_path,
+        feature_dir=feature_dir,
+        phase=0,
+        prd_title="Flat Fallback Phase",
+        prd_id="F999",
+        ac_passed_file=ac_passed_file,
+        ac_failed_file=ac_failed_file,
+        deferred_file=deferred_file,
+        limitations_file=limitations_file,
+    )
+
+    assert completed.returncode == 0, (
+        f"phase 0 was rejected: stderr={completed.stderr!r} stdout={completed.stdout!r}"
+    )
+    report_path = feature_dir / "build" / "phase-0" / "completion-report.md"
+    assert report_path.is_file(), (
+        f"helper did not write completion-report.md at {report_path}"
+    )
+
+
+def test_completion_report_rejects_negative_phase(tmp_path: Path) -> None:
+    """#43: the lower bound moves from ``< 1`` to ``< 0`` — negatives still fail."""
+    feature_dir = _make_feature_dir(tmp_path, "F999-neg")
+    inputs_dir = tmp_path / "inputs"
+    inputs_dir.mkdir()
+
+    files = [
+        _write_bullet_file(inputs_dir / "ac_passed.txt", []),
+        _write_bullet_file(inputs_dir / "ac_failed.txt", []),
+        _write_bullet_file(inputs_dir / "deferred.txt", []),
+        _write_bullet_file(inputs_dir / "limitations.txt", []),
+    ]
+    completed = _invoke_write(
+        cwd=tmp_path,
+        feature_dir=feature_dir,
+        phase=-1,
+        prd_title="Negative Phase",
+        prd_id="F999",
+        ac_passed_file=files[0],
+        ac_failed_file=files[1],
+        deferred_file=files[2],
+        limitations_file=files[3],
+    )
+    assert completed.returncode == 1, "negative phase should still be rejected"
+    assert "non-negative" in completed.stderr or "must be" in completed.stderr
+
+
 def test_completion_report_handles_empty_sections(tmp_path: Path) -> None:
     """AC8 / BR-002: empty AC/deferred/limitations input files emit the
     literal ``- (none)`` placeholder (not blank content).

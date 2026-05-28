@@ -636,9 +636,14 @@ def _scope_tasks_for_phase(
 # ── Commands ─────────────────────────────────────────────────────────────
 
 
-def cmd_list(root: Path, status_filter: str | None = None, tree: bool = False) -> None:
+def cmd_list(
+    root: Path,
+    status_filter: str | None = None,
+    tree: bool = False,
+    feature: str | None = None,
+) -> None:
     """List all tasks with id, title, status, agent."""
-    tasks = load_all_tasks(root)
+    tasks = load_all_tasks(root, feature=feature)
     if not tasks:
         print("No tasks found.")
         return
@@ -712,9 +717,9 @@ def cmd_next(root: Path) -> None:
     print("  No tasks ready. All completed or blocked on dependencies.")
 
 
-def cmd_status(root: Path) -> None:
+def cmd_status(root: Path, feature: str | None = None) -> None:
     """Summary counts by status."""
-    tasks = load_all_tasks(root)
+    tasks = load_all_tasks(root, feature=feature)
     counts: dict[str, int] = {}
     for t in tasks:
         s = t.get("status", "unknown")
@@ -813,9 +818,11 @@ def cmd_deps(root: Path, task_id: str) -> None:
     show_deps(task_id)
 
 
-def cmd_score(root: Path, task_id: str | None = None) -> None:
+def cmd_score(
+    root: Path, task_id: str | None = None, feature: str | None = None
+) -> None:
     """Score complexity for one or all tasks."""
-    tasks = load_all_tasks(root)
+    tasks = load_all_tasks(root, feature=feature)
 
     if task_id:
         tasks = [t for t in tasks if t.get("task_id") == task_id]
@@ -918,9 +925,9 @@ def cmd_phases(root: Path, feature: str | None = None) -> None:
                 print(f"      {task_id}")
 
 
-def cmd_ready_to_decompose(root: Path) -> None:
+def cmd_ready_to_decompose(root: Path, feature: str | None = None) -> None:
     """Show tasks that score above the decomposition threshold."""
-    tasks = load_all_tasks(root)
+    tasks = load_all_tasks(root, feature=feature)
     candidates = []
 
     for t in tasks:
@@ -1728,6 +1735,23 @@ def _dispatch_validate(root: Path) -> None:
         sys.exit(1)
 
 
+def _split_feature_flag(argv: list[str]) -> tuple[str | None, list[str]]:
+    """Pull an optional ``--feature NAME`` pair out of ``argv``.
+
+    Returns ``(feature_or_None, argv_without_the_pair)`` so read commands
+    (list / status / score / waves / phases / ready-to-decompose) can scope
+    to a single feature — otherwise cross-feature ``001``-ID collisions
+    pollute every view (#44). Exits 1 if ``--feature`` is given no value.
+    """
+    if "--feature" not in argv:
+        return None, argv
+    idx = argv.index("--feature")
+    if idx + 1 >= len(argv):
+        print("Error: --feature requires a value")
+        sys.exit(1)
+    return argv[idx + 1], argv[:idx] + argv[idx + 2 :]
+
+
 def main() -> None:
     root = Path.cwd()
 
@@ -1738,31 +1762,25 @@ def main() -> None:
     command = sys.argv[1]
 
     if command == "list":
+        feature, rest = _split_feature_flag(list(sys.argv[2:]))
         status_filter = None
-        tree_view = "--tree" in sys.argv
-        if "--status" in sys.argv:
-            idx = sys.argv.index("--status")
-            if idx + 1 < len(sys.argv):
-                status_filter = sys.argv[idx + 1]
-        cmd_list(root, status_filter, tree_view)
+        tree_view = "--tree" in rest
+        if "--status" in rest:
+            idx = rest.index("--status")
+            if idx + 1 < len(rest):
+                status_filter = rest[idx + 1]
+        cmd_list(root, status_filter, tree_view, feature=feature)
     elif command == "next":
         cmd_next(root)
     elif command == "status":
-        cmd_status(root)
+        feature, _ = _split_feature_flag(list(sys.argv[2:]))
+        cmd_status(root, feature=feature)
     elif command == "board":
         cmd_board(root)
     elif command == "set-status":
-        # Extract optional --feature NAME before positional parsing so the
-        # flag can appear anywhere in the argv tail.
-        argv_tail = list(sys.argv[2:])
-        feature: str | None = None
-        if "--feature" in argv_tail:
-            idx = argv_tail.index("--feature")
-            if idx + 1 >= len(argv_tail):
-                print("Error: --feature requires a value")
-                sys.exit(1)
-            feature = argv_tail[idx + 1]
-            del argv_tail[idx : idx + 2]
+        # --feature may appear anywhere in the tail; the helper strips it
+        # before positional TASK_ID STATUS parsing.
+        feature, argv_tail = _split_feature_flag(list(sys.argv[2:]))
         if len(argv_tail) < 2:
             print("Usage: tasks.py set-status [--feature NAME] TASK_ID STATUS")
             sys.exit(1)
@@ -1773,29 +1791,20 @@ def main() -> None:
             sys.exit(1)
         cmd_deps(root, sys.argv[2])
     elif command == "score":
-        task_id = sys.argv[2] if len(sys.argv) > 2 else None
-        cmd_score(root, task_id)
+        feature, rest = _split_feature_flag(list(sys.argv[2:]))
+        task_id = rest[0] if rest else None
+        cmd_score(root, task_id, feature=feature)
     elif command == "tree":
         cmd_tree(root)
     elif command == "waves":
-        # NOTE: feature was annotated in the set-status branch above; mypy
-        # treats main() as one scope and flags re-annotation. Drop the
-        # type annotation here — the value is reassigned, not redeclared.
-        feature = None
-        if "--feature" in sys.argv:
-            idx = sys.argv.index("--feature")
-            if idx + 1 < len(sys.argv):
-                feature = sys.argv[idx + 1]
+        feature, _ = _split_feature_flag(list(sys.argv[2:]))
         cmd_waves(root, feature=feature)
     elif command == "phases":
-        feature = None
-        if "--feature" in sys.argv:
-            idx = sys.argv.index("--feature")
-            if idx + 1 < len(sys.argv):
-                feature = sys.argv[idx + 1]
+        feature, _ = _split_feature_flag(list(sys.argv[2:]))
         cmd_phases(root, feature=feature)
     elif command == "ready-to-decompose":
-        cmd_ready_to_decompose(root)
+        feature, _ = _split_feature_flag(list(sys.argv[2:]))
+        cmd_ready_to_decompose(root, feature=feature)
     elif command == "create":
         cmd_create(root)
     elif command == "bulk-create":

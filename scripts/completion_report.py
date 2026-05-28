@@ -227,7 +227,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--phase",
         required=True,
         type=int,
-        help="Phase number (positive integer, e.g. 1, 2, 3).",
+        help="Phase number (non-negative integer; 0 is the flat-fallback phase).",
     )
     write_p.add_argument(
         "--prd-title",
@@ -286,11 +286,13 @@ def _cmd_write(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # 2. Phase number must be a positive integer. argparse already
-    #    enforces ``int``; we additionally reject zero / negative.
-    if args.phase < 1:
+    # 2. Phase number must be a non-negative integer. argparse already
+    #    enforces ``int``; we additionally reject negatives. Phase 0 is the
+    #    flat-fallback phase introduced by the phase→wave decoupling (#35),
+    #    so it MUST be accepted (#43).
+    if args.phase < 0:
         print(
-            f"error: --phase must be a positive integer (got {args.phase})",
+            f"error: --phase must be a non-negative integer (got {args.phase})",
             file=sys.stderr,
         )
         return 1

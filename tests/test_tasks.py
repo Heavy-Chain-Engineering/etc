@@ -392,6 +392,64 @@ class TestWaves:
         assert "New compiler test" in scoped.stdout
 
 
+class TestFeatureScopingAcrossReadCommands:
+    """#44: score / list / status / ready-to-decompose must accept --feature
+    and scope to that feature's tasks, exactly like waves/phases already do.
+    Without it, cross-feature `001`-ID collisions pollute every read command."""
+
+    def _two_features(self, tmp_path: Path) -> None:
+        a = tmp_path / ".etc_sdlc" / "features" / "alpha" / "tasks"
+        _create_task(a, "001", "Alpha one", "pending", files=["src/alpha.py"])
+        b = tmp_path / ".etc_sdlc" / "features" / "beta" / "tasks"
+        _create_task(b, "001", "Beta one", "pending", files=["src/beta.py"])
+        g = tmp_path / ".etc_sdlc" / "tasks"
+        _create_task(g, "001", "Legacy one", "completed", files=["src/legacy.py"])
+
+    def test_score_does_not_treat_feature_value_as_task_id(self, tmp_path: Path) -> None:
+        """The documented bug: `score --feature alpha` parsed `--feature` as a
+        positional task_id and errored 'task not found'."""
+        self._two_features(tmp_path)
+        result = _run_tasks(tmp_path, "score", "--feature", "alpha")
+        assert result.returncode == 0, f"stderr={result.stderr!r} stdout={result.stdout!r}"
+        assert "not found" not in result.stdout
+        assert "Alpha one" in result.stdout
+        assert "Beta one" not in result.stdout
+        assert "Legacy one" not in result.stdout
+
+    def test_list_scopes_to_feature(self, tmp_path: Path) -> None:
+        self._two_features(tmp_path)
+        result = _run_tasks(tmp_path, "list", "--feature", "alpha")
+        assert result.returncode == 0
+        assert "Alpha one" in result.stdout
+        assert "Beta one" not in result.stdout
+        assert "Legacy one" not in result.stdout
+
+    def test_status_scopes_to_feature(self, tmp_path: Path) -> None:
+        self._two_features(tmp_path)
+        result = _run_tasks(tmp_path, "status", "--feature", "alpha")
+        assert result.returncode == 0
+        # alpha has exactly 1 task (pending); the completed global task is excluded.
+        assert "1 total" in result.stdout
+        assert "pending: 1" in result.stdout
+        assert "completed" not in result.stdout
+
+    def test_ready_to_decompose_scopes_to_feature(self, tmp_path: Path) -> None:
+        # Big task lives only in beta; scoping to alpha must report none.
+        big = tmp_path / ".etc_sdlc" / "features" / "beta" / "tasks"
+        _create_task(
+            big, "001", "Huge beta", "pending",
+            criteria=["A", "B", "C", "D", "E", "F", "G"],
+            files=["src/a.py", "src/b.py", "src/c.py", "src/d.py"],
+        )
+        small = tmp_path / ".etc_sdlc" / "features" / "alpha" / "tasks"
+        _create_task(small, "001", "Small alpha", "pending", criteria=["Pass"], files=["src/x.py"])
+
+        scoped = _run_tasks(tmp_path, "ready-to-decompose", "--feature", "alpha")
+        assert scoped.returncode == 0
+        assert "No tasks exceed" in scoped.stdout
+        assert "Huge beta" not in scoped.stdout
+
+
 class TestReadyToDecompose:
     def test_should_flag_complex_tasks(self, tmp_path: Path) -> None:
         tasks_dir = tmp_path / ".etc_sdlc" / "tasks"
