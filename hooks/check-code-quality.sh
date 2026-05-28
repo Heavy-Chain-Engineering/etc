@@ -14,12 +14,16 @@
 INPUT=$(cat)
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // "."' 2>/dev/null || echo ".")
 
-# Locate dispatcher: prefer local repo, then global install
+# Locate dispatcher: prefer local repo, then sibling install dir.
+# The hook lives at <install_dir>/hooks/check-code-quality.sh, so
+# ../scripts/ is the installed scripts dir regardless of where the
+# operator installed (default ~/.claude, dual ~/.claude-etc, etc).
+_ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DISPATCH=""
 if [[ -f "${CWD}/scripts/dispatch_profile.sh" ]]; then
   DISPATCH="${CWD}/scripts/dispatch_profile.sh"
-elif [[ -f "${HOME}/.claude/scripts/dispatch_profile.sh" ]]; then
-  DISPATCH="${HOME}/.claude/scripts/dispatch_profile.sh"
+elif [[ -f "${_ETC_DIR}/scripts/dispatch_profile.sh" ]]; then
+  DISPATCH="${_ETC_DIR}/scripts/dispatch_profile.sh"
 fi
 
 # Graceful degrade: no dispatcher means we're outside an etc-installed

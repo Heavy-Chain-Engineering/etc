@@ -17,13 +17,16 @@
 
 INPUT=$(cat)
 
-# Locate the dispatch helper; prefer local checkout, fall back to ~/.claude/
+# Locate the dispatch helper; prefer local checkout, fall back to the
+# install-dir sibling (../scripts from this hook). Works under any
+# --target-dir (default ~/.claude, dual ~/.claude-etc, project-scope).
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."' 2>/dev/null || echo ".")
+_ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DISPATCH=""
 if [[ -f "${CWD}/scripts/dispatch_profile.sh" ]]; then
   DISPATCH="${CWD}/scripts/dispatch_profile.sh"
-elif [[ -f "${HOME}/.claude/scripts/dispatch_profile.sh" ]]; then
-  DISPATCH="${HOME}/.claude/scripts/dispatch_profile.sh"
+elif [[ -f "${_ETC_DIR}/scripts/dispatch_profile.sh" ]]; then
+  DISPATCH="${_ETC_DIR}/scripts/dispatch_profile.sh"
 fi
 
 # Graceful degrade: if no dispatch helper available, fall back to the

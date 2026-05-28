@@ -344,20 +344,29 @@ class TestHarnessFeedbackHookRemoved:
 
 
 class TestShouldReferenceCorrectScripts:
-    """Command hooks must reference scripts under ~/.claude/hooks/."""
+    """Command hooks must reference the install-time hooks-dir placeholder.
+
+    The compiler emits ``{{ETC_HOOKS_DIR}}/<script>.sh`` rather than a
+    hardcoded ``~/.claude/hooks/`` path; the installer substitutes the
+    placeholder for the resolved target hooks dir during merge (see
+    etc_installer.settings_merge.substitute_hooks_dir). This decouples
+    dist/ from any specific install target.
+    """
+
+    HOOKS_DIR_PLACEHOLDER = "{{ETC_HOOKS_DIR}}/"
 
     def test_should_reference_hook_path_when_command_type(
         self, hooks_json: dict[str, Any]
     ) -> None:
-        """All command-type hooks must reference ~/.claude/hooks/<script>.sh."""
+        """All command-type hooks must reference {{ETC_HOOKS_DIR}}/<script>.sh."""
         # Arrange
         all_command_hooks = _extract_all_hooks_by_type(hooks_json, "command")
 
         # Act & Assert
         for hook in all_command_hooks:
             command = hook.get("command", "")
-            assert command.startswith("~/.claude/hooks/"), (
-                f"Command hook does not reference ~/.claude/hooks/: {command!r}"
+            assert command.startswith(self.HOOKS_DIR_PLACEHOLDER), (
+                f"Command hook does not reference {self.HOOKS_DIR_PLACEHOLDER}: {command!r}"
             )
             assert command.endswith(".sh"), (
                 f"Command hook does not reference a .sh script: {command!r}"
@@ -374,7 +383,7 @@ class TestShouldReferenceCorrectScripts:
         commands = [h["command"] for h in command_hooks]
 
         # Assert
-        assert "~/.claude/hooks/check-test-exists.sh" in commands
+        assert f"{self.HOOKS_DIR_PLACEHOLDER}check-test-exists.sh" in commands
 
     def test_should_reference_check_phase_gate_when_edit_write_gate(
         self, hooks_json: dict[str, Any]
@@ -387,7 +396,7 @@ class TestShouldReferenceCorrectScripts:
         commands = [h["command"] for h in command_hooks]
 
         # Assert
-        assert "~/.claude/hooks/check-phase-gate.sh" in commands, (
+        assert f"{self.HOOKS_DIR_PLACEHOLDER}check-phase-gate.sh" in commands, (
             "PreToolUse Edit|Write hooks must include check-phase-gate.sh "
             f"for phase-aware file gating. Found commands: {commands}"
         )
@@ -403,7 +412,7 @@ class TestShouldReferenceCorrectScripts:
         commands = [h["command"] for h in command_hooks]
 
         # Assert
-        assert "~/.claude/hooks/block-dangerous-commands.sh" in commands
+        assert f"{self.HOOKS_DIR_PLACEHOLDER}block-dangerous-commands.sh" in commands
 
 
 # -- Test 5: Skill directory ---------------------------------------------------

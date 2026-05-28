@@ -1,5 +1,5 @@
 #!/bin/bash
-# ~/.claude/hooks/mark-dirty.sh
+# hooks/mark-dirty.sh
 #
 # PostToolUse hook for Edit|Write operations.
 # Touches a .tdd-dirty marker file when production source code is modified.

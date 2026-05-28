@@ -63,7 +63,10 @@ else
 
     GATE="${CWD}/standards/code/profiles/${PROFILE}/check-seam-evidence.sh"
     if [[ ! -f "$GATE" ]]; then
-      GATE="${HOME}/.claude/standards/code/profiles/${PROFILE}/check-seam-evidence.sh"
+      # Fall back to the install-dir sibling (../standards from this hook).
+      # Works under any target_dir, including dual ~/.claude-etc setups.
+      _ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+      GATE="${_ETC_DIR}/standards/code/profiles/${PROFILE}/check-seam-evidence.sh"
     fi
     if [[ ! -f "$GATE" ]]; then
       # Per AC-004: missing per-profile script is a no-op, not a failure

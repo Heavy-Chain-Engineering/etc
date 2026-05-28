@@ -38,12 +38,14 @@ if [[ "$FILE_PATH" == *..* ]]; then exit 0; fi
 if [[ ! -f "$FILE_PATH" ]]; then exit 0; fi
 
 # Locate the validator. Prefer the local checkout's scripts/ when available
-# (running inside etc itself); fall back to ~/.claude/scripts/.
+# (running inside etc itself); fall back to the install-dir sibling
+# (../scripts from this hook). Works under any --target-dir.
+_ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VALIDATOR=""
 if [[ -f "${CWD}/scripts/value_hypothesis.py" ]]; then
   VALIDATOR="${CWD}/scripts/value_hypothesis.py"
-elif [[ -f "${HOME}/.claude/scripts/value_hypothesis.py" ]]; then
-  VALIDATOR="${HOME}/.claude/scripts/value_hypothesis.py"
+elif [[ -f "${_ETC_DIR}/scripts/value_hypothesis.py" ]]; then
+  VALIDATOR="${_ETC_DIR}/scripts/value_hypothesis.py"
 fi
 
 # If no validator found, allow (graceful degrade; not every project has etc)

@@ -4,9 +4,11 @@
 
 Replaces the hand-authored prose in ``skills/build/SKILL.md`` Step 6a with a
 deterministic CLI that materializes the eight required sections from
-``standards/process/subagent-dispatch.md``. The conductor invokes::
+``standards/process/subagent-dispatch.md``. The conductor invokes it
+from the install dir (default ``~/.claude/scripts/``; resolves to
+``$CLAUDE_CONFIG_DIR/scripts/`` if set)::
 
-    python3 ~/.claude/scripts/dispatch_prompt.py assemble \\
+    python3 <install-dir>/scripts/dispatch_prompt.py assemble \\
         --feature-path <path> --task-id <id>
 
 and reads the assembled prompt from stdout. Token-budget warnings (per

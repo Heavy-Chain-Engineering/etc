@@ -21,10 +21,27 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# Token the compiler writes in place of an absolute hooks directory.
+# The installer substitutes it with the resolved target hooks dir at
+# install time, since the compiler can't know --target-dir.
+HOOKS_DIR_PLACEHOLDER = "{{ETC_HOOKS_DIR}}"
 
-def merge_hooks(target_settings: Path, template_path: Path) -> None:
+
+def substitute_hooks_dir(template_text: str, hooks_dir: Path) -> str:
+    """Replace ``{{ETC_HOOKS_DIR}}`` with the resolved hooks directory.
+
+    Operates on the raw template text rather than the parsed JSON so a
+    single pass handles every hook command without walking the nested
+    Claude Code hooks schema.
+    """
+    return template_text.replace(HOOKS_DIR_PLACEHOLDER, str(hooks_dir))
+
+
+def merge_hooks(
+    target_settings: Path, template_path: Path, hooks_dir: Path
+) -> None:
     """Replace the ``hooks`` top-level key in ``target_settings`` with the
-    template's ``hooks`` value.
+    template's ``hooks`` value, substituting ``{{ETC_HOOKS_DIR}}``.
 
     Reads ``target_settings`` and ``template_path`` as JSON, replaces the
     ``hooks`` key on the target dict with the template's ``hooks`` value,
@@ -46,13 +63,18 @@ def merge_hooks(target_settings: Path, template_path: Path) -> None:
         template_path: Path to the read-only template JSON containing the
             canonical ``hooks`` section (typically
             ``dist/settings-hooks.json``).
+        hooks_dir: Resolved install hooks directory (typically
+            ``target_dir / 'hooks'``). Substituted for
+            ``{{ETC_HOOKS_DIR}}`` in every hook command path.
 
     Raises:
         json.JSONDecodeError: when ``target_settings`` contains invalid
             JSON. The target file is left untouched.
     """
     target_text = target_settings.read_text(encoding="utf-8")
-    template_text = template_path.read_text(encoding="utf-8")
+    template_text = substitute_hooks_dir(
+        template_path.read_text(encoding="utf-8"), hooks_dir
+    )
 
     # Parse target FIRST so an invalid target raises before any write
     # touches the filesystem (Edge Case 5).

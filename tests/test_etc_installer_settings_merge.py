@@ -50,7 +50,7 @@ class TestMergeHooks:
         )
 
         # Act
-        settings_merge.merge_hooks(target, template)
+        settings_merge.merge_hooks(target, template, tmp_path / "hooks")
 
         # Assert
         merged = json.loads(target.read_text(encoding="utf-8"))
@@ -80,7 +80,7 @@ class TestMergeHooks:
         )
 
         # Act
-        settings_merge.merge_hooks(target, template)
+        settings_merge.merge_hooks(target, template, tmp_path / "hooks")
 
         # Assert — every non-hooks key untouched
         merged = json.loads(target.read_text(encoding="utf-8"))
@@ -100,7 +100,7 @@ class TestMergeHooks:
         )
 
         # Act
-        settings_merge.merge_hooks(target, template)
+        settings_merge.merge_hooks(target, template, tmp_path / "hooks")
 
         # Assert — indent=2 (so contains "\n  ") and trailing newline
         body = target.read_text(encoding="utf-8")
@@ -120,7 +120,7 @@ class TestMergeHooks:
 
         # Act / Assert — JSONDecodeError surfaces; file content unchanged
         with pytest.raises(json.JSONDecodeError):
-            settings_merge.merge_hooks(target, template)
+            settings_merge.merge_hooks(target, template, tmp_path / "hooks")
         after = target.read_text(encoding="utf-8")
         assert after == before, (
             "merge_hooks MUST NOT overwrite a corrupt target settings.json "
@@ -143,9 +143,85 @@ class TestMergeHooks:
         )
 
         # Act
-        settings_merge.merge_hooks(target, template)
+        settings_merge.merge_hooks(target, template, tmp_path / "hooks")
 
         # Assert
         merged = json.loads(target.read_text(encoding="utf-8"))
         assert merged["hooks"] == {"PreToolUse": [{"new": True}]}
         assert merged["permissions"] == {"defaultMode": "ask"}
+
+    def test_should_substitute_hooks_dir_placeholder_when_merging(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange — template uses the {{ETC_HOOKS_DIR}} placeholder for
+        # hook command paths (per compile-sdlc.py). merge_hooks must
+        # substitute it with the resolved hooks_dir.
+        target = tmp_path / "settings.json"
+        template = tmp_path / "settings-hooks.json"
+        hooks_dir = tmp_path / "etc-install" / "hooks"
+        target.write_text("{}", encoding="utf-8")
+        template.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "{{ETC_HOOKS_DIR}}/check-test-exists.sh",
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        # Act
+        settings_merge.merge_hooks(target, template, hooks_dir)
+
+        # Assert — placeholder gone, resolved path present
+        merged = json.loads(target.read_text(encoding="utf-8"))
+        command = merged["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert "{{ETC_HOOKS_DIR}}" not in command
+        assert command == f"{hooks_dir}/check-test-exists.sh"
+
+
+class TestSubstituteHooksDir:
+    """substitute_hooks_dir(template_text, hooks_dir) -> str."""
+
+    def test_should_replace_every_placeholder_occurrence(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange
+        hooks_dir = tmp_path / "hooks"
+        template_text = (
+            '{"a": "{{ETC_HOOKS_DIR}}/one.sh", '
+            '"b": "{{ETC_HOOKS_DIR}}/two.sh"}'
+        )
+
+        # Act
+        result = settings_merge.substitute_hooks_dir(template_text, hooks_dir)
+
+        # Assert
+        assert "{{ETC_HOOKS_DIR}}" not in result
+        assert f'"{hooks_dir}/one.sh"' in result
+        assert f'"{hooks_dir}/two.sh"' in result
+
+    def test_should_passthrough_text_with_no_placeholder(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange
+        template_text = '{"unrelated": "value"}'
+
+        # Act
+        result = settings_merge.substitute_hooks_dir(
+            template_text, tmp_path / "hooks"
+        )
+
+        # Assert
+        assert result == template_text

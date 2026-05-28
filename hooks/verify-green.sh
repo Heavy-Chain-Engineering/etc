@@ -48,7 +48,10 @@ while IFS= read -r PROFILE; do
 
   GATE="${CWD}/standards/code/profiles/${PROFILE}/verify-green.sh"
   if [ ! -f "$GATE" ]; then
-    GATE="${HOME}/.claude/standards/code/profiles/${PROFILE}/verify-green.sh"
+    # Fall back to the install-dir sibling. Works under any --target-dir
+    # (default ~/.claude, dual ~/.claude-etc, project-scope).
+    _ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    GATE="${_ETC_DIR}/standards/code/profiles/${PROFILE}/verify-green.sh"
   fi
   if [ -f "$GATE" ]; then
     echo "[verify-green] Running ${PROFILE} profile..." >&2

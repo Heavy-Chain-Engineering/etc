@@ -39,12 +39,18 @@ fi
 # Resolve repo root from CWD
 REPO_ROOT="$CWD"
 
-# Locate the profile loader CLI; prefer local checkout, fall back to ~/.claude/
+# Install-dir locator. This script lives at <install_dir>/scripts/, so
+# ../scripts is itself and ../standards is the install-time sibling
+# regardless of --target-dir.
+_ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Locate the profile loader CLI; prefer local checkout, fall back to the
+# install-dir sibling. Works under any --target-dir.
 LOADER=""
 if [[ -f "${REPO_ROOT}/scripts/profile_loader.py" ]]; then
   LOADER="${REPO_ROOT}/scripts/profile_loader.py"
-elif [[ -f "${HOME}/.claude/scripts/profile_loader.py" ]]; then
-  LOADER="${HOME}/.claude/scripts/profile_loader.py"
+elif [[ -f "${_ETC_DIR}/scripts/profile_loader.py" ]]; then
+  LOADER="${_ETC_DIR}/scripts/profile_loader.py"
 fi
 
 # Graceful degrade: if no loader available, allow the operation (running
@@ -64,15 +70,14 @@ if [[ -z "$PROFILE" ]]; then
   exit 0
 fi
 
-# Locate the per-profile gate script — try repo-local first, then global
-# install. For operators running etc from their own project, the gate
-# scripts live under ~/.claude/standards/code/profiles/<profile>/.
+# Locate the per-profile gate script — try repo-local first, then the
+# install-dir sibling (../standards from this dispatcher).
 GATE_SCRIPT="${REPO_ROOT}/standards/code/profiles/${PROFILE}/${GATE_NAME}.sh"
 if [[ ! -f "$GATE_SCRIPT" ]]; then
-  GATE_SCRIPT="${HOME}/.claude/standards/code/profiles/${PROFILE}/${GATE_NAME}.sh"
+  GATE_SCRIPT="${_ETC_DIR}/standards/code/profiles/${PROFILE}/${GATE_NAME}.sh"
 fi
 if [[ ! -f "$GATE_SCRIPT" ]]; then
-  echo "[${GATE_NAME}] WARN: profile '${PROFILE}' does not implement gate '${GATE_NAME}' (looked under ${REPO_ROOT}/standards/code/profiles/${PROFILE}/ and ~/.claude/standards/code/profiles/${PROFILE}/)" >&2
+  echo "[${GATE_NAME}] WARN: profile '${PROFILE}' does not implement gate '${GATE_NAME}' (looked under ${REPO_ROOT}/standards/code/profiles/${PROFILE}/ and ${_ETC_DIR}/standards/code/profiles/${PROFILE}/)" >&2
   exit 0
 fi
 

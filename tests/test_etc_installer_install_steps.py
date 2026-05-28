@@ -459,6 +459,53 @@ class TestStepMergeSettings:
         assert "PreToolUse" in body["hooks"], "hooks section replaced"
         assert "OldEvent" not in body["hooks"], "old hooks dropped"
 
+    def test_should_substitute_hooks_dir_placeholder_into_target_dir(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        # Arrange — compiler emits {{ETC_HOOKS_DIR}} placeholder; step 7
+        # must substitute it with target_dir/hooks so hook command paths
+        # match the operator's actual install location.
+        install_steps.step_directory_structure(install_context)
+        template = install_context.dist_dir / "settings-hooks.json"
+        template.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "{{ETC_HOOKS_DIR}}/check-test-exists.sh",
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = install_steps.step_merge_settings(install_context)
+
+        assert result.status == "ok"
+        body = json.loads(
+            (install_context.target_dir / "settings.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        command = body["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        expected = (
+            f"{install_context.target_dir / 'hooks'}/check-test-exists.sh"
+        )
+        assert command == expected, (
+            "step_merge_settings must substitute {{ETC_HOOKS_DIR}} for "
+            f"target_dir/hooks; got {command!r}"
+        )
+
 
 class TestStepInstallSdlc:
     """Step 8: sdlc/tracker.py + dod-templates.json with +x on tracker."""

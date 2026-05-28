@@ -69,7 +69,12 @@ def compile_gates(spec: dict, dist_dir: Path, repo_root: Path) -> dict:
             else:
                 print(f"WARNING: Script not found: {src_script}", file=sys.stderr)
 
-            handler["command"] = f"~/.claude/hooks/{script_name}"
+            # Placeholder substituted at install time (see
+            # etc_installer.settings_merge.substitute_hooks_dir). The
+            # compiler does NOT know the install target — the installer
+            # resolves --target-dir / CLAUDE_CONFIG_DIR and rewrites the
+            # placeholder accordingly.
+            handler["command"] = f"{{{{ETC_HOOKS_DIR}}}}/{script_name}"
             timeout = gate.get("timeout")
             if timeout:
                 handler["timeout"] = timeout * 1000  # Convert seconds to milliseconds

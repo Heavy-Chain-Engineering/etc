@@ -9,7 +9,7 @@
 # Thin wrapper: passes the original hook JSON through to
 # scripts/precompact_checkpoint.py, which does ALL JSON parsing and the
 # actual write/append. The wrapper resolves the script (repo-local first,
-# then global ~/.claude install) and ALWAYS exits 0 — even if the python
+# then the install-dir sibling) and ALWAYS exits 0 — even if the python
 # script is missing or errors (fail-open; never block compaction).
 #
 # No jq dependency (Windows-portability lesson: auto-checkpoint.sh's hard
@@ -26,12 +26,14 @@ INPUT=$(cat)
 # Derive cwd from the hook JSON without jq (pure python fallback).
 CWD=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("cwd","."))' 2>/dev/null || echo ".")
 
-# Locate the checkpoint writer: prefer repo-local, then global install.
+# Locate the checkpoint writer: prefer repo-local, then install-dir
+# sibling (../scripts from this hook). Works under any --target-dir.
+_ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT=""
 if [[ -f "${CWD}/scripts/precompact_checkpoint.py" ]]; then
   SCRIPT="${CWD}/scripts/precompact_checkpoint.py"
-elif [[ -f "${HOME}/.claude/scripts/precompact_checkpoint.py" ]]; then
-  SCRIPT="${HOME}/.claude/scripts/precompact_checkpoint.py"
+elif [[ -f "${_ETC_DIR}/scripts/precompact_checkpoint.py" ]]; then
+  SCRIPT="${_ETC_DIR}/scripts/precompact_checkpoint.py"
 fi
 
 # Fail-open: if the script can't be resolved, do nothing and let

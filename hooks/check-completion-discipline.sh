@@ -31,6 +31,11 @@
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 
+# Install-dir locator. The hook lives at <install_dir>/hooks/foo.sh, so
+# ../scripts and ../standards are the install siblings regardless of
+# target_dir (~/.claude default, ~/.claude-etc dual setup, etc.).
+_ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # If we can't determine cwd, allow — we can't evaluate state without it.
 if [[ -z "$CWD" || "$CWD" == "." ]]; then
   exit 0
@@ -303,7 +308,7 @@ else
 
     _GATE="${CWD}/standards/code/profiles/${_PROFILE}/${_PROFILE_HOOK_NAME}.sh"
     if [[ ! -f "$_GATE" ]]; then
-      _GATE="${HOME}/.claude/standards/code/profiles/${_PROFILE}/${_PROFILE_HOOK_NAME}.sh"
+      _GATE="${_ETC_DIR}/standards/code/profiles/${_PROFILE}/${_PROFILE_HOOK_NAME}.sh"
     fi
 
     if [[ -f "$_GATE" ]]; then
@@ -316,7 +321,7 @@ else
         exit $_GATE_EXIT
       fi
     else
-      echo "[${_PROFILE_HOOK_NAME}] WARN: profile '${_PROFILE}' has no ${_PROFILE_HOOK_NAME}.sh (looked under ${CWD}/standards/code/profiles/${_PROFILE}/ and ~/.claude/standards/code/profiles/${_PROFILE}/)" >&2
+      echo "[${_PROFILE_HOOK_NAME}] WARN: profile '${_PROFILE}' has no ${_PROFILE_HOOK_NAME}.sh (looked under ${CWD}/standards/code/profiles/${_PROFILE}/ and ${_ETC_DIR}/standards/code/profiles/${_PROFILE}/)" >&2
     fi
   done < "$_LOCK"
 
@@ -464,16 +469,16 @@ echo "Valid paths out (pick one):" >&2
 echo "" >&2
 echo "  1. Complete the work." >&2
 echo "     - Update task status to 'completed' via:" >&2
-echo "         python3 ~/.claude/scripts/tasks.py set-status <id> completed" >&2
+echo "         python3 ${_ETC_DIR}/scripts/tasks.py set-status <id> completed" >&2
 echo "" >&2
 echo "  2. Formally escalate." >&2
 echo "     - Produce an ## ESCALATION block per" >&2
 echo "       standards/process/completion-discipline.md rule 2" >&2
 echo "     - Mark affected task(s) escalated:" >&2
-echo "         python3 ~/.claude/scripts/tasks.py set-status <id> escalated" >&2
+echo "         python3 ${_ETC_DIR}/scripts/tasks.py set-status <id> escalated" >&2
 echo "" >&2
 echo "  3. Formally block on an external dependency." >&2
-echo "     - python3 ~/.claude/scripts/tasks.py set-status <id> blocked" >&2
+echo "     - python3 ${_ETC_DIR}/scripts/tasks.py set-status <id> blocked" >&2
 echo "" >&2
 echo "You do not quit conversationally. See" >&2
 echo "standards/process/completion-discipline.md for the full standard." >&2

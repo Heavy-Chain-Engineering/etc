@@ -248,14 +248,22 @@ def step_merge_settings(ctx: InstallContext) -> StepResult:
             status="error", message="dist/settings-hooks.json missing"
         )
 
+    hooks_dir = ctx.target_dir / "hooks"
+
     if not settings.is_file():
-        shutil.copy2(template, settings)
+        # Same placeholder substitution as merge_hooks, applied here for
+        # the "no existing settings.json" branch so the operator gets
+        # absolute hook paths regardless of install target.
+        rendered = settings_merge.substitute_hooks_dir(
+            template.read_text(encoding="utf-8"), hooks_dir
+        )
+        settings.write_text(rendered, encoding="utf-8")
         return StepResult(
             status="ok", message="Created settings.json with hook wiring"
         )
 
     try:
-        settings_merge.merge_hooks(settings, template)
+        settings_merge.merge_hooks(settings, template, hooks_dir)
     except json.JSONDecodeError:
         # Edge Case 5 (spec.md): invalid existing settings.json -> warn,
         # continue. Final exit code is non-zero so the operator notices.
