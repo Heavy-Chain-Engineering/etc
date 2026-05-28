@@ -11,18 +11,15 @@
 
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+# Normalize Windows backslashes; no-op on POSIX paths.
+CWD="${CWD//\\//}"
 
 echo "## Post-Compaction Context Recovery"
 echo ""
 
-# Current SDLC phase
+# Current SDLC phase via jq (avoids the Windows python3 PATH question).
 if [[ -f "${CWD}/.sdlc/state.json" ]]; then
-  PHASE=$(python3 -c "
-import json
-with open('${CWD}/.sdlc/state.json') as f:
-    state = json.load(f)
-print(state.get('current_phase', 'unknown'))
-" 2>/dev/null)
+  PHASE=$(jq -r '.current_phase // "unknown"' "${CWD}/.sdlc/state.json" 2>/dev/null)
   echo "**Current SDLC Phase:** ${PHASE:-unknown}"
   echo ""
 fi

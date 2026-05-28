@@ -21,6 +21,9 @@ INPUT=$(cat)
 # install-dir sibling (../scripts from this hook). Works under any
 # --target-dir (default ~/.claude, dual ~/.claude-etc, project-scope).
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."' 2>/dev/null || echo ".")
+# Normalize Windows backslashes so dispatch-helper path probes and prefix
+# stripping work the same as on macOS/Linux. No-op on POSIX paths.
+CWD="${CWD//\\//}"
 _ETC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DISPATCH=""
 if [[ -f "${CWD}/scripts/dispatch_profile.sh" ]]; then
@@ -34,8 +37,9 @@ fi
 # still get TDD enforcement on .py files.
 if [[ -z "$DISPATCH" ]]; then
   FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+  FILE_PATH="${FILE_PATH//\\//}"
   REL_PATH="$FILE_PATH"
-  if [[ "$FILE_PATH" == /* ]]; then
+  if [[ "$FILE_PATH" == /* ]] || [[ "$FILE_PATH" =~ ^[A-Za-z]:/ ]]; then
     REL_PATH="${FILE_PATH#$CWD/}"
   fi
   if [[ "$REL_PATH" != src/* ]]; then exit 0; fi

@@ -3,8 +3,29 @@
 
 import json
 import os
+import platform
+import shutil
 import subprocess
 import textwrap
+from pathlib import Path
+
+
+def _find_bash() -> str:
+    """Return path to a working bash executable, preferring Git Bash on Windows.
+
+    On Windows, C:\\Windows\\System32\\bash.exe is the WSL relay and appears
+    earlier in PATH than Git Bash. Falls back to ``shutil.which("bash")`` if
+    Git Bash isn't at its default install location. No-op on macOS/Linux.
+    """
+    if platform.system() == "Windows":
+        git_bash = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
+        if git_bash.is_file():
+            return str(git_bash)
+    found = shutil.which("bash")
+    if found:
+        return found
+    raise FileNotFoundError("No bash executable found on PATH")
+
 
 HOOK_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -21,7 +42,7 @@ def run_hook(file_path: str, cwd: str, tool: str = "Edit") -> subprocess.Complet
         "cwd": cwd,
     })
     return subprocess.run(
-        ["bash", HOOK_PATH],
+        [_find_bash(), HOOK_PATH],
         input=hook_input,
         capture_output=True,
         text=True,
@@ -219,7 +240,7 @@ class TestInvariantParsing:
         # and verifying the right invariants are checked.
         # Instead, let's test parsing directly with a small bash snippet.
         parse_result = subprocess.run(
-            ["bash", "-c", textwrap.dedent(f"""\
+            [_find_bash(), "-c", textwrap.dedent(f"""\
                 parse_invariants() {{
                     local file="$1"
                     local current_id=""
@@ -264,7 +285,7 @@ class TestInvariantParsing:
         """)
 
         parse_result = subprocess.run(
-            ["bash", "-c", textwrap.dedent(f"""\
+            [_find_bash(), "-c", textwrap.dedent(f"""\
                 parse_invariants() {{
                     local file="$1"
                     local current_id=""

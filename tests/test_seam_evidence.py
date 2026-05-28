@@ -8,8 +8,28 @@ L1/L2/L3 for each declared seam, handles progressive adoption (no SEAMS.md
 
 import json
 import os
+import platform
+import shutil
 import subprocess
 import textwrap
+from pathlib import Path
+
+
+def _find_bash() -> str:
+    """Prefer Git Bash on Windows; ``shutil.which("bash")`` elsewhere.
+
+    On Windows, C:\\Windows\\System32\\bash.exe is the WSL relay and exits
+    1 when WSL is unconfigured. Git Bash lives at the default install path.
+    """
+    if platform.system() == "Windows":
+        git_bash = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
+        if git_bash.is_file():
+            return str(git_bash)
+    found = shutil.which("bash")
+    if found:
+        return found
+    raise FileNotFoundError("No bash executable found on PATH")
+
 
 HOOK_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -28,7 +48,7 @@ def run_seam_hook(cwd: str) -> subprocess.CompletedProcess:
         }
     )
     return subprocess.run(
-        ["bash", HOOK_PATH],
+        [_find_bash(), HOOK_PATH],
         input=hook_input,
         capture_output=True,
         text=True,
@@ -72,7 +92,7 @@ class TestNoSeamsFile:
             {"tool_name": "Task", "tool_input": {}, "cwd": "."}
         )
         result = subprocess.run(
-            ["bash", HOOK_PATH],
+            [_find_bash(), HOOK_PATH],
             input=hook_input,
             capture_output=True,
             text=True,
@@ -86,7 +106,7 @@ class TestNoSeamsFile:
             {"tool_name": "Task", "tool_input": {}, "cwd": ""}
         )
         result = subprocess.run(
-            ["bash", HOOK_PATH],
+            [_find_bash(), HOOK_PATH],
             input=hook_input,
             capture_output=True,
             text=True,

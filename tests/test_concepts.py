@@ -8,8 +8,29 @@ without interfering with INV-NNN entries (handled by check-invariants.sh).
 
 import json
 import os
+import platform
+import shutil
 import subprocess
 import textwrap
+from pathlib import Path
+
+
+def _find_bash() -> str:
+    """Return path to a working bash executable, preferring Git Bash on Windows.
+
+    On Windows, C:\\Windows\\System32\\bash.exe is the WSL relay and appears
+    earlier in PATH than Git Bash. Falls back to ``shutil.which("bash")``.
+    No-op on macOS/Linux.
+    """
+    if platform.system() == "Windows":
+        git_bash = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
+        if git_bash.is_file():
+            return str(git_bash)
+    found = shutil.which("bash")
+    if found:
+        return found
+    raise FileNotFoundError("No bash executable found on PATH")
+
 
 HOOK_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -36,7 +57,7 @@ def run_concept_hook(
         }
     )
     return subprocess.run(
-        ["bash", HOOK_PATH],
+        [_find_bash(), HOOK_PATH],
         input=hook_input,
         capture_output=True,
         text=True,
@@ -56,7 +77,7 @@ def run_invariants_hook(
         }
     )
     return subprocess.run(
-        ["bash", INV_HOOK_PATH],
+        [_find_bash(), INV_HOOK_PATH],
         input=hook_input,
         capture_output=True,
         text=True,
@@ -425,7 +446,7 @@ class TestConceptParsing:
 
         parse_result = subprocess.run(
             [
-                "bash",
+                _find_bash(),
                 "-c",
                 textwrap.dedent(
                     f"""\
@@ -482,7 +503,7 @@ class TestConceptParsing:
 
         parse_result = subprocess.run(
             [
-                "bash",
+                _find_bash(),
                 "-c",
                 textwrap.dedent(
                     f"""\
@@ -631,7 +652,7 @@ class TestResilience:
             }
         )
         result = subprocess.run(
-            ["bash", HOOK_PATH],
+            [_find_bash(), HOOK_PATH],
             input=hook_input,
             capture_output=True,
             text=True,

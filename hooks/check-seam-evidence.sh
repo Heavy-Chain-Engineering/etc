@@ -20,6 +20,12 @@
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 
+# Normalize Windows backslashes to forward slashes, then resolve to a
+# canonical path so realpath comparisons inside the verify loop don't false-
+# positive on backslash vs `/c/...` mismatches. No-op on POSIX paths.
+CWD="${CWD//\\//}"
+CWD=$(realpath "$CWD" 2>/dev/null || echo "$CWD")
+
 # ---------------------------------------------------------------------------
 # F022: Profile-dispatch front-end (mirrors verify-green.sh, F020-ADR-005)
 # ---------------------------------------------------------------------------

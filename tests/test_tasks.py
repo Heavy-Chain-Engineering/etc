@@ -4,17 +4,25 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 TASKS_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "tasks.py"
 
 
 def _run_tasks(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    """Run tasks.py with the given args in tmp_path as cwd."""
+    """Run tasks.py with the given args in tmp_path as cwd.
+
+    Uses ``sys.executable`` rather than the bare name ``python3`` because on
+    Windows ``python3`` resolves to the Microsoft Store stub (exits 9009).
+    ``encoding="utf-8"`` is required because tasks.py prints Unicode
+    box-drawing characters and the Windows default is cp1252.
+    """
     return subprocess.run(
-        ["python3", str(TASKS_SCRIPT), *args],
+        [sys.executable, str(TASKS_SCRIPT), *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         cwd=str(tmp_path),
         timeout=10,
     )

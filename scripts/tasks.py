@@ -37,6 +37,12 @@ from pathlib import Path
 
 import yaml
 
+# Windows ships cp1252 as the default stdio encoding; force utf-8 so prints of
+# box-drawing chars and other non-ASCII content don't crash on Windows. No-op
+# on macOS/Linux (which default to utf-8 already).
+sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+
 # ── Shared constants ────────────────────────────────────────────────────
 
 VALID_STATUSES = {  # cq-exempt: CQ-001

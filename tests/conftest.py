@@ -7,6 +7,9 @@ project structures, task files, transcript files, and invariant files.
 from __future__ import annotations
 
 import json
+import os
+import platform
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +20,48 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_DIR = REPO_ROOT / "hooks"
 HOOK_TIMEOUT_SECONDS = 10
+
+
+@pytest.fixture(autouse=True, scope="session")
+def windows_git_bash_path() -> Any:
+    """Prepend Git Bash's usr/bin to PATH so hook scripts find cat, grep, jq.
+
+    On Windows, when Python spawns bash and bash spawns Unix utilities, the
+    child process inherits the Windows PATH. If Git was installed without
+    "Add Unix tools to PATH", commands like cat/grep/awk/jq are missing
+    inside hook scripts, causing silent failures (exit 0 instead of the
+    expected blocking exit 2). The fixture is a no-op on macOS/Linux.
+    """
+    if platform.system() != "Windows":
+        yield
+        return
+    git_bin = Path(r"C:\Program Files\Git\usr\bin")
+    if not git_bin.is_dir():
+        yield
+        return
+    old_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = str(git_bin) + os.pathsep + old_path
+    yield
+    os.environ["PATH"] = old_path
+
+
+def _find_bash() -> str:
+    """Return path to a working bash executable, preferring Git Bash on Windows.
+
+    On Windows, C:\\Windows\\System32\\bash.exe is the WSL relay (exits 1 when
+    WSL is unconfigured) and appears earlier in PATH than Git Bash. The
+    helper hard-codes the Git for Windows default install path; if not
+    present, falls back to shutil.which("bash"). On macOS/Linux always uses
+    shutil.which("bash").
+    """
+    if platform.system() == "Windows":
+        git_bash = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
+        if git_bash.is_file():
+            return str(git_bash)
+    found = shutil.which("bash")
+    if found:
+        return found
+    raise FileNotFoundError("No bash executable found on PATH")
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +93,7 @@ def _execute_hook(hook_name: str, hook_input: dict[str, Any]) -> HookResult:
         raise FileNotFoundError(msg)
 
     completed = subprocess.run(
-        ["bash", str(hook_path)],
+        [_find_bash(), str(hook_path)],
         input=json.dumps(hook_input),
         capture_output=True,
         text=True,

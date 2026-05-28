@@ -9,9 +9,24 @@ Covers:
 
 from __future__ import annotations
 
+import platform
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+
+def _find_bash() -> str:
+    """Prefer Git Bash on Windows; ``shutil.which("bash")`` elsewhere."""
+    if platform.system() == "Windows":
+        git_bash = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
+        if git_bash.is_file():
+            return str(git_bash)
+    found = shutil.which("bash")
+    if found:
+        return found
+    raise FileNotFoundError("No bash executable found on PATH")
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HELPERS_DIR = REPO_ROOT / "hooks" / "helpers"
@@ -288,7 +303,7 @@ class TestCheckCodeQualityHook:
 
         hook_path = REPO_ROOT / "hooks" / "check-code-quality.sh"
         return subprocess.run(
-            ["bash", str(hook_path)],
+            [_find_bash(), str(hook_path)],
             input=json.dumps(hook_input),
             capture_output=True,
             text=True,
@@ -383,7 +398,7 @@ class TestEnforcementAnnotations:
         # must exist and cite at least one Python tool by name.
         bindings = self.STANDARDS_CODE_DIR / "profiles" / "python" / "clean-code-bindings.md"
         assert bindings.is_file()
-        content = bindings.read_text()
+        content = bindings.read_text(encoding="utf-8")
         assert "ruff" in content or "mypy" in content
 
     def test_should_have_python_bindings_for_error_handling(self) -> None:
@@ -391,27 +406,27 @@ class TestEnforcementAnnotations:
         # standards into per-profile bindings.
         bindings = self.STANDARDS_CODE_DIR / "profiles" / "python" / "error-handling-bindings.md"
         assert bindings.is_file()
-        content = bindings.read_text()
+        content = bindings.read_text(encoding="utf-8")
         assert "ruff" in content or "mypy" in content
 
     def test_should_have_enforce_annotation_in_python_conventions(self) -> None:
-        content = (self.STANDARDS_CODE_DIR / "python-conventions.md").read_text()
+        content = (self.STANDARDS_CODE_DIR / "python-conventions.md").read_text(encoding="utf-8")
         assert "**Enforce:**" in content
 
     def test_should_have_enforce_annotation_in_typing_standards(self) -> None:
-        content = (self.STANDARDS_CODE_DIR / "typing-standards.md").read_text()
+        content = (self.STANDARDS_CODE_DIR / "typing-standards.md").read_text(encoding="utf-8")
         assert "**Enforce:**" in content
 
     def test_should_have_enforce_annotation_in_testing_standards(self) -> None:
-        content = (self.STANDARDS_TESTING_DIR / "testing-standards.md").read_text()
+        content = (self.STANDARDS_TESTING_DIR / "testing-standards.md").read_text(encoding="utf-8")
         assert "**Enforce:**" in content
 
     def test_should_have_enforce_annotation_in_test_naming(self) -> None:
-        content = (self.STANDARDS_TESTING_DIR / "test-naming.md").read_text()
+        content = (self.STANDARDS_TESTING_DIR / "test-naming.md").read_text(encoding="utf-8")
         assert "**Enforce:**" in content
 
     def test_should_have_enforce_annotation_in_llm_evaluation(self) -> None:
-        content = (self.STANDARDS_TESTING_DIR / "llm-evaluation.md").read_text()
+        content = (self.STANDARDS_TESTING_DIR / "llm-evaluation.md").read_text(encoding="utf-8")
         assert "**Enforce:**" in content
 
     def test_should_exist_ruff_reference_toml(self) -> None:
@@ -431,7 +446,7 @@ class TestEnforcementAnnotations:
 
     def test_should_include_required_ruff_rule_sets(self) -> None:
         """Verify ruff-reference.toml contains all required rule set prefixes."""
-        content = (self.STANDARDS_CODE_DIR / "ruff-reference.toml").read_text()
+        content = (self.STANDARDS_CODE_DIR / "ruff-reference.toml").read_text(encoding="utf-8")
         required_sets = [
             '"E"', '"F"', '"I"', '"W"', '"N"', '"UP"', '"B"',
             '"C90"', '"ERA"', '"SIM"', '"T20"', '"PLR"', '"ANN"',
@@ -441,15 +456,15 @@ class TestEnforcementAnnotations:
             assert rule_set in content, f"Missing rule set {rule_set} in ruff-reference.toml"
 
     def test_should_set_mccabe_max_complexity(self) -> None:
-        content = (self.STANDARDS_CODE_DIR / "ruff-reference.toml").read_text()
+        content = (self.STANDARDS_CODE_DIR / "ruff-reference.toml").read_text(encoding="utf-8")
         assert "max-complexity = 10" in content
 
     def test_should_set_pylint_max_args(self) -> None:
-        content = (self.STANDARDS_CODE_DIR / "ruff-reference.toml").read_text()
+        content = (self.STANDARDS_CODE_DIR / "ruff-reference.toml").read_text(encoding="utf-8")
         assert "max-args = 5" in content
 
     def test_should_have_per_file_ignores_for_tests(self) -> None:
-        content = (self.STANDARDS_CODE_DIR / "ruff-reference.toml").read_text()
+        content = (self.STANDARDS_CODE_DIR / "ruff-reference.toml").read_text(encoding="utf-8")
         assert '"tests/**/*.py"' in content
         assert '"ANN"' in content
         assert '"PLR0913"' in content

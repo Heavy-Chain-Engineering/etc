@@ -30,6 +30,17 @@
 
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+# Normalize Windows backslashes; no-op on POSIX paths.
+CWD="${CWD//\\//}"
+
+# Detect the Python interpreter; on Windows bare `python3` may resolve to
+# the Microsoft Store stub. Used by the pytest/mypy invocations below.
+PYTHON=""
+python3 -c "" 2>/dev/null && PYTHON=python3
+if [[ -z "$PYTHON" ]]; then
+  python -c "" 2>/dev/null && PYTHON=python
+fi
+[[ -z "$PYTHON" ]] && PYTHON=python3  # last-resort label; downstream cmds gracefully degrade
 
 # Install-dir locator. The hook lives at <install_dir>/hooks/foo.sh, so
 # ../scripts and ../standards are the install siblings regardless of
@@ -367,7 +378,7 @@ if [[ -f "$DIRTY" ]]; then
 
   # 1a. Test suite
   if [[ $IS_PY_PROJECT -eq 1 ]] && { [[ -d "${CWD}/tests" ]] || [[ -d "${CWD}/test" ]]; }; then
-    TEST_OUTPUT=$(cd "$CWD" && "${PY_RUNNER[@]}" python3 -m pytest -q 2>&1)
+    TEST_OUTPUT=$(cd "$CWD" && "${PY_RUNNER[@]}" "$PYTHON" -m pytest -q 2>&1)
     TEST_EXIT=$?
     if [[ $TEST_EXIT -ne 0 ]]; then
       FAILURES+=("TESTS FAILED (exit $TEST_EXIT)")
@@ -380,7 +391,7 @@ if [[ -f "$DIRTY" ]]; then
   # 1b. Type checking (only if mypy is configured)
   if [[ -f "${CWD}/pyproject.toml" ]] && grep -q '\[tool\.mypy\]' "${CWD}/pyproject.toml" 2>/dev/null; then
     if [[ ${#PY_DIRS[@]} -gt 0 ]]; then
-      MYPY_OUTPUT=$(cd "$CWD" && "${PY_RUNNER[@]}" python3 -m mypy "${PY_DIRS[@]}" 2>&1)
+      MYPY_OUTPUT=$(cd "$CWD" && "${PY_RUNNER[@]}" "$PYTHON" -m mypy "${PY_DIRS[@]}" 2>&1)
       MYPY_EXIT=$?
       if [[ $MYPY_EXIT -ne 0 ]]; then
         FAILURES+=("TYPE CHECK FAILED (exit $MYPY_EXIT)")

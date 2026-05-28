@@ -21,7 +21,7 @@ COMPILED_SKILL = DIST_DIR / "skills" / "pull-tickets" / "SKILL.md"
 
 def _load_spec() -> dict:
     """Load and parse the SDLC spec."""
-    return yaml.safe_load(SPEC_PATH.read_text())
+    return yaml.safe_load(SPEC_PATH.read_text(encoding="utf-8"))
 
 
 def _load_skill_content() -> str:

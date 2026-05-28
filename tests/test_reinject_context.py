@@ -10,6 +10,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+# Derived from this test file's location rather than hardcoded; the prior
+# absolute /Users/jason path didn't exist on Windows and broke the git-repo
+# test in CI / on contributor machines.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
 
 def test_should_include_reminder_when_invoked(
     run_hook: Any,
@@ -31,7 +36,7 @@ def test_should_include_git_log_when_in_repo(
     run_hook: Any,
 ) -> None:
     # Arrange — use the real repo root which is a git repository
-    cwd = "/Users/jason/src/etc-system-engineering"
+    cwd = str(REPO_ROOT)
 
     # Act
     result = run_hook("reinject-context.sh", {"cwd": cwd})

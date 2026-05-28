@@ -18,13 +18,31 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 
+# Normalize Windows backslashes to forward slashes so cache-key hashing
+# matches the production tests' expectations. No-op on POSIX paths.
+FILE_PATH="${FILE_PATH//\\//}"
+CWD="${CWD//\\//}"
+TRANSCRIPT="${TRANSCRIPT//\\//}"
+
+# Detect the Python interpreter; on Windows bare `python3` may resolve to
+# the Microsoft Store stub. Fall back to `python`; empty means no Python.
+PYTHON=""
+python3 -c "" 2>/dev/null && PYTHON=python3
+if [[ -z "$PYTHON" ]]; then
+  python -c "" 2>/dev/null && PYTHON=python
+fi
+
 # If no transcript available, allow (can't verify reading history)
 if [[ -z "$TRANSCRIPT" || ! -f "$TRANSCRIPT" ]]; then
   exit 0
 fi
 
 # --- per-subagent cache prologue ---
-CACHE_KEY=$(python3 -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])" "$TRANSCRIPT")
+if [[ -n "$PYTHON" ]]; then
+  CACHE_KEY=$("$PYTHON" -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])" "$TRANSCRIPT" 2>/dev/null)
+else
+  CACHE_KEY=""
+fi
 MARKER_DIR="${CWD}/.etc_sdlc/.hook-markers"
 MARKER="${MARKER_DIR}/${CACHE_KEY}-required-reading"
 
@@ -64,36 +82,30 @@ fi
 # Check if the file being edited is in this task's files_in_scope
 # (If not, this edit might be from a different context — allow it)
 REL_PATH="$FILE_PATH"
-if [[ "$FILE_PATH" == /* ]]; then
+if [[ "$FILE_PATH" == /* ]] || [[ "$FILE_PATH" =~ ^[A-Za-z]:/ ]]; then
   REL_PATH="${FILE_PATH#$CWD/}"
 fi
 
-IN_SCOPE=$(python3 -c "
-import yaml, sys
-with open('$ACTIVE_TASK') as f:
-    task = yaml.safe_load(f)
-scope = task.get('files_in_scope', [])
-rel = '$REL_PATH'
-# Check if the file matches any scope pattern
-for s in scope:
-    if rel == s or rel.startswith(s.rstrip('/') + '/'):
-        print('yes')
-        sys.exit(0)
-print('no')
-" 2>/dev/null)
+# IN_SCOPE check via awk YAML scan (sidesteps the Windows python3 PATH
+# question — awk ships with Git for Windows). Matches the prior Python
+# logic: each `files_in_scope` entry is either an exact match or a
+# directory prefix on REL_PATH.
+IN_SCOPE=no
+while IFS= read -r scope_entry; do
+  [[ -z "$scope_entry" ]] && continue
+  scope_clean="${scope_entry%/}"
+  if [[ "$REL_PATH" == "$scope_entry" || "$REL_PATH" == "${scope_clean}/"* ]]; then
+    IN_SCOPE=yes
+    break
+  fi
+done < <(awk '/^files_in_scope:/{flag=1;next} /^[a-zA-Z_]/{flag=0} flag && /^[[:space:]]*-/{sub(/^[[:space:]]*-[[:space:]]*/,""); print}' "$ACTIVE_TASK" 2>/dev/null)
 
 if [[ "$IN_SCOPE" != "yes" ]]; then
   exit 0  # File not in task scope — allow (might be a different task)
 fi
 
-# Extract requires_reading from the active task
-REQUIRED=$(python3 -c "
-import yaml
-with open('$ACTIVE_TASK') as f:
-    task = yaml.safe_load(f)
-for path in task.get('requires_reading', []):
-    print(path)
-" 2>/dev/null)
+# Extract requires_reading from the active task — also via awk.
+REQUIRED=$(awk '/^requires_reading:/{flag=1;next} /^[a-zA-Z_]/{flag=0} flag && /^[[:space:]]*-/{sub(/^[[:space:]]*-[[:space:]]*/,""); print}' "$ACTIVE_TASK" 2>/dev/null)
 
 if [[ -z "$REQUIRED" ]]; then
   exit 0  # No required reading list — allow

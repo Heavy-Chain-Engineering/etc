@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import platform
 import re
 import shutil
 import subprocess
@@ -36,6 +37,19 @@ from typing import Any
 
 import pytest
 import yaml
+
+
+def _find_bash() -> str:
+    """Prefer Git Bash on Windows; ``shutil.which("bash")`` elsewhere."""
+    if platform.system() == "Windows":
+        git_bash = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
+        if git_bash.is_file():
+            return str(git_bash)
+    found = shutil.which("bash")
+    if found:
+        return found
+    raise FileNotFoundError("No bash executable found on PATH")
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_NAME = "init-project"
@@ -166,7 +180,10 @@ def test_should_deploy_exactly_fifteen_files_when_compile_runs(
     """
     # Arrange & Act
     deployed = sorted(
-        str(p.relative_to(compiled_skill_dir))
+        # Normalize Windows backslashes — `relative_to` returns paths with
+        # the platform separator, but the expected-files list uses forward
+        # slashes. Without this the fifteen-files assertion fails on Windows.
+        str(p.relative_to(compiled_skill_dir)).replace("\\", "/")
         for p in compiled_skill_dir.rglob("*")
         if p.is_file()
     )
@@ -194,7 +211,7 @@ def test_should_follow_soft_pola_when_role_manifest_parsed(
     """
     # Arrange
     manifest_path = compiled_skill_dir / "templates" / "roles" / manifest_name
-    raw = manifest_path.read_text()
+    raw = manifest_path.read_text(encoding="utf-8")
 
     # Act
     parsed = yaml.safe_load(raw)
@@ -246,7 +263,7 @@ def test_should_be_short_and_link_tier_0_when_readme_stub(
     """
     # Arrange
     readme_path = compiled_skill_dir / "templates" / "tier-1" / readme_name
-    content = readme_path.read_text()
+    content = readme_path.read_text(encoding="utf-8")
     line_count = len(content.splitlines())
 
     # Assert — length
@@ -277,7 +294,7 @@ def test_should_contain_nine_sections_in_order_when_domain_template_read(
     """
     # Arrange
     template_path = compiled_skill_dir / "templates" / "DOMAIN.md.template"
-    content = template_path.read_text()
+    content = template_path.read_text(encoding="utf-8")
 
     # Act — find each pattern's byte offset in the template
     offsets: list[int] = []
@@ -368,7 +385,7 @@ def _run_preflight(target_repo: Path, edit_target: str) -> tuple[int, str]:
         "cwd": str(target_repo),
     }
     result = subprocess.run(
-        ["bash", str(hook_path)],
+        [_find_bash(), str(hook_path)],
         input=json.dumps(hook_input),
         capture_output=True,
         text=True,
@@ -407,7 +424,7 @@ class TestMechanicalPhase3:
             assert readme.is_file(), (
                 f"Missing README after Phase 3: docs/{dir_name}/README.md"
             )
-            content = readme.read_text()
+            content = readme.read_text(encoding="utf-8")
             assert "../../DOMAIN.md" in content, (
                 f"docs/{dir_name}/README.md missing DOMAIN.md backlink"
             )
@@ -445,7 +462,7 @@ class TestMechanicalPhase4:
             assert manifest_path.is_file(), (
                 f"Missing role manifest after Phase 4: roles/{manifest_name}"
             )
-            parsed = yaml.safe_load(manifest_path.read_text())
+            parsed = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
             assert isinstance(parsed, dict)
             assert "default_consumes" in parsed
             assert not _contains_key(parsed, "forbids")
@@ -511,7 +528,7 @@ class TestPartialTier0Recovery:
         assert len(created) == 5  # README + sem + architect + frontend + reviewer
 
         # Assert — the original backend-dev.yaml is untouched
-        preserved = (roles_dir / "backend-dev.yaml").read_text()
+        preserved = (roles_dir / "backend-dev.yaml").read_text(encoding="utf-8")
         assert preserved == custom_content
 
 
@@ -614,7 +631,7 @@ class TestSkillMdContract:
 
     @pytest.fixture(scope="class")
     def skill_md_text(self, compiled_skill_dir: Path) -> str:
-        return (compiled_skill_dir / "SKILL.md").read_text()
+        return (compiled_skill_dir / "SKILL.md").read_text(encoding="utf-8")
 
     def test_should_use_task_tool_for_project_bootstrapper_invocation(
         self, skill_md_text: str

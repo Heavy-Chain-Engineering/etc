@@ -17,6 +17,21 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 
+# Normalize Windows backslashes to forward slashes so prefix-stripping and
+# cache-key hashing match the production tests' expectations. No-op on POSIX.
+FILE_PATH="${FILE_PATH//\\//}"
+CWD="${CWD//\\//}"
+TRANSCRIPT="${TRANSCRIPT//\\//}"
+
+# Detect the Python interpreter; on Windows the bare name `python3` may
+# resolve to the Microsoft Store stub. Fall back to `python` if `python3`
+# is not callable; leave empty if neither works (downstream guards on $PYTHON).
+PYTHON=""
+python3 -c "" 2>/dev/null && PYTHON=python3
+if [[ -z "$PYTHON" ]]; then
+  python -c "" 2>/dev/null && PYTHON=python
+fi
+
 # If no file path, nothing to gate
 if [[ -z "$FILE_PATH" ]]; then
   exit 0
@@ -29,8 +44,8 @@ if [[ ! -f "$STATE_FILE" ]]; then
 fi
 
 # --- per-subagent cache prologue ---
-if [[ -n "$TRANSCRIPT" ]]; then
-  CACHE_KEY=$(python3 -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])" "$TRANSCRIPT")
+if [[ -n "$TRANSCRIPT" && -n "$PYTHON" ]]; then
+  CACHE_KEY=$("$PYTHON" -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])" "$TRANSCRIPT" 2>/dev/null)
   MARKER_DIR="${CWD}/.etc_sdlc/.hook-markers"
   MARKER="${MARKER_DIR}/${CACHE_KEY}-phase-gate"
 
@@ -45,17 +60,13 @@ fi
 
 # Make path relative to project root
 REL_PATH="$FILE_PATH"
-if [[ "$FILE_PATH" == /* ]]; then
+if [[ "$FILE_PATH" == /* ]] || [[ "$FILE_PATH" =~ ^[A-Za-z]:/ ]]; then
   REL_PATH="${FILE_PATH#$CWD/}"
 fi
 
-# Extract current_phase from state.json using python3
-PHASE=$(python3 -c "
-import json, sys
-with open('$STATE_FILE') as f:
-    state = json.load(f)
-print(state.get('current_phase', ''))
-" 2>/dev/null)
+# Extract current_phase from state.json via jq (sidesteps the Windows
+# python3 PATH question — jq is required by other hooks too).
+PHASE=$(jq -r '.current_phase // ""' "$STATE_FILE" 2>/dev/null)
 
 if [[ -z "$PHASE" ]]; then
   exit 0  # Could not determine phase — allow
@@ -131,7 +142,8 @@ fi
 # cache-hit check (-ot) sees the marker as strictly newer.
 if [[ -n "${CACHE_KEY:-}" ]]; then
   mkdir -p "$MARKER_DIR" 2>/dev/null
-  python3 -c "
+  if [[ -n "$PYTHON" ]]; then
+    "$PYTHON" -c "
 import os, sys, time
 marker, state = sys.argv[1], sys.argv[2]
 open(marker, 'a').close()
@@ -140,5 +152,10 @@ dep_mt = os.path.getmtime(state) if os.path.exists(state) else 0
 ts = max(now, dep_mt) + 0.01
 os.utime(marker, (ts, ts))
 " "$MARKER" "$STATE_FILE" 2>/dev/null
+  else
+    # No Python available — fall back to plain touch; we lose the
+    # mtime-bump-past-state-file invariant but keep the marker for caching.
+    touch "$MARKER" 2>/dev/null
+  fi
 fi
 exit 0

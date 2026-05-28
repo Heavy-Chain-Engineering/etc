@@ -6,6 +6,7 @@ Uses temporary directory structures to simulate real project layouts.
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -174,7 +175,7 @@ class TestMetaReconcileScript:
     def test_list_no_stale(self, project_dir):
         """No stale markers → exit 0, clean message."""
         result = subprocess.run(
-            ["python3", self.SCRIPT, str(project_dir)],
+            [sys.executable, self.SCRIPT, str(project_dir)],
             capture_output=True, text=True,
         )
         assert result.returncode == 0
@@ -186,7 +187,7 @@ class TestMetaReconcileScript:
             project_dir / "src" / ".meta", ["src/app.py"]
         )
         result = subprocess.run(
-            ["python3", self.SCRIPT, str(project_dir)],
+            [sys.executable, self.SCRIPT, str(project_dir)],
             capture_output=True, text=True,
         )
         assert result.returncode == 1
@@ -198,7 +199,7 @@ class TestMetaReconcileScript:
             project_dir / "src" / ".meta", ["src/app.py", "src/models.py"]
         )
         result = subprocess.run(
-            ["python3", self.SCRIPT, "--verbose", str(project_dir)],
+            [sys.executable, self.SCRIPT, "--verbose", str(project_dir)],
             capture_output=True, text=True,
         )
         assert "src/app.py" in result.stdout
@@ -215,7 +216,7 @@ class TestMetaReconcileScript:
 
         # root positional BEFORE --clear so argparse doesn't consume it
         result = subprocess.run(
-            ["python3", self.SCRIPT, str(project_dir), "--clear"],
+            [sys.executable, self.SCRIPT, str(project_dir), "--clear"],
             capture_output=True, text=True,
         )
         assert result.returncode == 0
@@ -236,7 +237,7 @@ class TestMetaReconcileScript:
 
         target = str(project_dir / "src")
         result = subprocess.run(
-            ["python3", self.SCRIPT, "--clear", target, str(project_dir)],
+            [sys.executable, self.SCRIPT, "--clear", target, str(project_dir)],
             capture_output=True, text=True,
         )
         assert result.returncode == 0
@@ -252,7 +253,7 @@ class TestMetaReconcileScript:
         stale.write_text("not json{{{")
 
         result = subprocess.run(
-            ["python3", self.SCRIPT, str(project_dir)],
+            [sys.executable, self.SCRIPT, str(project_dir)],
             capture_output=True, text=True,
         )
         # Should warn but not crash

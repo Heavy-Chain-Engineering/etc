@@ -19,7 +19,11 @@ def _marker_key(transcript_path: str) -> str:
     """Derive the 16-char marker key from a transcript path.
 
     Mirrors the hook's key derivation: sha256(transcript_path) | cut -c1-16.
+    The hook normalizes backslashes to forward slashes before hashing on
+    Windows; tests must match that production normalization exactly,
+    otherwise cache assertions silently fail on Windows.
     """
+    transcript_path = transcript_path.replace("\\", "/")
     digest = hashlib.sha256(transcript_path.encode()).hexdigest()
     return digest[:16]
 

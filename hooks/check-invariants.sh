@@ -16,6 +16,11 @@ INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 
+# Normalize Windows backslashes to forward slashes so prefix-stripping and
+# pattern matching work the same as on macOS/Linux. No-op on POSIX paths.
+FILE_PATH="${FILE_PATH//\\//}"
+CWD="${CWD//\\//}"
+
 # If we can't determine the project directory, allow the operation
 if [[ -z "$CWD" || "$CWD" == "." ]]; then
   exit 0
@@ -46,7 +51,7 @@ fi
 # Walk up from the file's directory to find component-level INVARIANTS.md files
 if [[ -n "$FILE_PATH" ]]; then
   # Make path absolute if needed
-  if [[ "$FILE_PATH" != /* ]]; then
+  if [[ "$FILE_PATH" != /* ]] && [[ ! "$FILE_PATH" =~ ^[A-Za-z]:/ ]]; then
     FILE_PATH="${CWD}/${FILE_PATH}"
   fi
 

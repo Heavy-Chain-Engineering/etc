@@ -8,6 +8,7 @@ respects exemption patterns.
 
 import os
 import subprocess
+import sys
 import textwrap
 
 SCRIPT_PATH = os.path.join(
@@ -24,7 +25,7 @@ def run_vocab_check(
     concept_id: str | None = None,
 ) -> subprocess.CompletedProcess:
     """Run check-vocabulary.py with the given arguments."""
-    cmd = ["python3", SCRIPT_PATH, vocab_name]
+    cmd = [sys.executable, SCRIPT_PATH, vocab_name]
     if invariants_path:
         cmd.extend(["--invariants", invariants_path])
     if project_root:
