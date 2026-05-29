@@ -134,6 +134,7 @@ The harness does not replace your engineers. It makes their disciplines mechanic
 | **Architect** | `design.md` + ADRs | `/architect` |
 | **Build** | working code, green tests, audit trail, release tag | `/build` |
 | **Reflect** | turn-by-turn engagement data, evidence-cited proposals | `/efficiency` |
+| **Clean** *(autonomous, background)* | flawless-only cleanup PRs from an isolated worktree, never touching your tree | `/janitor` |
 | **Maintain** | hotfix incidents, postmortems, prevention rules | `/hotfix`, `/postmortem` |
 
 ---
@@ -154,6 +155,7 @@ Skills are slash commands. Each lives at `skills/<name>/SKILL.md`. Highlights:
 | `/hotfix` | Production on fire | Incident lane that bypasses some development gates at the manifest layer; safety guardrails and invariants still fire. |
 | `/postmortem` | After every escape | Traces root cause, appends a prevention rule to `.etc_sdlc/antipatterns.md`. |
 | `/efficiency` | Daily reflection | Captures every turn end, computes active engagement, writes evidence-cited proposals only. |
+| `/janitor` | Autonomous cleanup | Boy-Scout-rule background cleanup. Surveys the repo, fixes flawless-only categories (lint/format, test-proven dead-code, whitespace/imports) in an **isolated git worktree off `main`**, verifies, runs a mechanical pre-PR boundary check, and opens a PR — never touches your working tree. `/janitor` (interactive) or `/janitor --autonomous` (hands-off). Per-category graduated trust: preview draft-PR → autonomous ready-PR after N clean merges. Janitor submits; a human merges. |
 | `/metrics` | Weekly review | Three-layer report: process (git tags), outcome (`value-hypothesis.yaml`), cost (telemetry). Headline metric is **% hypothesis-validated**, broken down by author role. |
 | `/pull-tickets` | Closed-loop intake | Pulls Linear tickets via MCP, generates PRDs, runs `/build`, or returns the ticket with clarifying questions. |
 | `/init-project` | Bootstrapping a repo | Creates `DOMAIN.md`, `PROJECT.md`, `CLAUDE.md`, role manifests. Idempotent. |
@@ -221,8 +223,8 @@ Everything flows from `spec/etc_sdlc.yaml`. The compiled `dist/` tree is regener
 
 | Layer | What | Where |
 |---|---|---|
-| **Skills** | 19 workflows | `skills/<name>/SKILL.md` |
-| **Agents** | 24 role specialists | `agents/<name>.md` |
+| **Skills** | 20 workflows | `skills/<name>/SKILL.md` |
+| **Agents** | 26 role specialists | `agents/<name>.md` |
 | **Standards** | Engineering rules every role inherits | `standards/<category>/*.md` |
 | **Hooks** | Mechanical enforcement on Claude Code lifecycle events | `hooks/*.sh` |
 | **Scripts** | Python helpers for tags, tasks, telemetry, value hypotheses | `scripts/*.py` |
@@ -234,8 +236,8 @@ A skill calls an agent. An agent reads the standards. A hook blocks the agent if
 ## Repository structure
 
 ```
-agents/                 24 role definitions (one .md per role)
-skills/                 19 slash-command workflows (one subdir per skill)
+agents/                 26 role definitions (one .md per role)
+skills/                 20 slash-command workflows (one subdir per skill)
 standards/              engineering rules (process/, code/, testing/, …)
 hooks/                  bash scripts on Claude Code lifecycle events
 scripts/                python helpers (feature_id, value_hypothesis, …)

@@ -711,6 +711,17 @@ agents:
     description: "Retrospectives, metrics collection, improvement recommendations."
     source: agents/process-evaluator.md
 
+  janitor:
+    name: "Janitor"
+    description: >
+      Constrained fix-subagent for the /janitor autonomous-cleanup pipeline.
+      Performs exactly ONE flawless cleanup fix inside an isolated git worktree
+      and returns a structured result. Dispatched ONLY by the /janitor
+      orchestrator (skills/janitor/SKILL.md) — never by /spec or /build. The
+      toolset IS the security boundary: no `gh`, no `git push`, no PR/merge, no
+      network. All delivery is the orchestrator's privilege.
+    source: agents/janitor.md
+
 # ─── Skills ────────────────────────────���─────────────────────────────────
 # Skills compile to .md files in dist/skills/.
 # The /implement skill is the primary user-facing entry point.
@@ -901,6 +912,21 @@ skills:
     usage: "/efficiency review | /efficiency today | /efficiency baseline | /efficiency mute --until <iso8601> --reason \"<text>\""
     source: skills/efficiency/SKILL.md
     primary_phase: meta
+    model: opus
+
+  janitor:
+    name: "janitor"
+    description: >
+      Autonomous harness-cleanup orchestrator (Boy Scout rule + broken-windows).
+      Surveys the repo, selects flawless-only cleanup, performs it in an ISOLATED
+      git worktree cut from main, verifies the harness gates green, runs a
+      mechanical pre-PR boundary check, and opens a pull request — never touching
+      the operator's working tree or build. Two modes: interactive `/janitor` and
+      hands-off `/janitor --autonomous` (ZERO prompts, for an operator-supplied
+      scheduler). Janitor submits; a human merges. Never pushes origin/main,
+      never self-merges, never bypasses git hooks, never disables the sandbox.
+    usage: "/janitor [--autonomous]"
+    source: skills/janitor/SKILL.md
     model: opus
 
 # ─── Standards ───���───────────────────────────────────────────────────────
