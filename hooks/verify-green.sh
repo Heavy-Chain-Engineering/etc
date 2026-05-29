@@ -19,13 +19,14 @@
 
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 
 # Only proceed if .tdd-dirty exists (production code was modified)
 if [ ! -f "${CWD}/.tdd-dirty" ]; then
   exit 0
 fi
 
-LOCK="${CWD}/.etc_sdlc/profiles.lock"
+LOCK="${PROJECT_ROOT}/.etc_sdlc/profiles.lock"
 if [ ! -f "$LOCK" ]; then
   # No profiles configured. Warn and skip per BR-008.
   echo "[verify-green] WARN: no profiles.lock found at ${LOCK}; skipping verification." >&2

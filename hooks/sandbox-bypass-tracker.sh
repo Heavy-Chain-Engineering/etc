@@ -17,6 +17,7 @@
 
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."' 2>/dev/null || echo ".")
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 
 # Only act when this PreToolUse event is for a Bash invocation with
 # the bypass flag set. Anything else: silent pass-through.
@@ -36,7 +37,7 @@ EVENT_ID="bypass-$(date +%s)-$$"
 STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Output directory: .etc_sdlc/efficiency/
-LOG_DIR="${CWD}/.etc_sdlc/efficiency"
+LOG_DIR="${PROJECT_ROOT}/.etc_sdlc/efficiency"
 LOG_FILE="${LOG_DIR}/sandbox-bypasses.jsonl"
 
 mkdir -p "$LOG_DIR" 2>/dev/null || exit 0

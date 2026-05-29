@@ -17,6 +17,7 @@
 
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 AGENT_TYPE=$(echo "$INPUT" | jq -r '.agent_type // "unknown"')
 
 # Normalize absent/null to "unknown"
@@ -51,7 +52,7 @@ _emit_stub_marker=false
 # sentence pattern ("As " ... ", navigate from").
 # When task YAML is absent/malformed, emit as safe-default over-inject.
 _emit_user_flow=true  # default: over-inject
-TASK_DIR="${CWD}/.etc_sdlc/tasks"
+TASK_DIR="${PROJECT_ROOT}/.etc_sdlc/tasks"
 if [[ -d "$TASK_DIR" ]]; then
   _found_task=false
   for _task_file in "$TASK_DIR"/*.yaml; do
@@ -269,11 +270,11 @@ if [[ -f "${CWD}/INVARIANTS.md" ]]; then
 fi
 
 # Inject antipatterns if file exists
-if [[ -f "${CWD}/.etc_sdlc/antipatterns.md" ]]; then
+if [[ -f "${PROJECT_ROOT}/.etc_sdlc/antipatterns.md" ]]; then
   echo ""
   echo "### Known Antipatterns"
   echo '```markdown'
-  cat "${CWD}/.etc_sdlc/antipatterns.md"
+  cat "${PROJECT_ROOT}/.etc_sdlc/antipatterns.md"
   echo '```'
 fi
 

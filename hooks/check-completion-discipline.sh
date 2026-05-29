@@ -32,6 +32,7 @@ INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 # Normalize Windows backslashes; no-op on POSIX paths.
 CWD="${CWD//\\//}"
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 
 # Detect the Python interpreter; on Windows bare `python3` may resolve to
 # the Microsoft Store stub. Used by the pytest/mypy invocations below.
@@ -184,7 +185,7 @@ for idx, entry in enumerate(entries):
     if '<new-diagnostics>' not in text:
         continue
 
-    # Reminder found at idx. Collect next `window` turns for the corpus.
+    # Reminder found at idx. Collect next 'window' turns for the corpus.
     subsequent_parts = [
         _extract_text(e.get('content', ''))
         for e in entries[idx + 1: idx + 1 + window]
@@ -260,11 +261,11 @@ fi
 # ═══════════════════════════════════════════════════════════════════════
 
 _PROFILE_HOOK_NAME="check-completion-discipline"
-_LOCK="${CWD}/.etc_sdlc/profiles.lock"
+_LOCK="${PROJECT_ROOT}/.etc_sdlc/profiles.lock"
 
 _emit_profile_dispatch_event() {
   # Best-effort JSONL append. Args: $1=profiles_json $2=outcome
-  local log_dir="${CWD}/.etc_sdlc/efficiency"
+  local log_dir="${PROJECT_ROOT}/.etc_sdlc/efficiency"
   local log_file="${log_dir}/turn-events.jsonl"
   local profiles_json="$1"
   local outcome="$2"
@@ -332,7 +333,11 @@ else
         exit $_GATE_EXIT
       fi
     else
-      echo "[${_PROFILE_HOOK_NAME}] WARN: profile '${_PROFILE}' has no ${_PROFILE_HOOK_NAME}.sh (looked under ${CWD}/standards/code/profiles/${_PROFILE}/ and ${_ETC_DIR}/standards/code/profiles/${_PROFILE}/)" >&2
+      # Shorter than the prior path-enumerating WARN — operators just need to
+      # know per-profile dispatch was skipped; the in-hook CI gate (Step 1)
+      # still runs uniformly across profiles. Substring "WARN" preserved for
+      # the contract test at tests/test_check_completion_discipline_profile_aware.py.
+      echo "[${_PROFILE_HOOK_NAME}] WARN: profile '${_PROFILE}' has no per-profile script (in-hook fallback)" >&2
     fi
   done < "$_LOCK"
 
@@ -449,7 +454,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════
 
 SIGNAL_INPROGRESS_COUNT=0
-TASKS_GLOB="${CWD}/.etc_sdlc/features"
+TASKS_GLOB="${PROJECT_ROOT}/.etc_sdlc/features"
 if [[ -d "$TASKS_GLOB" ]]; then
   # F009-lifecycle-gap fix: scan flat path AND active/ subdirectory.
   # The naive "$TASKS_GLOB"/*/tasks/*.yaml glob misses features under

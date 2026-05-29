@@ -27,6 +27,10 @@
 
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."' 2>/dev/null || echo ".")
+# Anchor .etc_sdlc/.sdlc to the git repo root, not the hook-input cwd (which is
+# a subdir when launched from one, or when a subagent inherits it). Falls back
+# to CWD when not inside a git repo (#48).
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")
 NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 NOW_EPOCH=$(date +%s)
 
@@ -37,7 +41,7 @@ SIGMA_PROPOSE="${CEO_SIGMA_PROPOSE:-2}"
 MIN_BASELINE_FEATURES="${CEO_MIN_BASELINE_FEATURES:-5}"
 
 # Output paths
-EFF_DIR="${CWD}/.etc_sdlc/efficiency"
+EFF_DIR="${PROJECT_ROOT}/.etc_sdlc/efficiency"
 TURN_EVENTS="${EFF_DIR}/turn-events.jsonl"
 PROPOSALS_DIR="${EFF_DIR}/proposals"
 DAILY_DIR="${EFF_DIR}/daily"
@@ -52,7 +56,7 @@ mkdir -p "$EFF_DIR" "$PROPOSALS_DIR" "$DAILY_DIR" 2>/dev/null || exit 0
 detect_current_task() {
   # 1. Most recently modified state.yaml under features/active/F<NNN>-*/
   local newest
-  newest=$(find "${CWD}/.etc_sdlc/features/active" -maxdepth 2 -name state.yaml -type f 2>/dev/null | head -10)
+  newest=$(find "${PROJECT_ROOT}/.etc_sdlc/features/active" -maxdepth 2 -name state.yaml -type f 2>/dev/null | head -10)
   if [ -n "$newest" ]; then
     local latest=""
     local latest_mtime=0
@@ -72,7 +76,7 @@ detect_current_task() {
   fi
 
   # 2. Most recently modified state.yaml under features/F<NNN>-*/ (flat path)
-  newest=$(find "${CWD}/.etc_sdlc/features" -maxdepth 2 -name state.yaml -type f 2>/dev/null \
+  newest=$(find "${PROJECT_ROOT}/.etc_sdlc/features" -maxdepth 2 -name state.yaml -type f 2>/dev/null \
     | grep -v "/active/" | grep -v "/shipped/" | head -10)
   if [ -n "$newest" ]; then
     local latest=""

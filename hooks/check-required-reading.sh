@@ -23,6 +23,7 @@ TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 FILE_PATH="${FILE_PATH//\\//}"
 CWD="${CWD//\\//}"
 TRANSCRIPT="${TRANSCRIPT//\\//}"
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 
 # Detect the Python interpreter; on Windows bare `python3` may resolve to
 # the Microsoft Store stub. Fall back to `python`; empty means no Python.
@@ -43,7 +44,7 @@ if [[ -n "$PYTHON" ]]; then
 else
   CACHE_KEY=""
 fi
-MARKER_DIR="${CWD}/.etc_sdlc/.hook-markers"
+MARKER_DIR="${PROJECT_ROOT}/.etc_sdlc/.hook-markers"
 MARKER="${MARKER_DIR}/${CACHE_KEY}-required-reading"
 
 if [[ -L "$MARKER_DIR" ]]; then
@@ -51,7 +52,7 @@ if [[ -L "$MARKER_DIR" ]]; then
   CACHE_KEY=""  # disable caching for this run
 elif [[ -f "$MARKER" ]]; then
   # Cache hit if no task file is newer than the marker
-  NEWER=$(find "${CWD}/.etc_sdlc/tasks" -name "*.yaml" -newer "$MARKER" 2>/dev/null | head -1)
+  NEWER=$(find "${PROJECT_ROOT}/.etc_sdlc/tasks" -name "*.yaml" -newer "$MARKER" 2>/dev/null | head -1)
   if [[ -z "$NEWER" ]]; then
     exit 0  # cache hit — this subagent already passed
   fi
@@ -60,7 +61,7 @@ fi
 # --- end cache prologue ---
 
 # Find the active task file (status: in_progress)
-TASK_DIR="${CWD}/.etc_sdlc/tasks"
+TASK_DIR="${PROJECT_ROOT}/.etc_sdlc/tasks"
 if [[ ! -d "$TASK_DIR" ]]; then
   exit 0  # No task system active — allow
 fi

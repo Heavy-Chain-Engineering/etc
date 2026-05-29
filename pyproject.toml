@@ -30,6 +30,10 @@ dev-dependencies = [
     "pytest>=9.0",
     "pytest-cov>=7.0",
     "types-pyyaml>=6.0.12.20260510",
+    # mypy is invoked by check-completion-discipline.sh's CI gate via
+    # `"$PYTHON" -m mypy ...`. Without it in the venv, every Stop event
+    # fails the type-check step with "No module named mypy".
+    "mypy>=1.10",
 ]
 
 [tool.pytest.ini_options]

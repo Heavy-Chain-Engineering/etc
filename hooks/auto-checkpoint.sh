@@ -47,7 +47,8 @@ fi
 
 # ── 3. Resolve checkpoint path from input cwd ────────────────────────────────
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
-CHECKPOINT="${CWD}/.etc_sdlc/checkpoint.md"
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
+CHECKPOINT="${PROJECT_ROOT}/.etc_sdlc/checkpoint.md"
 STALE_MINUTES="${CHECKPOINT_STALE_MINUTES:-30}"
 
 # ── 4. Determine staleness ───────────────────────────────────────────────────

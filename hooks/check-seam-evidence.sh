@@ -25,6 +25,7 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 # positive on backslash vs `/c/...` mismatches. No-op on POSIX paths.
 CWD="${CWD//\\//}"
 CWD=$(realpath "$CWD" 2>/dev/null || echo "$CWD")
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 
 # ---------------------------------------------------------------------------
 # F022: Profile-dispatch front-end (mirrors verify-green.sh, F020-ADR-005)
@@ -35,7 +36,7 @@ _emit_audit_row() {
   # Write failures degrade silently — never change the hook's exit code.
   local outcome="$1"
   local profiles_json="$2"
-  local audit_dir="${CWD}/.etc_sdlc/efficiency"
+  local audit_dir="${PROJECT_ROOT}/.etc_sdlc/efficiency"
   local audit_log="${audit_dir}/turn-events.jsonl"
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
@@ -49,7 +50,7 @@ _emit_audit_row() {
   fi
 }
 
-LOCK="${CWD}/.etc_sdlc/profiles.lock"
+LOCK="${PROJECT_ROOT}/.etc_sdlc/profiles.lock"
 
 if [[ ! -f "$LOCK" ]]; then
   echo "[check-seam-evidence] WARN: no profile configured (profiles.lock absent); profile dispatch skipped." >&2

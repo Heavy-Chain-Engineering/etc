@@ -13,19 +13,20 @@ INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 # Normalize Windows backslashes; no-op on POSIX paths.
 CWD="${CWD//\\//}"
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 
 echo "## Post-Compaction Context Recovery"
 echo ""
 
 # Current SDLC phase via jq (avoids the Windows python3 PATH question).
-if [[ -f "${CWD}/.sdlc/state.json" ]]; then
-  PHASE=$(jq -r '.current_phase // "unknown"' "${CWD}/.sdlc/state.json" 2>/dev/null)
+if [[ -f "${PROJECT_ROOT}/.sdlc/state.json" ]]; then
+  PHASE=$(jq -r '.current_phase // "unknown"' "${PROJECT_ROOT}/.sdlc/state.json" 2>/dev/null)
   echo "**Current SDLC Phase:** ${PHASE:-unknown}"
   echo ""
 fi
 
 # Active tasks
-TASK_DIR="${CWD}/.etc_sdlc/tasks"
+TASK_DIR="${PROJECT_ROOT}/.etc_sdlc/tasks"
 if [[ -d "$TASK_DIR" ]]; then
   ACTIVE_TASKS=$(grep -l "status:.*in_progress" "$TASK_DIR"/*.yaml 2>/dev/null)
   if [[ -n "$ACTIVE_TASKS" ]]; then
@@ -48,7 +49,7 @@ if git -C "$CWD" rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 # Governance journal (recent entries)
-JOURNAL="${CWD}/.etc_sdlc/journal.md"
+JOURNAL="${PROJECT_ROOT}/.etc_sdlc/journal.md"
 if [[ -f "$JOURNAL" ]]; then
   echo "### Governance Journal (Recent)"
   tail -30 "$JOURNAL"
@@ -56,7 +57,7 @@ if [[ -f "$JOURNAL" ]]; then
 fi
 
 # Checkpoint (session state from last save)
-CHECKPOINT="${CWD}/.etc_sdlc/checkpoint.md"
+CHECKPOINT="${PROJECT_ROOT}/.etc_sdlc/checkpoint.md"
 if [[ -f "$CHECKPOINT" ]]; then
   echo "### Last Checkpoint"
   cat "$CHECKPOINT"

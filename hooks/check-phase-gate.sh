@@ -22,6 +22,7 @@ TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 FILE_PATH="${FILE_PATH//\\//}"
 CWD="${CWD//\\//}"
 TRANSCRIPT="${TRANSCRIPT//\\//}"
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 
 # Detect the Python interpreter; on Windows the bare name `python3` may
 # resolve to the Microsoft Store stub. Fall back to `python` if `python3`
@@ -38,7 +39,7 @@ if [[ -z "$FILE_PATH" ]]; then
 fi
 
 # Check if .sdlc/state.json exists — if not, harness not initialized, allow all
-STATE_FILE="${CWD}/.sdlc/state.json"
+STATE_FILE="${PROJECT_ROOT}/.sdlc/state.json"
 if [[ ! -f "$STATE_FILE" ]]; then
   exit 0
 fi
@@ -46,7 +47,7 @@ fi
 # --- per-subagent cache prologue ---
 if [[ -n "$TRANSCRIPT" && -n "$PYTHON" ]]; then
   CACHE_KEY=$("$PYTHON" -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])" "$TRANSCRIPT" 2>/dev/null)
-  MARKER_DIR="${CWD}/.etc_sdlc/.hook-markers"
+  MARKER_DIR="${PROJECT_ROOT}/.etc_sdlc/.hook-markers"
   MARKER="${MARKER_DIR}/${CACHE_KEY}-phase-gate"
 
   if [[ -L "$MARKER_DIR" ]]; then

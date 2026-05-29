@@ -27,8 +27,9 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 if [[ -z "$CWD" ]]; then
   CWD="$(pwd)"
 fi
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
 
-LOCK="${CWD}/.etc_sdlc/profiles.lock"
+LOCK="${PROJECT_ROOT}/.etc_sdlc/profiles.lock"
 
 # ── Env-variable sanitization (mirrors F021 DIAGNOSTIC_INVESTIGATION_TURNS) ──
 # Accept only a plain non-negative integer; fall back to default 7.
@@ -45,7 +46,7 @@ _warn() {
 _emit_audit() {
   local profiles_json="$1"
   local outcome="$2"
-  local log_dir="${CWD}/.etc_sdlc/efficiency"
+  local log_dir="${PROJECT_ROOT}/.etc_sdlc/efficiency"
   local log_file="${log_dir}/turn-events.jsonl"
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
