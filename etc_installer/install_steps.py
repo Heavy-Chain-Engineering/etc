@@ -232,6 +232,17 @@ def step_install_hooks(ctx: InstallContext) -> StepResult:
         shutil.copy2(hook_path, target)
         _chmod_exec(target)
         count += 1
+
+    # Propagate hooks/helpers/ (.py modules imported by dispatcher hooks).
+    # No exec bit — they are imported, not invoked directly.
+    helpers_src = src / "helpers"
+    if helpers_src.is_dir():
+        helpers_dest = dest / "helpers"
+        helpers_dest.mkdir(parents=True, exist_ok=True)
+        for helper_path in sorted(helpers_src.glob("*")):
+            if helper_path.is_file():
+                shutil.copy2(helper_path, helpers_dest / helper_path.name)
+
     return StepResult(status="ok", message=f"Installed {count} hooks (executable)")
 
 

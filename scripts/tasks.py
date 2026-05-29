@@ -86,7 +86,16 @@ _FEATURE_LIFECYCLE_DIRS = ("active", "shipped", "rejections")
 
 
 def _find_feature_dir_lifecycle(root: Path, name: str) -> Path | None:
-    """Find `name` in active/, flat, or shipped/. Returns None if absent."""
+    """Find `name` in active/, flat, or shipped/. Returns None if absent.
+
+    Exact-name lookup runs first. On a miss, falls back to suffix-matching
+    the allocator-shaped directory names — `F<NNN>-<name>` (legacy) and
+    `F-YYYY-MM-DD-<name>` (date-based) — so callers passing the bare <slug>
+    resolve the real feature dir instead of auto-creating an orphan flat
+    path. Exactly one suffix match is returned; multiple matches raise
+    TaskValidationError naming each candidate; zero matches return None
+    (preserving the existing miss contract).
+    """
     features_dir = root / ".etc_sdlc" / "features"
     for candidate in (
         features_dir / "active" / name,
@@ -95,7 +104,34 @@ def _find_feature_dir_lifecycle(root: Path, name: str) -> Path | None:
     ):
         if candidate.is_dir():
             return candidate
-    return None
+    return _suffix_match_feature_dir(root, name)
+
+
+def _suffix_match_feature_dir(root: Path, name: str) -> Path | None:
+    """Suffix-match an allocator-shaped feature dir by bare slug.
+
+    Scans active/, flat, and shipped/ for dirs whose name is a legacy
+    `F<NNN>-<name>` or date-based `F-YYYY-MM-DD-<name>` allocator id ending
+    in the operator slug. One match → that path; multiple → TaskValidationError
+    (operator must pass the full feature_id); zero → None.
+    """
+    escaped = re.escape(name)
+    pattern = re.compile(
+        rf"^(?:F\d+-{escaped}|F-\d{{4}}-\d{{2}}-\d{{2}}-{escaped})$"
+    )
+    matches = [d for d in _iter_all_feature_dirs(root) if pattern.match(d.name)]
+
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+
+    candidates = "\n".join(f"  - {path}" for path in sorted(matches))
+    raise TaskValidationError(
+        f"feature slug '{name}' is ambiguous — multiple allocator-shaped "
+        f"directories match. Pass the full feature_id to disambiguate:\n"
+        f"{candidates}"
+    )
 
 
 def _iter_all_feature_dirs(root: Path) -> Iterator[Path]:
@@ -1828,4 +1864,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except TaskValidationError as exc:
+        print(f"  Error: {exc}", file=sys.stderr)
+        sys.exit(1)

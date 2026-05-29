@@ -445,6 +445,40 @@ def compile_git_hooks(dist_dir: Path, repo_root: Path) -> None:
                 (git_hooks_dst / hook_file.name).chmod(0o755)
 
 
+def compile_dispatcher_hooks(dist_dir: Path, repo_root: Path) -> None:
+    """Mirror top-level dispatcher hooks (and helpers/) into dist/hooks/.
+
+    compile_gates only copies gate-referenced ``script:`` entries; dispatcher
+    hooks invoked from SKILL prose (e.g. hooks/verify-green.sh, the F020
+    profile-aware test dispatcher) are not registered as gates and were being
+    silently dropped from dist/. This mirrors EVERY repo_root/hooks/*.sh into
+    dist_dir/hooks/ with 0o755, then recursively copies repo_root/hooks/helpers/
+    (.py modules, no exec bit). hooks/git/ is excluded — compile_git_hooks owns
+    it. Idempotent and graceful when hooks/ is absent.
+    """
+    hooks_src = repo_root / "hooks"
+    if not hooks_src.is_dir():
+        return
+
+    hooks_dst = dist_dir / "hooks"
+    hooks_dst.mkdir(parents=True, exist_ok=True)
+
+    for script in sorted(hooks_src.glob("*.sh")):
+        dst_script = hooks_dst / script.name
+        shutil.copy2(script, dst_script)
+        dst_script.chmod(0o755)
+
+    helpers_src = hooks_src / "helpers"
+    if helpers_src.is_dir():
+        helpers_dst = hooks_dst / "helpers"
+        shutil.copytree(
+            helpers_src,
+            helpers_dst,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+
+
 def compile_scripts(dist_dir: Path, repo_root: Path) -> None:
     """Copy utility scripts."""
     scripts_src = repo_root / "scripts"
@@ -683,6 +717,16 @@ def main() -> None:
     gate_count = sum(len(g) for g in hooks_config.get("hooks", {}).values())
     print(f"    {len(spec.get('gates', {}))} gates → {gate_count} hook entries")
 
+    print("  Mirroring dispatcher hooks → dist/hooks/...")
+    compile_dispatcher_hooks(dist_dir, repo_root)
+    dispatcher_count = len(list((dist_dir / "hooks").glob("*.sh")))
+    helper_count = (
+        len(list((dist_dir / "hooks" / "helpers").glob("*.py")))
+        if (dist_dir / "hooks" / "helpers").exists()
+        else 0
+    )
+    print(f"    {dispatcher_count} hook scripts, {helper_count} helpers")
+
     print("  Compiling agents → dist/agents/...")
     compile_agents(spec, dist_dir, repo_root)
     agent_count = len(list((dist_dir / "agents").glob("*.md")))
@@ -732,7 +776,7 @@ def main() -> None:
     print()
     print("  dist/")
     print(f"  ├── settings-hooks.json    ({len(spec.get('gates', {}))} gates)")
-    print(f"  ├── hooks/                 ({len(list((dist_dir / 'hooks').glob('*.sh')))} scripts)")
+    print(f"  ├── hooks/                 ({len(list((dist_dir / 'hooks').glob('*.sh')))} scripts, {helper_count} helpers)")
     print(f"  ├── agents/                ({agent_count} definitions)")
     print(f"  ├── skills/                ({skill_count} definitions)")
     print(f"  ├── standards/             ({standards_count} documents)")

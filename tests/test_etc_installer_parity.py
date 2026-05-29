@@ -216,6 +216,32 @@ class TestHooks:
                 f"{hook.name} not +x"
             )
 
+    def test_should_install_verify_green_dispatcher(
+        self, installer_run_target: Path
+    ) -> None:
+        """The F020 dispatcher must land — count>0 stayed green while it was missing.
+
+        verify-green.sh is invoked from /build Step 6c prose, not registered
+        as a gate, so the old count>0 assertion passed even when the
+        dispatcher was silently dropped from dist/ and the install.
+        """
+        verify_green = installer_run_target / "hooks" / "verify-green.sh"
+        assert verify_green.exists(), (
+            "verify-green.sh (F020 dispatcher) not installed — /build Step 6c "
+            "would be command-not-found on every non-Python project"
+        )
+
+    def test_should_install_hook_helpers_subdir(
+        self, installer_run_target: Path
+    ) -> None:
+        """hooks/helpers/*.py modules must propagate to the install target."""
+        helpers = installer_run_target / "hooks" / "helpers"
+        py_modules = list(helpers.glob("*.py")) if helpers.is_dir() else []
+        assert py_modules, (
+            "hooks/helpers/ .py modules not installed — dispatcher hooks that "
+            "import them would fail at runtime"
+        )
+
 
 class TestSettingsJson:
     """target_dir/settings.json exists with merged hooks block."""

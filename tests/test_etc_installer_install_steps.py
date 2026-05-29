@@ -101,6 +101,13 @@ def _seed_minimal_dist(dist: Path) -> None:
         "#!/usr/bin/env bash\n", encoding="utf-8"
     )
 
+    # hooks/helpers/* -- .py modules invoked by dispatcher hooks
+    helpers = dist / "hooks" / "helpers"
+    helpers.mkdir(parents=True)
+    (helpers / "check_mutable_globals.py").write_text(
+        "# mutable globals helper\n", encoding="utf-8"
+    )
+
     # hooks/git/*
     git_hooks = dist / "hooks" / "git"
     git_hooks.mkdir(parents=True)
@@ -415,6 +422,29 @@ class TestStepInstallHooks:
             assert hook.stat().st_mode & stat.S_IXUSR, (
                 f"{hook.name} not +x"
             )
+
+    def test_should_propagate_helpers_subdir_when_step_runs(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        """Install-side twin of compiler Fix 1: hooks/helpers/*.py must land.
+
+        Dispatcher hooks import .py helpers from hooks/helpers/; the old
+        step copied only top-level *.sh, so verify-green's helpers were
+        missing in every installed environment.
+        """
+        install_steps.step_directory_structure(install_context)
+
+        install_steps.step_install_hooks(install_context)
+
+        helper = (
+            install_context.target_dir
+            / "hooks"
+            / "helpers"
+            / "check_mutable_globals.py"
+        )
+        assert helper.exists(), (
+            "step_install_hooks must recursively propagate hooks/helpers/"
+        )
 
 
 class TestStepMergeSettings:

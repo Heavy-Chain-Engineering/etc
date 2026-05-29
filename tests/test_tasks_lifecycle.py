@@ -192,3 +192,89 @@ class TestNoFeatureFilterIteratesAll:
         assert result.returncode == 0
         assert "001" in result.stdout
         assert "002" in result.stdout
+
+
+class TestSuffixMatchFallback:
+    """`--feature <bare-slug>` resolves allocator-shaped dirs by suffix.
+
+    The allocator creates `F-YYYY-MM-DD-<slug>/` (date-based) or legacy
+    `F<NNN>-<slug>/`. Callers passing the bare <slug> previously missed and
+    fell through to an orphan flat-path auto-create. `_find_feature_dir_lifecycle`
+    now suffix-matches the slug after the exact-name miss.
+    """
+
+    def test_exact_full_feature_id_still_resolves(self, tmp_path: Path) -> None:
+        feature = "F-2026-05-29-exact-resolve"
+        tasks_dir = (
+            tmp_path / ".etc_sdlc" / "features" / "active" / feature / "tasks"
+        )
+        _write_task_yaml(tasks_dir, "001")
+        result = _run_tasks("list", "--feature", feature, cwd=tmp_path)
+        assert result.returncode == 0
+        assert "001" in result.stdout
+
+    def test_bare_slug_resolves_dated_active_dir_via_suffix(
+        self, tmp_path: Path
+    ) -> None:
+        slug = "dated-suffix-feature"
+        feature = f"F-2026-05-29-{slug}"
+        tasks_dir = (
+            tmp_path / ".etc_sdlc" / "features" / "active" / feature / "tasks"
+        )
+        _write_task_yaml(tasks_dir, "001")
+        result = _run_tasks("list", "--feature", slug, cwd=tmp_path)
+        assert result.returncode == 0
+        assert "001" in result.stdout
+
+    def test_bare_slug_resolves_legacy_active_dir_via_suffix(
+        self, tmp_path: Path
+    ) -> None:
+        slug = "legacy-suffix-feature"
+        feature = f"F042-{slug}"
+        tasks_dir = (
+            tmp_path / ".etc_sdlc" / "features" / "active" / feature / "tasks"
+        )
+        _write_task_yaml(tasks_dir, "001")
+        result = _run_tasks("list", "--feature", slug, cwd=tmp_path)
+        assert result.returncode == 0
+        assert "001" in result.stdout
+
+    def test_multiple_candidates_raise_validation_error(
+        self, tmp_path: Path
+    ) -> None:
+        slug = "ambiguous-slug"
+        features_dir = tmp_path / ".etc_sdlc" / "features" / "active"
+        _write_task_yaml(features_dir / f"F-2026-05-29-{slug}" / "tasks", "001")
+        _write_task_yaml(features_dir / f"F099-{slug}" / "tasks", "002")
+        result = _run_tasks("list", "--feature", slug, cwd=tmp_path)
+        assert result.returncode != 0
+        combined = (result.stdout + result.stderr).lower()
+        assert slug in combined
+        # Both candidate full paths must be named for disambiguation
+        assert "f-2026-05-29-" in combined
+        assert "f099-" in combined
+
+    def test_zero_candidates_preserves_flat_path_legacy_behavior(
+        self, tmp_path: Path
+    ) -> None:
+        # A genuinely-new slug with no allocator-shaped dir anywhere must
+        # NOT suffix-match; bulk-create auto-creates the flat path as before.
+        slug = "brand-new-feature"
+        json_arr = (
+            '[{"task_id":"001","title":"new task","assigned_agent":"backend-developer",'
+            '"estimated_complexity":3,"requires_reading":[],'
+            '"files_in_scope":["src/placeholder.py"],"acceptance_criteria":["ac"],'
+            '"dependencies":[]}]'
+        )
+        result = subprocess.run(
+            [
+                "python3", str(TASKS_SCRIPT),
+                "bulk-create", "--feature", slug, "--json", json_arr,
+            ],
+            capture_output=True, text=True, timeout=15, cwd=tmp_path,
+        )
+        assert result.returncode == 0, result.stderr
+        flat_path = tmp_path / ".etc_sdlc" / "features" / slug / "tasks"
+        assert any(flat_path.glob("001-*.yaml")), (
+            "zero suffix matches must preserve the flat-path auto-create contract"
+        )

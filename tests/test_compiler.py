@@ -527,6 +527,245 @@ def test_should_copy_skill_subdir_when_templates_present(tmp_path: Path) -> None
     assert dst_template.read_bytes() == (skill_src / "templates" / "foo.txt").read_bytes()
 
 
+# -- Test 9: compile_dispatcher_hooks mirrors top-level hooks -----------------
+
+
+NAMED_DISPATCHER_SCRIPTS = (
+    "verify-green.sh",
+    "check-diagnostic-evidence.sh",
+    "check-profiles-fresh.sh",
+    "tier-0-design-preflight.sh",
+)
+
+
+def _build_fake_hooks_repo(tmp_path: Path) -> Path:
+    """Create a fake repo_root/hooks/ tree mirroring the real layout.
+
+    Includes top-level .sh dispatchers, a hooks/helpers/ dir of .py modules,
+    and a hooks/git/ dir that compile_dispatcher_hooks must NOT touch.
+    """
+    fake_repo = tmp_path / "repo"
+    hooks_src = fake_repo / "hooks"
+    hooks_src.mkdir(parents=True)
+
+    for script in NAMED_DISPATCHER_SCRIPTS:
+        (hooks_src / script).write_text(f"#!/usr/bin/env bash\n# {script}\n")
+
+    helpers_src = hooks_src / "helpers"
+    helpers_src.mkdir()
+    (helpers_src / "check_mutable_globals.py").write_text("# mutable globals\n")
+    (helpers_src / "check_noop_functions.py").write_text("# noop functions\n")
+
+    git_src = hooks_src / "git"
+    git_src.mkdir()
+    (git_src / "post-commit").write_text("#!/usr/bin/env bash\n# post-commit\n")
+
+    return fake_repo
+
+
+def test_should_mirror_verify_green_when_compiling_dispatcher_hooks(
+    tmp_path: Path,
+) -> None:
+    """compile_dispatcher_hooks must land verify-green.sh in dist/hooks/.
+
+    Regression test for the F020 dispatcher being silently dropped from
+    dist/ — installed downstream users got a hooks/ missing verify-green.sh,
+    breaking /build Step 6c on every non-Python project.
+    """
+    # Arrange
+    fake_repo = _build_fake_hooks_repo(tmp_path)
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Act
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, fake_repo)
+
+    # Assert
+    assert (dist_dir / "hooks" / "verify-green.sh").exists()
+
+
+def test_should_set_exec_bit_when_mirroring_dispatcher_hooks(
+    tmp_path: Path,
+) -> None:
+    """Mirrored .sh dispatchers must be marked executable (0o755)."""
+    # Arrange
+    fake_repo = _build_fake_hooks_repo(tmp_path)
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Act
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, fake_repo)
+
+    # Assert
+    mode = (dist_dir / "hooks" / "verify-green.sh").stat().st_mode
+    assert mode & 0o755 == 0o755
+
+
+def test_should_land_all_named_dispatchers_when_compiling(tmp_path: Path) -> None:
+    """All four named dispatcher scripts must land in dist/hooks/."""
+    # Arrange
+    fake_repo = _build_fake_hooks_repo(tmp_path)
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Act
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, fake_repo)
+
+    # Assert
+    missing = [
+        s for s in NAMED_DISPATCHER_SCRIPTS
+        if not (dist_dir / "hooks" / s).exists()
+    ]
+    assert not missing, f"Missing dispatcher scripts in dist/hooks/: {missing}"
+
+
+def test_should_copy_helpers_recursively_when_compiling_dispatcher_hooks(
+    tmp_path: Path,
+) -> None:
+    """hooks/helpers/*.py must be copied recursively into dist/hooks/helpers/."""
+    # Arrange
+    fake_repo = _build_fake_hooks_repo(tmp_path)
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Act
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, fake_repo)
+
+    # Assert
+    helpers_dst = dist_dir / "hooks" / "helpers"
+    assert (helpers_dst / "check_mutable_globals.py").exists()
+    assert (helpers_dst / "check_noop_functions.py").exists()
+
+
+def test_should_exclude_git_hooks_when_compiling_dispatcher_hooks(
+    tmp_path: Path,
+) -> None:
+    """compile_dispatcher_hooks must NOT copy hooks/git/ (compile_git_hooks owns it)."""
+    # Arrange
+    fake_repo = _build_fake_hooks_repo(tmp_path)
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Act
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, fake_repo)
+
+    # Assert
+    assert not (dist_dir / "hooks" / "git").exists(), (
+        "compile_dispatcher_hooks must leave hooks/git/ to compile_git_hooks"
+    )
+
+
+def test_should_not_raise_when_hooks_dir_absent(tmp_path: Path) -> None:
+    """compile_dispatcher_hooks must be graceful when repo has no hooks/."""
+    # Arrange
+    fake_repo = tmp_path / "repo"
+    fake_repo.mkdir()
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Act — must not raise
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, fake_repo)
+
+    # Assert — nothing landed, no exception
+    assert not (dist_dir / "hooks").exists() or not list(
+        (dist_dir / "hooks").glob("*.sh")
+    )
+
+
+def test_should_be_idempotent_when_compiling_dispatcher_hooks_twice(
+    tmp_path: Path,
+) -> None:
+    """Re-running compile_dispatcher_hooks must produce byte-identical output."""
+    # Arrange
+    fake_repo = _build_fake_hooks_repo(tmp_path)
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Act
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, fake_repo)
+    first = (dist_dir / "hooks" / "verify-green.sh").read_bytes()
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, fake_repo)
+    second = (dist_dir / "hooks" / "verify-green.sh").read_bytes()
+
+    # Assert
+    assert first == second
+
+
+# -- Test 10: source/dist hook set-equality parity guard ----------------------
+
+
+def test_should_mirror_every_source_hook_into_dist(tmp_path: Path) -> None:
+    """Every repo_root/hooks/*.sh basename must appear in dist/hooks/.
+
+    Systemic parity guard (converts the silent-drop bug family from
+    'caught downstream by luck' to 'caught in CI'). The failure message
+    NAMES the missing files — the failure mode that bit us was an unnamed
+    silent drop of verify-green.sh.
+    """
+    # Arrange — compile the REAL spec into an isolated dist
+    compile_sdlc = _load_compile_sdlc_module()
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc.compile_gates(_load_real_spec(), dist_dir, REPO_ROOT)
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, REPO_ROOT)
+    compile_sdlc.compile_git_hooks(dist_dir, REPO_ROOT)
+
+    # Act
+    source_sh = {p.name for p in (REPO_ROOT / "hooks").glob("*.sh")}
+    dist_sh = {p.name for p in (dist_dir / "hooks").glob("*.sh")}
+    missing = source_sh - dist_sh
+
+    # Assert
+    assert not missing, (
+        f"Source hooks missing from dist/hooks/: {sorted(missing)}. "
+        f"compile_dispatcher_hooks must mirror every top-level hooks/*.sh."
+    )
+
+
+def test_should_mirror_every_source_helper_into_dist(tmp_path: Path) -> None:
+    """Every repo_root/hooks/helpers/* must appear in dist/hooks/helpers/."""
+    # Arrange
+    compile_sdlc = _load_compile_sdlc_module()
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    compile_sdlc.compile_dispatcher_hooks(dist_dir, REPO_ROOT)
+
+    helpers_src = REPO_ROOT / "hooks" / "helpers"
+    source_helpers = {
+        p.name for p in helpers_src.iterdir() if p.is_file()
+    }
+
+    # Act
+    helpers_dst = dist_dir / "hooks" / "helpers"
+    dist_helpers = (
+        {p.name for p in helpers_dst.iterdir() if p.is_file()}
+        if helpers_dst.exists()
+        else set()
+    )
+    missing = source_helpers - dist_helpers
+
+    # Assert
+    assert not missing, (
+        f"Source helpers missing from dist/hooks/helpers/: {sorted(missing)}. "
+        f"compile_dispatcher_hooks must mirror hooks/helpers/ recursively."
+    )
+
+
+def _load_real_spec() -> dict[str, Any]:
+    """Load the real SDLC spec for parity tests."""
+    import yaml
+
+    spec_path = REPO_ROOT / "spec" / "etc_sdlc.yaml"
+    return yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+
+
 # -- Helpers -------------------------------------------------------------------
 
 

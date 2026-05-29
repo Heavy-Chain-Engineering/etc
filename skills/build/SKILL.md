@@ -1248,7 +1248,8 @@ do not serialize within a wave.
   a blocker) via `tasks.py set-status`.
 
 **6c. Verify wave:**
-- Run tests: `python3 -m pytest --tb=short -q`
+- Run profile-aware tests via the F020 dispatcher:
+  `printf '{"cwd":"%s"}' "$CWD" | bash hooks/verify-green.sh`
 - If tests fail: STOP. Report the failure. Do NOT proceed to next wave.
   **Do not write the phase-N/done tag.** The phase-N/start tag from
   step 6a remains in place — it is append-only and records that the
@@ -2044,7 +2045,9 @@ following observable artifacts exist and pass:
    `escalated` remaining).
 4. `python3 ~/.claude/scripts/tasks.py list --tree` shows every leaf
    task with status `completed` and a complexity score <= 7.
-5. `python3 -m pytest --tb=short -q` passes with zero failures.
+5. The F020 profile-aware dispatcher
+   (`printf '{"cwd":"%s"}' "$CWD" | bash hooks/verify-green.sh`) exits 0
+   against the working tree.
 6. If `INVARIANTS.md` exists at the repo root, every invariant-verify
    command it lists has been run and returned exit code 0.
 7. An adversarial `spec-enforcer` subagent has been dispatched via
