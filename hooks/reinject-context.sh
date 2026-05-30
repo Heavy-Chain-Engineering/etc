@@ -14,6 +14,7 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 # Normalize Windows backslashes; no-op on POSIX paths.
 CWD="${CWD//\\//}"
 PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "## Post-Compaction Context Recovery"
 echo ""
@@ -40,10 +41,18 @@ if [[ -d "$TASK_DIR" ]]; then
 fi
 
 # Recent git activity (last 5 commits)
-if git -C "$CWD" rev-parse --git-dir > /dev/null 2>&1; then
+GIT_CWD="$CWD"
+if ! git -C "$GIT_CWD" rev-parse --git-dir > /dev/null 2>&1; then
+  SOURCE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+  if git -C "$SOURCE_ROOT" rev-parse --git-dir > /dev/null 2>&1; then
+    GIT_CWD="$SOURCE_ROOT"
+  fi
+fi
+
+if git -C "$GIT_CWD" rev-parse --git-dir > /dev/null 2>&1; then
   echo "### Recent Commits"
   echo '```'
-  git -C "$CWD" log --oneline -5 2>/dev/null
+  git -C "$GIT_CWD" log --oneline -5 2>/dev/null
   echo '```'
   echo ""
 fi
@@ -65,13 +74,13 @@ if [[ -f "$CHECKPOINT" ]]; then
 fi
 
 # Dirty marker status
-if [[ -f "${CWD}/.tdd-dirty" ]]; then
+if [[ -f "${PROJECT_ROOT}/.tdd-dirty" ]]; then
   echo "**WARNING:** .tdd-dirty marker present — production code was modified but verification has not run."
   echo ""
 fi
 
 # Project invariants reminder
-if [[ -f "${CWD}/INVARIANTS.md" ]]; then
+if [[ -f "${PROJECT_ROOT}/INVARIANTS.md" ]]; then
   echo "**INVARIANTS.md exists** — all code changes are gated on invariant checks."
   echo ""
 fi

@@ -9,11 +9,17 @@
 # Exit code is always 0 (never blocks).
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PAYLOAD_HELPER="${HOOK_DIR}/helpers/hook_payload.py"
+CWD=$(printf '%s' "$INPUT" | python3 "$PAYLOAD_HELPER" cwd) || exit 0
+EDITED_FILES=$(printf '%s' "$INPUT" | python3 "$PAYLOAD_HELPER" files) || exit 0
 
-if [[ "$FILE_PATH" == */src/* || "$FILE_PATH" == src/* ]]; then
-  touch "${CWD}/.tdd-dirty"
-fi
+while IFS= read -r FILE_PATH; do
+  [[ -z "$FILE_PATH" ]] && continue
+  if [[ "$FILE_PATH" == */src/* || "$FILE_PATH" == src/* ]]; then
+    touch "${CWD}/.tdd-dirty"
+    break
+  fi
+done <<< "$EDITED_FILES"
 
 exit 0

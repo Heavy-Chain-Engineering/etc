@@ -48,6 +48,8 @@ from etc_installer.preflights import OperatorMode
 # Documented step count (AC-012). The test asserts this matches the
 # number of glyph-prefixed status lines emitted under a full install run.
 STEP_COUNT: int = 11
+CODEX_MANAGED_BEGIN = "<!-- ETC_CODEX_BEGIN -->"
+CODEX_MANAGED_END = "<!-- ETC_CODEX_END -->"
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,6 +420,9 @@ def run_all(ctx: InstallContext, console: Console) -> int:
         ctx: Resolved InstallContext.
         console: rich.Console used for status line emission.
     """
+    if ctx.client_choice == "codex":
+        return run_codex_install(ctx, console)
+
     final_exit = 0
     for _, fn in STEPS:
         result = fn(ctx)
@@ -428,6 +433,51 @@ def run_all(ctx: InstallContext, console: Console) -> int:
     return final_exit
 
 
+def run_codex_install(ctx: InstallContext, console: Console) -> int:
+    """Install project-local Codex artifacts from dist/codex."""
+    errors = _missing_codex_dist_paths(ctx.dist_dir)
+    if errors:
+        for error in errors:
+            console.print(f"  {_GLYPHS['error']} {error}")
+        return 1
+
+    project_dir = ctx.target_dir
+    (project_dir / ".codex").mkdir(parents=True, exist_ok=True)
+    (project_dir / ".agents").mkdir(parents=True, exist_ok=True)
+
+    _install_codex_agents_md(ctx.dist_dir / "AGENTS.md", project_dir / "AGENTS.md")
+    shutil.copy2(ctx.dist_dir / ".codex" / "hooks.json", project_dir / ".codex" / "hooks.json")
+    shutil.copy2(ctx.dist_dir / "gate-classification.json", project_dir / "gate-classification.json")
+    console.print(f"  {_GLYPHS['ok']} Installed Codex instructions and gate classification")
+
+    for relative in (
+        ".codex/hooks",
+        ".codex/agents",
+        ".codex/scripts",
+        ".codex/schemas",
+        ".codex/expected",
+        ".codex/source",
+        ".codex/standards",
+    ):
+        _sync_tree(ctx.dist_dir / relative, project_dir / relative)
+    _install_codex_root_standards(
+        ctx.dist_dir / "standards",
+        project_dir / "standards",
+        project_dir / ".codex" / "standards",
+    )
+    _merge_tree(ctx.dist_dir / ".agents" / "skills", project_dir / ".agents" / "skills")
+
+    if (ctx.dist_dir / ".etc_sdlc").is_dir():
+        _sync_tree(ctx.dist_dir / ".etc_sdlc", project_dir / ".etc_sdlc")
+
+    _chmod_exec_tree(project_dir / ".codex" / "hooks", "*.sh")
+    _chmod_exec_tree(project_dir / ".codex" / "scripts", "*")
+    console.print(
+        f"  {_GLYPHS['ok']} Installed Codex hooks, agents, scripts, schemas, snapshots, and skills"
+    )
+    return 0
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -435,6 +485,118 @@ def _chmod_exec(path: Path) -> None:
     """Set the executable bit on ``path`` for u+g+o (chmod +x equivalent)."""
     mode = path.stat().st_mode
     path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def _missing_codex_dist_paths(dist_dir: Path) -> list[str]:
+    required = (
+        "AGENTS.md",
+        "gate-classification.json",
+        "standards",
+        ".codex/hooks.json",
+        ".codex/hooks",
+        ".codex/agents",
+        ".codex/scripts",
+        ".codex/schemas",
+        ".codex/expected",
+        ".codex/source",
+        ".codex/standards",
+        ".agents/skills",
+    )
+    return [
+        f"dist/codex/{relative} not found. Run `python3 compile-sdlc.py spec/etc_sdlc.yaml --client codex` first"
+        for relative in required
+        if not (dist_dir / relative).exists()
+    ]
+
+
+def _install_codex_agents_md(source: Path, target: Path) -> None:
+    source_text = source.read_text(encoding="utf-8").rstrip() + "\n"
+    if not target.exists():
+        target.write_text(source_text, encoding="utf-8")
+        return
+
+    existing = target.read_text(encoding="utf-8")
+    if existing == source_text:
+        return
+
+    managed = f"{CODEX_MANAGED_BEGIN}\n{source_text}{CODEX_MANAGED_END}"
+    if CODEX_MANAGED_BEGIN in existing and CODEX_MANAGED_END in existing:
+        start = existing.index(CODEX_MANAGED_BEGIN)
+        stop = existing.index(CODEX_MANAGED_END, start) + len(CODEX_MANAGED_END)
+        updated = existing[:start] + managed + existing[stop:]
+    else:
+        separator = "\n\n" if existing.endswith("\n") else "\n\n"
+        updated = existing + separator + managed + "\n"
+    target.write_text(updated, encoding="utf-8")
+
+
+def _sync_tree(src: Path, dest: Path) -> None:
+    if not src.is_dir():
+        return
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(src, dest)
+
+
+def _install_codex_root_standards(src: Path, dest: Path, managed_dest: Path) -> None:
+    """Expose repo-root standards paths required by generated skills.
+
+    New installs use a relative symlink so `.codex/standards` remains the
+    managed backing store. Repos that already have a standards tree keep their
+    existing files; ETC standards are merged into that tree.
+    """
+    if not src.is_dir():
+        return
+    if not dest.exists() and not dest.is_symlink():
+        try:
+            dest.symlink_to(Path(".codex") / "standards", target_is_directory=True)
+            return
+        except OSError:
+            shutil.copytree(src, dest)
+            return
+
+    if dest.is_symlink():
+        if dest.resolve() == managed_dest.resolve():
+            return
+        dest.unlink()
+        dest.symlink_to(Path(".codex") / "standards", target_is_directory=True)
+        return
+
+    _merge_tree_preserving_extras(src, dest)
+
+
+def _merge_tree(src: Path, dest: Path) -> None:
+    if not src.is_dir():
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    for child in sorted(src.iterdir()):
+        target = dest / child.name
+        if child.is_dir():
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(child, target)
+        else:
+            shutil.copy2(child, target)
+
+
+def _merge_tree_preserving_extras(src: Path, dest: Path) -> None:
+    if not src.is_dir():
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    for child in sorted(src.iterdir()):
+        target = dest / child.name
+        if child.is_dir():
+            _merge_tree_preserving_extras(child, target)
+        else:
+            shutil.copy2(child, target)
+
+
+def _chmod_exec_tree(path: Path, pattern: str) -> None:
+    if not path.is_dir():
+        return
+    for candidate in path.glob(pattern):
+        if candidate.is_file():
+            _chmod_exec(candidate)
 
 
 def _copy_dir_chmod_exec(src: Path, dest: Path) -> int:

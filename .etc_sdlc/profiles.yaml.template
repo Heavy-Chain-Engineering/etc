@@ -1,0 +1,24 @@
+# Optional language-profile overrides for ETC SDLC.
+#
+# Copy this file to .etc_sdlc/profiles.yaml only when auto-detection needs a
+# project-specific correction. Leave every example commented until used.
+#
+# pin: list[str]
+# Force these profiles active in addition to auto-detected profiles.
+# Example:
+# pin:
+#   - python
+#
+# exclude: list[str]
+# Path globs that active profile gates should skip.
+# Example:
+# exclude:
+#   - vendor/**
+#   - third_party/**
+#
+# add: list of {profile: str, source: str}
+# Add a local profile implementation from a project-relative source path.
+# Example:
+# add:
+#   - profile: scala
+#     source: ./local-profiles/scala/

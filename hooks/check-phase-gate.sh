@@ -13,28 +13,28 @@
 #   2 = block the operation (with message to stderr)
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
-TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 
-# Normalize Windows backslashes to forward slashes so prefix-stripping and
-# cache-key hashing match the production tests' expectations. No-op on POSIX.
-FILE_PATH="${FILE_PATH//\\//}"
-CWD="${CWD//\\//}"
-TRANSCRIPT="${TRANSCRIPT//\\//}"
-PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
-
-# Detect the Python interpreter; on Windows the bare name `python3` may
-# resolve to the Microsoft Store stub. Fall back to `python` if `python3`
-# is not callable; leave empty if neither works (downstream guards on $PYTHON).
 PYTHON=""
 python3 -c "" 2>/dev/null && PYTHON=python3
 if [[ -z "$PYTHON" ]]; then
   python -c "" 2>/dev/null && PYTHON=python
 fi
+[[ -z "$PYTHON" ]] && exit 0
 
-# If no file path, nothing to gate
-if [[ -z "$FILE_PATH" ]]; then
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PAYLOAD_HELPER="${HOOK_DIR}/helpers/hook_payload.py"
+CWD=$(printf '%s' "$INPUT" | "$PYTHON" "$PAYLOAD_HELPER" cwd) || exit 2
+EDITED_FILES=$(printf '%s' "$INPUT" | "$PYTHON" "$PAYLOAD_HELPER" files) || exit 2
+TRANSCRIPT=$(printf '%s' "$INPUT" | "$PYTHON" "$PAYLOAD_HELPER" transcript) || exit 2
+
+# Normalize Windows backslashes to forward slashes so prefix-stripping and
+# cache-key hashing match the production tests' expectations. No-op on POSIX.
+CWD="${CWD//\\//}"
+TRANSCRIPT="${TRANSCRIPT//\\//}"
+PROJECT_ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")  # repo-root anchor (#48)
+
+# If no edited files, nothing to gate
+if [[ -z "$EDITED_FILES" ]]; then
   exit 0
 fi
 
@@ -59,15 +59,17 @@ if [[ -n "$TRANSCRIPT" && -n "$PYTHON" ]]; then
 fi
 # --- end cache prologue ---
 
-# Make path relative to project root
-REL_PATH="$FILE_PATH"
-if [[ "$FILE_PATH" == /* ]] || [[ "$FILE_PATH" =~ ^[A-Za-z]:/ ]]; then
-  REL_PATH="${FILE_PATH#$CWD/}"
-fi
-
 # Extract current_phase from state.json via jq (sidesteps the Windows
 # python3 PATH question — jq is required by other hooks too).
 PHASE=$(jq -r '.current_phase // ""' "$STATE_FILE" 2>/dev/null)
+if [[ -z "$PHASE" ]]; then
+  PHASE=$("$PYTHON" -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    state = json.load(f)
+print(state.get('current_phase', ''))
+" "$STATE_FILE" 2>/dev/null)
+fi
 
 if [[ -z "$PHASE" ]]; then
   exit 0  # Could not determine phase — allow
@@ -88,56 +90,68 @@ matches() {
   return 1
 }
 
-# Phase-to-blocked-paths rules
-# Each phase has a list of path prefixes that are BLOCKED.
-BLOCKED=false
-case "$PHASE_LOWER" in
-  bootstrap)
-    if matches "$REL_PATH" "src/" "tests/"; then
-      BLOCKED=true
-    fi
-    ;;
-  spec)
-    if matches "$REL_PATH" "src/" "tests/"; then
-      BLOCKED=true
-    fi
-    ;;
-  design)
-    if matches "$REL_PATH" "src/" "tests/"; then
-      BLOCKED=true
-    fi
-    ;;
-  decompose)
-    if matches "$REL_PATH" "src/" "tests/" "spec/"; then
-      BLOCKED=true
-    fi
-    ;;
-  build)
-    if matches "$REL_PATH" "spec/"; then
-      BLOCKED=true
-    fi
-    ;;
-  verify)
-    if matches "$REL_PATH" "spec/" "src/"; then
-      BLOCKED=true
-    fi
-    ;;
-  ship)
-    if matches "$REL_PATH" "src/" "tests/" "spec/"; then
-      BLOCKED=true
-    fi
-    ;;
-  evaluate)
-    if matches "$REL_PATH" "src/" "tests/" "spec/"; then
-      BLOCKED=true
-    fi
-    ;;
-esac
+while IFS= read -r FILE_PATH; do
+  [[ -z "$FILE_PATH" ]] && continue
+  FILE_PATH="${FILE_PATH//\\//}"
 
-if [[ "$BLOCKED" == "true" ]]; then
-  echo "Phase '${PHASE}' does not allow edits to '${REL_PATH}'. Transition to the appropriate phase first." >&2
-  exit 2
-fi
+  # Make path relative to project root
+  REL_PATH="$FILE_PATH"
+  if [[ "$FILE_PATH" == /* ]] || [[ "$FILE_PATH" =~ ^[A-Za-z]:/ ]]; then
+    REL_PATH="${FILE_PATH#$PROJECT_ROOT/}"
+    REL_PATH="${REL_PATH#$CWD/}"
+  fi
+
+  # Phase-to-blocked-paths rules
+  # Each phase has a list of path prefixes that are BLOCKED.
+  BLOCKED=false
+  case "$PHASE_LOWER" in
+    bootstrap)
+      if matches "$REL_PATH" "src/" "tests/"; then
+        BLOCKED=true
+      fi
+      ;;
+    spec)
+      if matches "$REL_PATH" "src/" "tests/"; then
+        BLOCKED=true
+      fi
+      ;;
+    design)
+      if matches "$REL_PATH" "src/" "tests/"; then
+        BLOCKED=true
+      fi
+      ;;
+    decompose)
+      if matches "$REL_PATH" "src/" "tests/" "spec/"; then
+        BLOCKED=true
+      fi
+      ;;
+    build)
+      if matches "$REL_PATH" "spec/"; then
+        BLOCKED=true
+      fi
+      ;;
+    verify)
+      if matches "$REL_PATH" "spec/" "src/"; then
+        BLOCKED=true
+      fi
+      ;;
+    ship)
+      if matches "$REL_PATH" "src/" "tests/" "spec/"; then
+        BLOCKED=true
+      fi
+      ;;
+    evaluate)
+      if matches "$REL_PATH" "src/" "tests/" "spec/"; then
+        BLOCKED=true
+      fi
+      ;;
+  esac
+
+  if [[ "$BLOCKED" == "true" ]]; then
+    echo "Phase '${PHASE}' does not allow edits to '${REL_PATH}'. Transition to the appropriate phase first." >&2
+    exit 2
+  fi
+done <<< "$EDITED_FILES"
 
 # Write marker on success — mtime must exceed state.json's so the next
 # cache-hit check (-ot) sees the marker as strictly newer.

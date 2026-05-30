@@ -210,6 +210,11 @@ likely touches too many files or has too many criteria for a single agent sessio
 
 1. **Every acceptance criterion from the parent must appear in exactly one subtask.**
    No orphaned criteria. Verify: `count(parent.criteria) == sum(subtask.criteria)`.
+   User-flow-sentenced criteria belong on the leaf that creates or wires the
+   user-facing surface. Do not assign them to pure domain/data leaves. If one
+   end-user requirement spans domain support and UI reachability, split the
+   evidence: the domain leaf gets a domain-verifiable criterion, and the
+   surface/integration leaf keeps the User-flow sentence.
 
 2. **Every file from the parent's scope must appear in exactly one subtask.**
    No overlapping file scopes (enables parallel execution). No orphaned files.

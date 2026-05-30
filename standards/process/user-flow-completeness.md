@@ -272,12 +272,27 @@ out-of-scope surface type.
 
 The User-flow sentence is authored at `/spec` time (F001) and verified at
 `/build` Step 7 by spec-enforcer (F002); this section defines the
-dispatch-time half of the contract. The wiring check fires only when a
-task's acceptance criterion contains a User-flow sentence (canonical prefix
-`As {role}, navigate from`) — this is the only condition that activates the
-dispatch-time wiring check. Tasks without User-flow sentences (legacy specs
-predating F001, backend-only ACs, or ACs explicitly marked
-`surface_status: backend_only`) pass through dispatch unchanged.
+dispatch-time half of the contract. The dispatch-time wiring check applies to
+the task that creates or modifies the user-facing surface, route, modal, tab,
+widget registration, sidebar entry, settings rail, wizard step, or parent
+navigation/wiring file. The check is not a generic consequence of AC prose.
+
+`/decompose` is responsible for preserving User-flow-sentenced criteria on the
+surface-owning leaf task. Assigning a User-flow AC to a pure domain/data task
+is a decomposition error. If one end-user requirement spans UI reachability and
+domain support, split the evidence: the domain leaf gets a domain-verifiable
+criterion, and the surface/integration leaf keeps the User-flow sentence.
+
+At `/build` dispatch time, tasks with no User-flow sentence pass through
+unchanged. Tasks with inherited User-flow text but `files_in_scope` limited to
+domain, service, mapper, model, type, utility, API-client, or test files are
+recorded as `surface_status: not_applicable` and dispatched without a parent
+wiring prompt. Only actual surface tasks run the parent-file auto-add heuristic
+and, if still ambiguous, the operator-prompt fallback.
+
+The canonical User-flow sentence prefix remains `As {role}, navigate from`;
+the additional classification above decides which task type owns dispatch-time
+parent wiring.
 
 ### The Wiring Contract
 

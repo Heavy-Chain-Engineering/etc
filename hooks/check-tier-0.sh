@@ -16,11 +16,13 @@
 #   2 = block the operation (with message to stderr)
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PAYLOAD_HELPER="${HOOK_DIR}/helpers/hook_payload.py"
+CWD=$(printf '%s' "$INPUT" | python3 "$PAYLOAD_HELPER" cwd) || exit 2
+EDITED_FILES=$(printf '%s' "$INPUT" | python3 "$PAYLOAD_HELPER" files) || exit 2
 
-# If no file path, nothing to check
-if [[ -z "$FILE_PATH" ]]; then
+# If no edited files, nothing to check
+if [[ -z "$EDITED_FILES" ]]; then
   exit 0
 fi
 
@@ -30,19 +32,27 @@ if [[ -z "$REPO_ROOT" ]]; then
   REPO_ROOT="$CWD"
 fi
 
-# Allow edits to the Tier 0 files themselves — otherwise /init-project
-# could never create them. Compare by basename + parent directory to
-# handle symlink resolution (macOS /tmp → /private/tmp, etc.).
-FILE_BASENAME=$(basename "$FILE_PATH")
-FILE_DIR=$(cd "$(dirname "$FILE_PATH")" 2>/dev/null && pwd -P)
-REPO_ROOT_RESOLVED=$(cd "$REPO_ROOT" 2>/dev/null && pwd -P)
+NEEDS_TIER_0=false
+while IFS= read -r FILE_PATH; do
+  [[ -z "$FILE_PATH" ]] && continue
 
-if [[ "$FILE_DIR" == "$REPO_ROOT_RESOLVED" ]]; then
-  case "$FILE_BASENAME" in
+  # Allow edits to the Tier 0 files themselves — otherwise /init-project
+  # could never create them.
+  REL_PATH="$FILE_PATH"
+  if [[ "$FILE_PATH" == /* ]]; then
+    REL_PATH="${FILE_PATH#$REPO_ROOT/}"
+  fi
+  case "$REL_PATH" in
     DOMAIN.md|PROJECT.md|CLAUDE.md)
-      exit 0
+      ;;
+    *)
+      NEEDS_TIER_0=true
       ;;
   esac
+done <<< "$EDITED_FILES"
+
+if [[ "$NEEDS_TIER_0" == false ]]; then
+  exit 0
 fi
 
 # Check for Tier 0 files at repo root

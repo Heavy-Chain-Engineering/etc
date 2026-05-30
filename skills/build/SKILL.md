@@ -1059,23 +1059,56 @@ run in dependency order within their phase.
 (per `standards/process/user-flow-completeness.md` — Dispatch-time
 Wiring Contract section).**
 
-Before dispatching each task in this wave, scan the task's
-`acceptance_criteria` field (only — not `requires_reading`, not the
-task description) for the canonical User-flow sentence prefix: the
-literal substring `As ` followed (later in the same sentence, before
-the next sentence terminator) by the literal substring `, navigate
-from`. A task is user-facing for the purposes of this step iff at
-least one of its ACs contains that prefix pair.
+Before dispatching each task in this wave, classify the task's surface
+responsibility. This classification uses both:
 
-- **Detected tasks** trigger the auto-add heuristic below.
-- **Non-detected tasks** dispatch through the existing flow at 6a
-  unchanged — no heuristic, no clause injection, no operator prompt.
-  The wiring check fires forward-only on User-flow-sentenced ACs (per
-  F001 BR-007); legacy specs and backend-only ACs pass through.
+1. the task's `acceptance_criteria` field (only — not `requires_reading`,
+   not the task description) to detect the canonical User-flow sentence
+   prefix: the literal substring `As ` followed (later in the same sentence,
+   before the next sentence terminator) by the literal substring
+   `, navigate from`; and
+2. the task's deliverable shape from `files_in_scope`, `task intent`, and
+   task title.
 
-For each detected user-facing task, run the four-tier auto-add
-heuristic in the preference order defined by the Dispatch-time Wiring
-Contract section of `standards/process/user-flow-completeness.md`:
+Files-in-scope generation is not the failure mode this step guards. Dispatch-time
+surface classification is. A task is user-facing for Step 6a.5 only when it
+contains a User-flow AC AND its deliverable creates or modifies a user-facing
+surface, route, modal, tab, widget registration, sidebar entry, settings rail,
+wizard step, or parent navigation/wiring file.
+
+Surface-positive signals include paths or task names containing `screen`,
+`screens`, `route`, `routes`, `page`, `pages`, `view`, `modal`, `tab`,
+`tabs`, `widget`, `component`, `navigation`, `navigator`, `sidebar`,
+`settings`, `wizard`, or files ending in `.tsx`, `.jsx`, `.vue`, or `.svelte`
+under UI/surface directories. Parent-wiring files found by the heuristic below
+also count as surface-positive.
+
+Domain-only signals include `files_in_scope` limited to domain, service, data,
+mapper, model, schema, type, utility, API-client, or test files with no
+surface-positive path. Example: a task whose scope is only
+`types/index.ts`, `apps/example-app/domain/upcomingItemsWidget.ts`, and
+`apps/example-app/domain/__tests__/upcomingItemsWidget.test.ts` is
+domain-only even if an inherited AC contains a User-flow sentence.
+
+- **Actual surface tasks** trigger the auto-add heuristic below.
+- **Domain-only pure domain/data tasks with inherited User-flow AC text** do
+  NOT trigger the heuristic or operator prompt. Record
+  `surface_status: not_applicable` on the
+  task YAML when persistence is available, emit a concise conductor decision
+  such as `Task 001 is domain-only; no parent wiring file applies. Marking
+  surface_status: not_applicable and dispatching.`, and dispatch normally
+  without the wiring-contract clause.
+- **Ambiguous task shape** is resolved by evidence. If the file scope is strongly
+  non-surface, treat it as domain-only. Prompt only when the task genuinely
+  creates or modifies a user-facing surface and the parent wiring file remains
+  ambiguous after the heuristic.
+- **Tasks with no User-flow sentence** dispatch through the existing flow at 6a
+  unchanged — no heuristic, no clause injection, no operator prompt. Legacy
+  specs and backend-only ACs pass through.
+
+For each actual surface task, run the four-tier auto-add heuristic in the
+preference order defined by the Dispatch-time Wiring Contract section of
+`standards/process/user-flow-completeness.md`:
 
 1. **Tier 1 — Sidebar-nav config files** (e.g., `**/layout/sidebar-nav.*`,
    `**/nav/sidebar.*`).
@@ -1134,10 +1167,10 @@ prompting the operator via Pattern A (`AskUserQuestion`) per
 question in prose; do NOT guess past the ambiguity; do NOT dispatch
 the task until the operator's selection is recorded.
 
-Forward-only reminder: this fallback fires ONLY for tasks whose AC
-contained the canonical User-flow sentence prefix detected in 6a.5.
-ACs without User-flow sentences pass through dispatch unchanged — no
-heuristic, no operator prompt, no clause appended (per BR-007 + AC18).
+Forward-only reminder: this fallback fires ONLY for tasks classified as actual
+surface tasks at 6a.5. ACs without User-flow sentences and domain-only tasks
+with inherited User-flow AC text pass through dispatch unchanged — no heuristic,
+no operator prompt, no clause appended (per BR-007 + AC18).
 
 Invoke `AskUserQuestion` with the question text naming the task ID
 and the User-flow sentence's `{parent route}` value, and with one
@@ -1230,9 +1263,10 @@ For each task in the current wave:
   (the agent must understand wiring is part of the deliverable even
   when no parent file is in scope) and `<path>` is rendered as
   `(deferred — no parent file in scope; escalate if you discover the
-  surface needs to be wired)`. ACs without User-flow sentences pass
-  through dispatch unchanged: no clause appended, no operator prompt
-  fired, prompt content matches the pre-edit shape byte-equivalently.
+  surface needs to be wired)`. ACs without User-flow sentences and
+  domain-only tasks marked `surface_status: not_applicable` pass through
+  dispatch unchanged: no clause appended, no operator prompt fired, prompt
+  content matches the pre-edit shape byte-equivalently.
 - You MUST NOT read, edit, or write any file listed in the task's
   `files_in_scope` in your own context. That work belongs to the
   dispatched subagent.

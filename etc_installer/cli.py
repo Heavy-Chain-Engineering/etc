@@ -40,7 +40,7 @@ app = typer.Typer(
     no_args_is_help=False,
     help=(
         "etc — Engineering Team, Codified — installer\n\n"
-        "Usage: install.sh [--client {claude|antigravity}] "
+        "Usage: install.sh [--client {claude|antigravity|codex}] "
         "[--scope {global|project}] [--help]"
     ),
 )
@@ -57,6 +57,7 @@ class ClientChoice(str, enum.Enum):
 
     CLAUDE = "claude"
     ANTIGRAVITY = "antigravity"
+    CODEX = "codex"
 
 
 class ScopeChoice(str, enum.Enum):
@@ -65,6 +66,7 @@ class ScopeChoice(str, enum.Enum):
 
     GLOBAL = "global"
     PROJECT = "project"
+    USER = "user"
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -87,6 +89,15 @@ def _resolve_target_dir(client: ClientChoice, scope: ScopeChoice) -> Path:
     global scope.
     """
     home = paths.resolve_home()
+    if client is ClientChoice.CODEX:
+        if scope is ScopeChoice.PROJECT:
+            if project_dir := os.environ.get("ETC_PROJECT_DIR"):
+                return Path(project_dir)
+            return Path.cwd()
+        raise ValueError(
+            "Codex user/global install is not enabled. Use --scope project "
+            "for project-local install."
+        )
     if client is ClientChoice.CLAUDE:
         if scope is ScopeChoice.PROJECT:
             return Path.cwd() / ".claude"
@@ -97,12 +108,35 @@ def _resolve_target_dir(client: ClientChoice, scope: ScopeChoice) -> Path:
     return home / ".gemini" / "antigravity"
 
 
-def _preflight_dist(dist_dir: Path) -> None:
+def _resolve_dist_dir(client: ClientChoice | None, dist_dir: Path | None) -> Path:
+    """Resolve the dist source for the selected client."""
+    if dist_dir is not None:
+        return dist_dir
+    default_dist = _default_dist_dir()
+    if client is ClientChoice.CODEX:
+        return default_dist / "codex"
+    return default_dist
+
+
+def _preflight_dist(dist_dir: Path, client: ClientChoice | None = None) -> None:
     """Verify dist/ exists; print and exit 1 if not (AC-013, BR-012).
 
     The error message is a single line mentioning ``compile-sdlc.py`` so
     the operator knows what to run to populate dist/.
     """
+    if client is ClientChoice.CODEX:
+        if (
+            dist_dir.is_dir()
+            and (dist_dir / "AGENTS.md").is_file()
+            and (dist_dir / ".codex" / "hooks.json").is_file()
+        ):
+            return
+        _error_console.print(
+            f"✗ Codex dist/ not found at {dist_dir} — run "
+            "`python3 compile-sdlc.py spec/etc_sdlc.yaml --client codex` first"
+        )
+        raise typer.Exit(code=1)
+
     if dist_dir.is_dir() and (dist_dir / "settings-hooks.json").is_file():
         return
     _error_console.print(
@@ -126,6 +160,49 @@ def _select_client_interactive() -> ClientChoice:
     raise typer.Exit(code=1)
 
 
+def _print_codex_dry_run_plan(dist_dir: Path, project_dir: Path) -> None:
+    """Print the project-local Codex install plan without writing files."""
+    _console.print("[bold]Dry run: Codex project install plan[/bold]")
+    _console.print()
+    _console.print(f"  Source:         {dist_dir}", soft_wrap=True)
+    _console.print(f"  Target project: {project_dir}", soft_wrap=True)
+    _console.print("  Write scope:    selected project only")
+    _console.print()
+    _console.print("  Would create/update:")
+    _console.print(f"    instructions/config/hooks: {project_dir / '.codex'}", soft_wrap=True)
+    _console.print(
+        f"    repo skills:               {project_dir / '.agents' / 'skills'}",
+        soft_wrap=True,
+    )
+    _console.print(
+        f"    repo standards path:       {project_dir / 'standards'}",
+        soft_wrap=True,
+    )
+    _console.print(
+        f"    project agents:            {project_dir / '.codex' / 'agents'}",
+        soft_wrap=True,
+    )
+    _console.print(
+        f"    schemas/proof data:        {project_dir / '.codex' / 'schemas'}",
+        soft_wrap=True,
+    )
+    _console.print(
+        f"    expected output snapshot:  {project_dir / '.codex' / 'expected'}",
+        soft_wrap=True,
+    )
+    _console.print(
+        f"    source snapshot:           {project_dir / '.codex' / 'source'}",
+        soft_wrap=True,
+    )
+    _console.print(
+        f"    gate classifications:      {project_dir / 'gate-classification.json'}",
+        soft_wrap=True,
+    )
+    _console.print()
+    _console.print("  No files were written.")
+    _console.print("  No user-global Codex or Claude config will be modified.")
+
+
 # ── main entry point (typer callback — root command) ─────────────────────
 
 
@@ -134,7 +211,7 @@ def main(  # noqa: PLR0913 -- typer surface; the flags ARE the contract
     client: ClientChoice | None = typer.Option(
         None,
         "--client",
-        help="Skip interactive client prompt. claude|antigravity",
+        help="Skip interactive client prompt. claude|antigravity|codex",
         case_sensitive=False,
     ),
     scope: ScopeChoice = typer.Option(
@@ -168,8 +245,8 @@ def main(  # noqa: PLR0913 -- typer surface; the flags ARE the contract
     """
     # Resolve dist_dir before banner so the missing-dist preflight runs
     # ahead of any decorative output. AC-013 contract.
-    resolved_dist = dist_dir if dist_dir is not None else _default_dist_dir()
-    _preflight_dist(resolved_dist)
+    resolved_dist = _resolve_dist_dir(client, dist_dir)
+    _preflight_dist(resolved_dist, client)
 
     # Banner is decorative; TTY-gated; safe to emit after preflight passes.
     banner.print_banner()
@@ -187,13 +264,27 @@ def main(  # noqa: PLR0913 -- typer surface; the flags ARE the contract
     )
 
     # Target dir: explicit override or computed.
-    resolved_target = (
-        target_dir if target_dir is not None else _resolve_target_dir(resolved_client, scope)
-    )
+    try:
+        if resolved_client is ClientChoice.CODEX and scope is not ScopeChoice.PROJECT:
+            raise ValueError(
+                "Codex user/global install is not enabled. Use --scope project "
+                "for project-local install."
+            )
+        resolved_target = (
+            target_dir
+            if target_dir is not None
+            else _resolve_target_dir(resolved_client, scope)
+        )
+    except ValueError as exc:
+        _error_console.print(f"✗ {exc}")
+        raise typer.Exit(code=1) from exc
 
     _console.print(f"  ✓ Scope: {scope.value} — installing into {resolved_target}")
 
     if dry_run:
+        if resolved_client is ClientChoice.CODEX:
+            _print_codex_dry_run_plan(resolved_dist, resolved_target)
+            return
         _console.print("  ✓ Dry-run: skipping all file writes")
         return
 

@@ -1,0 +1,12 @@
+id: "001"
+title: "Build upcoming items domain mapper"
+assigned_agent: "frontend-developer"
+files_in_scope:
+  - "types/index.ts"
+  - "apps/example-app/domain/upcomingItemsWidget.ts"
+  - "apps/example-app/domain/__tests__/upcomingItemsWidget.test.ts"
+acceptance_criteria:
+  - "As a user, navigate from the home screen to upcoming items and see the next scheduled item."
+  - "Map upcoming item API records into widget display state."
+dependencies: []
+status: "pending"

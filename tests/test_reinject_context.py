@@ -10,9 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-# Derived from this test file's location rather than hardcoded; the prior
-# absolute /Users/jason path didn't exist on Windows and broke the git-repo
-# test in CI / on contributor machines.
+# Derived from this test file's location rather than hardcoded; a prior
+# absolute user-home path did not exist on Windows and broke the git-repo
+# test in CI and on contributor machines.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 

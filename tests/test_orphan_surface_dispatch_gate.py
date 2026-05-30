@@ -313,17 +313,44 @@ def test_build_skill_documents_dispatch_detection(
         f"Step 6 missing detection-step keyword: {detection_keyword!r}"
     )
 
-    # Both branches MUST be documented: detected tasks fire the wiring check
-    # AND non-detected tasks pass through unchanged. The brief allows close
-    # variants for the pass-through phrase ("passes through" / "unchanged").
-    detected_phrase = "Detected tasks"
-    assert detected_phrase in section, (
-        f"Step 6 missing detected-branch documentation phrase: "
-        f"{detected_phrase!r}"
+    # Both branches MUST be documented: actual surface tasks fire the wiring
+    # check AND non-surface tasks pass through unchanged.
+    surface_phrase = "Actual surface tasks"
+    assert surface_phrase in section, (
+        f"Step 6 missing surface-branch documentation phrase: "
+        f"{surface_phrase!r}"
     )
     assert "unchanged" in section, (
         "Step 6 missing pass-through documentation phrase: 'unchanged'"
     )
+
+
+def test_build_skill_does_not_apply_user_flow_wiring_to_pure_domain_tasks(
+    build_skill_dist_text: str,
+) -> None:
+    """A domain/data task can inherit User-flow AC prose from the PRD without
+    owning parent navigation wiring. Step 6 must document that this is
+    `surface_status: not_applicable`, not an operator prompt.
+    """
+    section = _step_6_section(build_skill_dist_text)
+    normalized = _normalize_whitespace(section)
+
+    required_phrases = [
+        "Files-in-scope generation is not the failure mode",
+        "Dispatch-time surface classification is",
+        "Domain-only",
+        "pure domain/data",
+        "surface_status: not_applicable",
+        "no parent wiring file applies",
+        "dispatching",
+        "no heuristic, no clause injection, no operator prompt",
+    ]
+
+    for phrase in required_phrases:
+        assert phrase in normalized, (
+            "Step 6 must document the domain-only User-flow inherited-AC "
+            f"path; missing {phrase!r}"
+        )
 
 
 def test_build_skill_documents_heuristic_invocation(

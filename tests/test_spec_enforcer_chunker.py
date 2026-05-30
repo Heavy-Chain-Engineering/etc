@@ -32,32 +32,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 CHUNKER_SCRIPT = SCRIPTS_DIR / "spec_enforcer_chunker.py"
 
-# Real shipped specs used as fixtures.
-F026_SPEC = (
-    REPO_ROOT
-    / ".etc_sdlc"
-    / "features"
-    / "shipped"
-    / "F026-python-installer-rewrite"
-    / "spec.md"
-)
-F022_SPEC = (
-    REPO_ROOT
-    / ".etc_sdlc"
-    / "features"
-    / "shipped"
-    / "F022-language-agnostic-harness-remainder"
-    / "spec.md"
-)
-F019_SPEC = (
-    REPO_ROOT
-    / ".etc_sdlc"
-    / "features"
-    / "shipped"
-    / "F019-chief-efficiency-officer"
-    / "spec.md"
-)
-
 # Make scripts/ importable so the pure-helper aggregation tests can call
 # `aggregate_verdicts` directly without going through subprocess.
 if str(SCRIPTS_DIR) not in sys.path:
@@ -99,16 +73,27 @@ def _write_heading_spec(spec_path: Path, ac_count: int) -> None:
     spec_path.write_text("".join(lines), encoding="utf-8")
 
 
+def _write_bullet_spec(spec_path: Path, ac_count: int) -> None:
+    """Write a synthetic spec.md with unsupported bullet-shape ACs."""
+    lines = ["# Synthetic PRD\n", "## Acceptance Criteria\n"]
+    for i in range(1, ac_count + 1):
+        lines.append(f"- **AC-{i:03d}:** Bullet AC {i} body.\n")
+    spec_path.write_text("".join(lines), encoding="utf-8")
+
+
 # ── AC-001 — chunked path against F026 (13 ACs) ─────────────────────────
 
 
-def test_should_emit_chunked_strategy_with_three_chunks_when_partitioning_f026_thirteen_ac_spec() -> None:
-    # Arrange — F026's shipped spec has exactly 13 numbered ACs (> default
-    # threshold of 10), so the default invocation must engage chunking.
-    assert F026_SPEC.is_file(), f"missing fixture: {F026_SPEC}"
+def test_should_emit_chunked_strategy_with_three_chunks_when_partitioning_thirteen_ac_spec(
+    tmp_path: Path,
+) -> None:
+    # Arrange — 13 numbered ACs are above the default threshold of 10,
+    # so the default invocation must engage chunking.
+    spec_path = tmp_path / "thirteen_ac_spec.md"
+    _write_numbered_spec(spec_path, ac_count=13)
 
     # Act
-    result = _run_cli("partition", str(F026_SPEC))
+    result = _run_cli("partition", str(spec_path))
 
     # Assert
     assert result.returncode == 0, (
@@ -148,15 +133,17 @@ def test_should_emit_single_strategy_when_synthetic_spec_has_fewer_than_threshol
     assert payload["chunks"][0]["ac_numbers"] == [1, 2, 3, 4, 5]
 
 
-def test_should_emit_single_strategy_when_f022_spec_runs_with_threshold_above_its_ac_count() -> None:
-    # Arrange — F022 has 12 ACs, which is > default threshold of 10. Raise
-    # the threshold above 12 to exercise the small-spec fast path against a
-    # real shipped/ fixture (per the task brief reference to F022 / F024).
-    assert F022_SPEC.is_file(), f"missing fixture: {F022_SPEC}"
+def test_should_emit_single_strategy_when_twelve_ac_spec_runs_with_threshold_above_its_ac_count(
+    tmp_path: Path,
+) -> None:
+    # Arrange — 12 ACs is above the default threshold of 10. Raise the
+    # threshold above 12 to exercise the small-spec fast path.
+    spec_path = tmp_path / "twelve_ac_spec.md"
+    _write_numbered_spec(spec_path, ac_count=12)
 
     # Act
     result = _run_cli(
-        "partition", str(F022_SPEC), "--threshold", "999"
+        "partition", str(spec_path), "--threshold", "999"
     )
 
     # Assert
@@ -198,9 +185,13 @@ def test_should_emit_two_equal_chunks_when_chunk_size_and_threshold_overrides_ap
 # ── AC-004 — parser handles both shapes ─────────────────────────────────
 
 
-def test_should_parse_numbered_ac_shape_when_partitioning_f026_real_spec() -> None:
-    # Arrange/Act — F026 ships only the numbered shape.
-    result = _run_cli("partition", str(F026_SPEC), "--threshold", "999")
+def test_should_parse_numbered_ac_shape_when_partitioning_numbered_spec(
+    tmp_path: Path,
+) -> None:
+    # Arrange/Act — numbered specs use `1. **AC-NNN` markers.
+    spec_path = tmp_path / "numbered_spec.md"
+    _write_numbered_spec(spec_path, ac_count=13)
+    result = _run_cli("partition", str(spec_path), "--threshold", "999")
 
     # Assert — all 13 numbered ACs surfaced.
     assert result.returncode == 0, result.stderr
@@ -258,12 +249,15 @@ def test_should_dedupe_by_ac_number_when_spec_contains_both_numbered_and_heading
     assert payload["chunks"][0]["ac_numbers"] == [1, 2, 3]
 
 
-def test_should_emit_zero_chunks_when_spec_has_no_recognizable_ac_markers() -> None:
-    # Arrange/Act — F019 uses `- **AC-NN:**` (bullet shape) which the
-    # parser does not recognize per spec design. Edge Case 10: zero
-    # recognizable ACs → strategy "single" with zero chunks.
-    assert F019_SPEC.is_file(), f"missing fixture: {F019_SPEC}"
-    result = _run_cli("partition", str(F019_SPEC))
+def test_should_emit_zero_chunks_when_spec_has_no_recognizable_ac_markers(
+    tmp_path: Path,
+) -> None:
+    # Arrange/Act — bullet-shape `- **AC-NN:**` markers are not recognized
+    # per spec design. Edge Case 10: zero recognizable ACs -> strategy
+    # "single" with zero chunks.
+    spec_path = tmp_path / "bullet_spec.md"
+    _write_bullet_spec(spec_path, ac_count=3)
+    result = _run_cli("partition", str(spec_path))
 
     # Assert
     assert result.returncode == 0, result.stderr
@@ -337,12 +331,16 @@ class TestAggregation:
 # ── AC-009 — Backward compat fast path on F026 ──────────────────────────
 
 
-def test_should_emit_single_strategy_when_f026_runs_with_threshold_above_thirteen() -> None:
-    # Arrange/Act — F026 has 13 ACs; with --threshold 999, the chunker
-    # must NOT engage the chunked path. This is the byte-shape parity
-    # check for the legacy single-dispatch contract (BR-007 / AC-009).
+def test_should_emit_single_strategy_when_thirteen_ac_spec_runs_with_threshold_above_thirteen(
+    tmp_path: Path,
+) -> None:
+    # Arrange/Act — with 13 ACs and --threshold 999, the chunker must NOT
+    # engage the chunked path. This is the byte-shape parity check for the
+    # legacy single-dispatch contract (BR-007 / AC-009).
+    spec_path = tmp_path / "thirteen_ac_spec.md"
+    _write_numbered_spec(spec_path, ac_count=13)
     result = _run_cli(
-        "partition", str(F026_SPEC), "--threshold", "999"
+        "partition", str(spec_path), "--threshold", "999"
     )
 
     # Assert

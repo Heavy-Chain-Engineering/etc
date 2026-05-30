@@ -10,20 +10,25 @@
 #   2 = block the command (with reason to stderr)
 
 INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PAYLOAD_HELPER="${HOOK_DIR}/helpers/hook_payload.py"
+COMMANDS=$(printf '%s' "$INPUT" | python3 "$PAYLOAD_HELPER" commands) || exit 2
 
-if [[ -z "$COMMAND" ]]; then
+if [[ -z "$COMMANDS" ]]; then
   exit 0
 fi
+
+check_command() {
+local COMMAND="$1"
 
 # ── Destructive file operations ──────────────────────────────────────────
 # Block rm with recursive flag (-r, -rf, -fr, --recursive) on broad targets.
 # Single file rm (even with -f) is allowed — -f just suppresses "not found" warnings.
 if echo "$COMMAND" | grep -qE '^\s*rm\s+(-[a-zA-Z]*r[a-zA-Z]*\s|--recursive)'; then
-  # Allow rm -rf on known-safe targets (build artifacts, caches)
-  if echo "$COMMAND" | grep -qE 'rm\s+.*\b(node_modules|__pycache__|\.tdd-dirty|dist/|build/|\.pytest_cache|\.mypy_cache|\.ruff_cache)\b'; then
-    exit 0
-  fi
+	  # Allow rm -rf on known-safe targets (build artifacts, caches)
+	  if echo "$COMMAND" | grep -qE 'rm\s+.*\b(node_modules|__pycache__|\.tdd-dirty|dist/|build/|\.pytest_cache|\.mypy_cache|\.ruff_cache)\b'; then
+	    return 0
+	  fi
   echo "BLOCKED: Recursive rm command. Specify exact files or ask the user for confirmation." >&2
   exit 2
 fi
@@ -73,5 +78,11 @@ if echo "$COMMAND" | grep -qE -- '--no-verify|--skip-hooks|--dangerously'; then
   echo "BLOCKED: Attempting to bypass safety checks. The harness exists for a reason." >&2
   exit 2
 fi
+}
+
+while IFS= read -r COMMAND; do
+  [[ -z "$COMMAND" ]] && continue
+  check_command "$COMMAND"
+done <<< "$COMMANDS"
 
 exit 0

@@ -13,12 +13,21 @@
 #   2 = block the operation (invariant violated)
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
+
+PYTHON=""
+python3 -c "" 2>/dev/null && PYTHON=python3
+if [[ -z "$PYTHON" ]]; then
+  python -c "" 2>/dev/null && PYTHON=python
+fi
+[[ -z "$PYTHON" ]] && exit 0
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PAYLOAD_HELPER="${HOOK_DIR}/helpers/hook_payload.py"
+CWD=$(printf '%s' "$INPUT" | "$PYTHON" "$PAYLOAD_HELPER" cwd) || exit 2
+EDITED_FILES=$(printf '%s' "$INPUT" | "$PYTHON" "$PAYLOAD_HELPER" files) || exit 2
 
 # Normalize Windows backslashes to forward slashes so prefix-stripping and
 # pattern matching work the same as on macOS/Linux. No-op on POSIX paths.
-FILE_PATH="${FILE_PATH//\\//}"
 CWD="${CWD//\\//}"
 
 # If we can't determine the project directory, allow the operation
@@ -43,37 +52,41 @@ has_invariants_file() {
 # Collect all INVARIANTS.md files to check (project root + component ancestors)
 INVARIANT_FILES=()
 
+add_invariant_file() {
+  local candidate="$1"
+  local existing=""
+
+  for existing in "${INVARIANT_FILES[@]}"; do
+    if [[ "$existing" == "$candidate" ]]; then
+      return
+    fi
+  done
+  INVARIANT_FILES+=("$candidate")
+}
+
 # Always check project root
 if has_invariants_file "$CWD"; then
-  INVARIANT_FILES+=("${CWD}/INVARIANTS.md")
+  add_invariant_file "${CWD}/INVARIANTS.md"
 fi
 
-# Walk up from the file's directory to find component-level INVARIANTS.md files
-if [[ -n "$FILE_PATH" ]]; then
-  # Make path absolute if needed
+# Walk up from each edited file's directory to find component-level
+# INVARIANTS.md files.
+while IFS= read -r FILE_PATH; do
+  [[ -z "$FILE_PATH" ]] && continue
+  FILE_PATH="${FILE_PATH//\\//}"
+
   if [[ "$FILE_PATH" != /* ]] && [[ ! "$FILE_PATH" =~ ^[A-Za-z]:/ ]]; then
     FILE_PATH="${CWD}/${FILE_PATH}"
   fi
 
   DIR=$(dirname "$FILE_PATH")
-  # Walk from file's directory up to (but not including) CWD, collecting INVARIANTS.md
   while [[ "$DIR" != "$CWD" && "$DIR" != "/" && "$DIR" != "." ]]; do
     if has_invariants_file "$DIR"; then
-      # Avoid duplicates
-      ALREADY_ADDED=false
-      for existing in "${INVARIANT_FILES[@]}"; do
-        if [[ "$existing" == "${DIR}/INVARIANTS.md" ]]; then
-          ALREADY_ADDED=true
-          break
-        fi
-      done
-      if [[ "$ALREADY_ADDED" == false ]]; then
-        INVARIANT_FILES+=("${DIR}/INVARIANTS.md")
-      fi
+      add_invariant_file "${DIR}/INVARIANTS.md"
     fi
     DIR=$(dirname "$DIR")
   done
-fi
+done <<< "$EDITED_FILES"
 
 # No INVARIANTS.md files found — pass silently
 if [[ ${#INVARIANT_FILES[@]} -eq 0 ]]; then

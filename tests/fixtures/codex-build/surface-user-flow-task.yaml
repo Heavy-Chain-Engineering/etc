@@ -1,0 +1,12 @@
+id: "002"
+title: "Wire upcoming items widget into home screen"
+assigned_agent: "frontend-developer"
+files_in_scope:
+  - "apps/example-app/screens/HomeScreen.tsx"
+  - "apps/example-app/components/UpcomingItemsWidget.tsx"
+  - "apps/example-app/components/__tests__/UpcomingItemsWidget.test.tsx"
+acceptance_criteria:
+  - "As a user, navigate from the home screen to upcoming items and see the next scheduled item."
+dependencies:
+  - "001"
+status: "pending"
