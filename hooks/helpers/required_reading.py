@@ -9,7 +9,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 PASS_STATUSES = {"pass", "passed", "ok", "success", "complete", "completed"}
 
 

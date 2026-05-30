@@ -25,6 +25,13 @@ import sys
 LOGGER = logging.getLogger(__name__)
 
 ETC_TAG_PREFIX = "refs/tags/etc/"
+# A bare `.../milestone` tag is forbidden (ADR-002 / AGA-002): milestone
+# release tags use the grammar `etc/feature/<id>/milestone/<NNN>`, so the
+# `milestone` segment must remain a *directory* in the ref hierarchy. Writing
+# a leaf named exactly `.../milestone` would occupy that name as a ref and
+# block the `<NNN>` children — a programming-contract violation, not a
+# graceful-degrade git failure.
+_BARE_MILESTONE_SUFFIX = "/milestone"
 # Prefer taggerdate (set by `git tag -a` at tag-creation time) over the commit's
 # committerdate. This is what makes per-phase timing measurable when /build
 # squashes multiple waves to a single commit: each annotated phase tag carries
@@ -76,7 +83,20 @@ def write_tag(name: str, ref: str = "HEAD") -> bool:
     but their taggerdates differ by the wave's wall-clock duration. The
     annotation message records the tag name verbatim so it shows up in
     `git log --decorate` output without an opaque "tag: foo" prefix.
+
+    A bare `etc/feature/<id>/milestone` name (no `/<NNN>` leaf) is rejected
+    with `ValueError`: milestone tags must carry a sequence child so the
+    `milestone` segment stays a ref directory (ADR-002 / AGA-002). This is a
+    caller contract violation, distinct from the graceful-degrade git
+    failure modes above, and is raised rather than returned.
     """
+    if name.endswith(_BARE_MILESTONE_SUFFIX):
+        raise ValueError(
+            f"Refusing to write bare milestone tag {name!r}: milestone tags "
+            "require a sequence leaf (etc/feature/<id>/milestone/<NNN>) so the "
+            "'milestone' segment stays a ref directory (ADR-002)."
+        )
+
     if not _has_head_commit():
         LOGGER.warning(
             "Cannot write tag %r: not a git repository or repo has no HEAD commit.",

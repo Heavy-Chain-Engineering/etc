@@ -14,7 +14,6 @@ import os
 import sys
 from pathlib import Path
 
-
 SCHEMA_VERSION = 1
 
 

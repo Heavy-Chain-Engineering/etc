@@ -17,7 +17,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-
 SCHEMA_VERSION = 1
 PASS_STATUSES = frozenset({"pass", "passed", "ok", "success", "complete", "completed"})
 
@@ -487,7 +486,9 @@ def _generated_output_drift_errors(repo_root: Path) -> list[str]:
 
 
 def _codex_compile_source_root(repo_root: Path) -> Path:
-    if (repo_root / "compile-sdlc.py").is_file() and (repo_root / "spec" / "etc_sdlc.yaml").is_file():
+    if (repo_root / "compile-sdlc.py").is_file() and (
+        repo_root / "spec" / "etc_sdlc.yaml"
+    ).is_file():
         return repo_root
     return repo_root / ".codex" / "source"
 

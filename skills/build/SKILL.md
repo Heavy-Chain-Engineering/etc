@@ -98,7 +98,13 @@ to drive the pipeline unattended. Behavior changes:
 4. **Step 7 (VERIFY)** NON-COMPLIANT routes through the existing
    remediation path without operator pause — /goal's
    evaluator-after-each-turn drives the loop until COMPLIANT or
-   max-turns exhausts.
+   max-turns exhausts. The **Step 7.6 behavioral/runtime totalization
+   gate** (Gap A) participates: an exit-2 hard block (a declared-live AC
+   broken at the assembled-app re-run) routes through the same /goal
+   remediation loop; a milestone terminal (exit 0, `terminal_tag` set to
+   a `.../milestone/<NNN>` value) is a LEGAL terminal state (BR-012) —
+   autonomous accepts it and stops, never forcing a declared-deferred AC
+   live. See Step 7.6 (item 4.6) for the full routing.
 5. **Terminal-phase close** (after release tag write) clears the goal
    via `/goal --clear` (or the equivalent skill invocation) so a
    follow-up session does not inherit a stale autonomous loop.
@@ -1318,6 +1324,68 @@ wave boundary.
 See `standards/process/diagnostic-discipline.md` for the full rule and
 ADR-F021-003 + ADR-F021-005 for the design rationale.
 
+**6c-runtime. Per-wave behavioral runtime sibling (Gap A — AC-3).**
+
+After the structural verify-green gate above passes and before the
+`phase-N/done` tag is written (6d), fire the behavioral sibling for the
+ACs this wave is contracted to make live. This is the per-wave,
+fast-feedback firing point of the runtime gate; the authoritative re-run
+is Step 7.6. The full rule — declaration-gating, the profile wire
+contract, zero-tolerance, and the opt-out hatches — lives in
+`standards/process/behavioral-runtime-dod.md` and is NOT duplicated here;
+this step cites it and orchestrates.
+
+**Declaration-gating (fires ONLY for `live_at == <current wave>`).** Read
+the Gap B liveness block at
+`state.yaml.spec_phase.contract_completeness.liveness[]`. Each entry
+carries `ac_id`, `outcome`, `live_at`, and (for deferrals) `deferred_reason`.
+Select the subset whose `live_at` names the wave just closed (the
+0-based wave number WITHIN the current phase, matching 6a/6d). Map waves
+to live ACs from `live_at` only — the wave plan is a consumer and never
+re-declares liveness; the spec is the source of truth (a wave/spec
+mismatch surfaces as a planning warning, not a re-declaration).
+
+**Skip-silently conditions (half-built waves are legal).** Do NOT
+dispatch — and do NOT fail — when any of these hold:
+
+- `state.yaml.spec_phase.infrastructure_only: true` (whole-feature exempt
+  — e.g. this very dogfood feature).
+- No liveness block is present (forward-only: legacy features are never
+  gated, never mutated).
+- The liveness block's `schema_version` is higher than known
+  (warn-and-skip per Gap B ADR-002).
+- No AC has `live_at == <current wave>` (nothing is contracted live yet
+  — silence is correct, not a gap).
+
+**Dispatch (only when the live subset is non-empty).** Invoke the
+runtime-verify dispatcher, passing the feature path and the selected live
+AC ids as JSON on stdin (never as shell args — metacharacter-injection
+defense per the profile wire contract):
+
+```bash
+printf '{"feature_path":"%s","live_ac_ids":%s,"cwd":"%s"}' \
+    "$FEATURE_PATH" "$LIVE_AC_IDS_JSON" "$CWD" | bash hooks/runtime-verify.sh
+```
+
+A missing `profiles.lock` or absent profile `runtime-verify.sh` →
+warn-and-skip (parity with verify-green). The dispatcher returns
+`{"results":[{"ac_id","status","evidence",...}]}` with `status` in the
+closed enum `pass | fail | no-test`.
+
+**Zero-tolerance close (mirrors verify-green).** Any selected live AC
+returning `fail` OR `no-test` FAILS the wave: STOP, do NOT write the
+`phase-N/done` tag, surface the offending AC ids and their `evidence`
+verbatim into the wave's `verification.md` (Step 7), and route to the
+existing 6e failure/remediation path. A declared-live outcome with no
+matching runtime test (`no-test`) is a failure — a contracted-live AC
+with no runtime assertion cannot pass. There is no threshold or
+delta-based exception; this mirrors 6c's zero-is-zero contract one level
+up (behavioral, not structural).
+
+Per-wave results are advisory fast feedback; the authoritative,
+totalizing re-run at Step 7.6 re-checks every declared-live AC against
+the assembled app (ADR-003) and is the gate that routes the terminal tag.
+
 **6d. Checkpoint and phase/wave-done tags:**
 
 Only after step 6c confirms tests pass and no task is escalated — i.e.
@@ -1753,14 +1821,99 @@ successfully at Step 6:
    next /build --resume iteration. The skip flag remains an explicit
    operator override even in autonomous mode.
 
+4.6. **Step 7.6: Behavioral/runtime totalization gate (Gap A — AC-5, AC-7).**
+
+   This sub-step runs AFTER the Step 7.5 spec→ADR coupling gate (item 4.5)
+   and BEFORE the release tag is written (item 5). It is the authoritative,
+   release-time firing point of the runtime gate: it re-runs EVERY
+   declared-live user-outcome AC against the assembled app (not trusting the
+   per-wave records from Step 6c-runtime — ADR-003), totalizes the verdicts,
+   and routes the terminal tag. The full rule — declaration-gated
+   totalization, the milestone-vs-clean routing table, and the loud-deferral
+   surfacing — lives in `standards/process/behavioral-runtime-dod.md` and is
+   NOT duplicated here.
+
+   Invocation:
+
+   ```bash
+   python3 ~/.claude/scripts/runtime_totalization_check.py \
+       .etc_sdlc/features/active/<feature_dir_name>
+   ```
+
+   Exit codes:
+
+   - **0** = proceed. Either every declared-live AC verified (clean release
+     allowed) OR a milestone-route (≥1 AC declared-deferred-with-reason, the
+     rest verified) — in the milestone case the gate has ALREADY written the
+     `etc/feature/<id>/milestone/<NNN>` tag and recorded it as the terminal
+     tag (see the tag-routing note in item 5 / Step 7c). The exempt
+     (`infrastructure_only`), schema-skipped, and ungated (no liveness block,
+     forward-only) cases also exit 0. Proceed to item 5.
+   - **2** = hard block. ≥1 declared-live AC `fail`ed or had `no-test` at the
+     authoritative re-run. STOP. Do NOT write the release tag. Do NOT write
+     `release-notes.md`. Do NOT move the feature to `shipped/`. The script
+     emits a `RUNTIME VERIFICATION FAILED` stdout report naming each failing
+     AC id, its status, and its evidence. Route the findings to the
+     responsible task owners for remediation (the same routing as the 7.4
+     journey gate and the 7.5 spec-coupling gate), then re-run
+     `/build --resume`. The operator MAY instead declare an intentionally
+     not-yet-live outcome `live_at: deferred` (with a non-empty reason) in
+     `state.yaml.spec_phase.contract_completeness.liveness` — it then routes
+     to a milestone tag instead of blocking.
+   - **1** = usage / IO error (feature dir missing, malformed state). Treat
+     as a hard fault; surface stderr verbatim and STOP.
+
+   The gate persists its per-AC results and the routed `terminal_tag`
+   merge-preserve under `state.yaml.build.runtime_verification` (never
+   clobbering `build.autonomous` / `build.submission` /
+   `build.cross_feature_collisions`); the deferred set surfaces loudly in
+   both `verification.md` and `release-notes.md` (BR-009), listed in full,
+   never aggregated into a count.
+
+   **Autonomous mode (F014) interaction:** under `--autonomous`, the gate
+   still runs. An **exit-2 hard block (declared-live but broken)** routes
+   through the existing Step 7 remediation path under the /goal evaluator
+   loop — the evaluator reads the structured report and dispatches the fix as
+   remediation work, then the gate re-runs on the next `/build --resume`
+   iteration; on max-turns it stops with the live-AC failure surfaced, never
+   a silent clean tag. A **milestone terminal (exit 0, terminal_tag set to a
+   `.../milestone/<NNN>` value)** is a LEGAL terminal state (BR-012):
+   autonomous accepts it and stops, and NEVER tries to force a
+   declared-deferred AC live.
+
 5. **Write the release tag and release-notes.md (terminal phase close).**
 
    This step runs ONLY after items 1–4 above have all succeeded — full
-   CI passing, invariants verified, spec-enforcer COMPLIANT, and
-   verification.md written. These two writes are the marker of a
-   successful terminal-phase close (BR-009, AC-009, AC-011).
+   CI passing, invariants verified, spec-enforcer COMPLIANT,
+   verification.md written, AND the Step 7.6 totalization gate exited 0
+   (item 4.6). These two writes are the marker of a successful
+   terminal-phase close (BR-009, AC-009, AC-011).
 
    Sub-steps run in this order: **c.0 → a → b → c.1**.
+
+   **Terminal-tag routing (Gap A — AC-6).** Before writing the clean
+   release tag in sub-step a, read
+   `state.yaml.build.runtime_verification.terminal_tag` (written by the
+   Step 7.6 gate, item 4.6):
+
+   - **`null` / absent** — the normal, clean path. Every declared-live AC
+     verified (or the feature is exempt / ungated / has an empty liveness
+     block). Write the clean `etc/feature/<final_id>/release` tag in
+     sub-step a as today.
+   - **A `etc/feature/<id>/milestone/<NNN>` value** — a milestone terminal
+     (≥1 declared-deferred-with-reason AC, the rest verified). The Step 7.6
+     gate has ALREADY written that milestone tag and recorded it as the
+     terminal tag, so sub-step a **SKIPS the clean release-tag write** (the
+     milestone tag IS the terminal tag; the clean `release` tag is reserved
+     for a future fully-verified close — a deferred outcome going live later
+     cuts a new clean release). Sub-step b (release-notes.md) and the
+     active→shipped move (Step 7c.1) STILL run: a milestone is a legal
+     terminal close, the feature still transitions to its audit-frozen
+     state, and the deferred set surfaces loudly in release-notes.md.
+
+   The bare `etc/feature/<id>/milestone` tag (no `<NNN>`) is FORBIDDEN
+   (F025 git-ref-hierarchy lesson); `git_tags.py` enforces the
+   exit-code discipline and the bare-`milestone` rejection guard.
 
 <!-- forward-only: temp-ID allocation enforced from F023 release tag onward -->
 
@@ -1800,7 +1953,11 @@ successfully at Step 6:
       On non-zero exit, surface stderr verbatim and abort with exit 1 —
       operator remediates manually before re-running `/build --resume`.
 
-   a. Write the release tag via the git_tags.py write-tag CLI:
+   a. Write the release tag via the git_tags.py write-tag CLI —
+      **unless** the Terminal-tag routing above selected the milestone
+      path (`terminal_tag` names a `.../milestone/<NNN>` tag), in which
+      case SKIP this sub-step entirely (the milestone tag is already the
+      terminal tag) and fall through to sub-step b:
       ```
       python3 ~/.claude/scripts/git_tags.py write-tag "etc/feature/<final_id>/release"
       ```
@@ -1926,11 +2083,16 @@ successfully at Step 6:
       only observable signal that the rename was filesystem-only.
 
    **Discipline (edge case 4).** On mid-build failure — an escalated
-   wave or a failing test at Step 6c, or a NON-COMPLIANT spec-enforcer
-   result at Step 7 item 3 — neither the release tag nor
-   release-notes.md is written, and the active→shipped move is NOT
-   attempted. Step 7c.0 (resolve-final-id) is also NOT invoked. Skip
-   all four sub-steps (7c.0, a, b, 7c.1). Phase start/done tags written
+   wave or a failing test at Step 6c (structural) or Step 6c-runtime
+   (behavioral), a NON-COMPLIANT spec-enforcer result at Step 7 item 3,
+   or a Step 7.6 totalization HARD BLOCK (exit 2 — a declared-live AC
+   `fail`/`no-test`) — neither the release tag nor release-notes.md is
+   written, and the active→shipped move is NOT attempted. Step 7c.0
+   (resolve-final-id) is also NOT invoked. Skip all four sub-steps (7c.0,
+   a, b, 7c.1). (A Step 7.6 MILESTONE route is NOT a failure — exit 0,
+   terminal_tag set — and proceeds through item 5 with the clean
+   release-tag write skipped per the Terminal-tag routing above.) Phase
+   start/done tags written
    by earlier successful waves remain in place; they are append-only and
    are not rolled back. Re-run `/build --resume` after remediation;
    sub-steps 7c.0, a, b, and 7c.1 run only on the successful

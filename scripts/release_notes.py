@@ -41,6 +41,12 @@ PHASE_DIR_PATTERN = re.compile(r"^phase-(\d+)$")
 # both treated identically to an empty list (no section emitted).
 STATE_FILENAME = "state.yaml"
 
+# Gap A (F-2026-05-30 behavioral-runtime DoD gate): the deferred-outcome set
+# lives under `state.yaml.build.runtime_verification`. BR-009 mandates LOUD,
+# per-AC surfacing here — never an aggregate count. A `.../milestone/<NNN>`
+# terminal_tag means a milestone (NOT clean) release.
+MILESTONE_TAG_PATTERN = re.compile(r"/milestone/\d+$")
+
 # Recognised section headers in a completion report. Matching is
 # case-insensitive on the heading text. Each heading marks the start
 # of a section; the section ends at the next heading of equal or
@@ -84,6 +90,38 @@ class _ExtendRecord:
     triage: str
     release_tag: str
     dispatched_agents: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DeferredOutcome:
+    """One deferred behavioral-runtime AC (Gap A Data-Model `deferred[]`).
+
+    `ac_id` matches `^AC-\\d+$`; `reason` is the non-empty deferral reason
+    echoed from the Gap B liveness block (BR-009 forbids collapsing the set
+    into a count, so each instance is rendered individually).
+    """
+
+    ac_id: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeVerificationRecord:
+    """Parsed `state.yaml.build.runtime_verification` for deferred surfacing.
+
+    Exposes the deferred set (for both release-notes rendering and
+    verification.md reuse) plus the terminal-tag classification so a
+    milestone close is surfaced loudly as NOT a clean release (Gap A
+    ADR-002 / BR-009).
+    """
+
+    terminal_tag: str | None
+    deferred: tuple[DeferredOutcome, ...]
+
+    @property
+    def is_milestone(self) -> bool:
+        """True when `terminal_tag` is a `.../milestone/<NNN>` tag."""
+        return _is_milestone_tag(self.terminal_tag)
 
 
 @dataclass(slots=True)
@@ -137,6 +175,13 @@ def build(feature_dir: Path) -> str:
     sections.append(_render_phases_section(phases))
     sections.append(_render_deferred_section(phases))
     sections.append(_render_limitations_section(phases))
+
+    # Gap A BR-009: surface the behavioral-runtime deferred-outcome set
+    # loudly (per-AC, never a count). Omitted entirely when the gate was
+    # not used or recorded no deferrals (forward-only — no false noise).
+    runtime = collect_runtime_verification(feature_dir)
+    if runtime is not None and runtime.deferred:
+        sections.append(_render_runtime_deferred_section(runtime))
 
     # F025 BR-008: append-only `## Extensions` section, gated on a
     # non-empty `state.yaml.extends` list. Backwards-compat: when the
@@ -492,6 +537,122 @@ def _render_extensions_section(extends: list[_ExtendRecord]) -> str:
         lines.append(f"- Dispatched agents: {agents}")
         lines.append(f"- Release tag: {record.release_tag}")
         lines.append("")
+    return "\n".join(lines)
+
+
+# ── Behavioral-runtime deferred set (Gap A) ─────────────────────────────
+
+
+def _is_milestone_tag(terminal_tag: str | None) -> bool:
+    """True iff `terminal_tag` is a `.../milestone/<NNN>` tag."""
+    if not isinstance(terminal_tag, str):
+        return False
+    return MILESTONE_TAG_PATTERN.search(terminal_tag) is not None
+
+
+def collect_runtime_verification(
+    feature_dir: Path,
+) -> RuntimeVerificationRecord | None:
+    """Read `state.yaml.build.runtime_verification` and parse the deferred set.
+
+    Returns ``None`` when the file is absent, unparseable, or carries no
+    `runtime_verification` block — forward-only, so a legacy / ungated
+    feature surfaces no behavioral-runtime section at all. A present-but-
+    empty deferred set yields a record with an empty `deferred` tuple
+    (the renderer omits the section, but the terminal_tag is still
+    exposed for verification.md reuse).
+
+    Each deferral is read from `deferred[]` (the Data-Model authoritative
+    list). The reason is taken verbatim; entries without a non-empty
+    `ac_id` are dropped (the non-empty-reason invariant is enforced
+    upstream at the totalization gate — here we surface what exists).
+    """
+    state_path = feature_dir / STATE_FILENAME
+    if not state_path.is_file():
+        return None
+
+    try:
+        data = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return None
+
+    block = _extract_runtime_block(data)
+    if block is None:
+        return None
+
+    terminal_tag = block.get("terminal_tag")
+    if not isinstance(terminal_tag, str):
+        terminal_tag = None
+
+    return RuntimeVerificationRecord(
+        terminal_tag=terminal_tag,
+        deferred=_parse_deferred_entries(block.get("deferred")),
+    )
+
+
+def _extract_runtime_block(data: Any) -> dict[str, Any] | None:
+    """Return `build.runtime_verification` as a dict, or None if absent."""
+    if not isinstance(data, dict):
+        return None
+    build_block = data.get("build")
+    if not isinstance(build_block, dict):
+        return None
+    runtime = build_block.get("runtime_verification")
+    if not isinstance(runtime, dict):
+        return None
+    return runtime
+
+
+def _parse_deferred_entries(raw: Any) -> tuple[DeferredOutcome, ...]:
+    """Coerce the `deferred[]` list into `DeferredOutcome` records.
+
+    Preserves on-disk order. Non-dict entries and entries without a
+    non-empty `ac_id` are dropped; a missing reason collapses to an empty
+    string so the AC still surfaces (a deferral with no listed reason is
+    still louder than a hidden count).
+    """
+    if not isinstance(raw, list):
+        return ()
+    records: list[DeferredOutcome] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        ac_id = entry.get("ac_id")
+        if not isinstance(ac_id, str) or not ac_id:
+            continue
+        records.append(
+            DeferredOutcome(ac_id=ac_id, reason=_as_str(entry.get("reason"), default="")),
+        )
+    return tuple(records)
+
+
+def _render_runtime_deferred_section(record: RuntimeVerificationRecord) -> str:
+    """Render the LOUD per-AC deferred-outcome section (BR-009).
+
+    Every deferral is listed individually as `AC-N — <reason>` with its
+    `live_at: deferred` marker — never collapsed into a count. A milestone
+    terminal_tag is called out prominently as a milestone (not clean)
+    release so a deferred close can never be mistaken for a clean one.
+    """
+    lines: list[str] = ["## Behavioral Runtime — Deferred Outcomes", ""]
+
+    if record.is_milestone:
+        lines.append(
+            f"**MILESTONE RELEASE — not a clean release.** Terminal tag "
+            f"`{record.terminal_tag}` was cut because behavioral-runtime "
+            f"outcomes below are deferred (not verified live):",
+        )
+    else:
+        lines.append(
+            "The following behavioral-runtime outcomes are deferred "
+            "(declared not-live, with reason):",
+        )
+    lines.append("")
+
+    for outcome in record.deferred:
+        reason = outcome.reason if outcome.reason else "(no reason recorded)"
+        lines.append(f"- {outcome.ac_id} — {reason} (`live_at: deferred`)")
+    lines.append("")
     return "\n".join(lines)
 
 

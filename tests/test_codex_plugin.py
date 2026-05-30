@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPILE_SCRIPT = REPO_ROOT / "compile-sdlc.py"
 SPEC_PATH = REPO_ROOT / "spec" / "etc_sdlc.yaml"

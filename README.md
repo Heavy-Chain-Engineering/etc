@@ -37,6 +37,7 @@ Some high-level features:
 - **Mechanical TDD enforcement** — a PreToolUse hook blocks edits to production code without a sibling test. No exemption flag.
 - **Multi-language profile enforcement** — Python, TypeScript, Go, and Rust get test / types / lint / TDD gates today via the F020 profile architecture; new languages copy an eight-file pattern.
 - **Adversarial spec verification** — every shipped task is reviewed against the original PRD by a spec-enforcer agent before the release tag is written.
+- **Behavioral / runtime Definition-of-Done** — structural-green ≠ behaviorally-correct: before a *clean* release tag, declared-live user-outcome ACs are re-run against the assembled app with real data + real auth (never `canActivate:()=>true`). Declaration-gated (half-built waves are legal); deferred outcomes are allowed but earn a **milestone** tag, not a clean release — so "738 tests green, 0 rows rendered" can never claim done silently.
 - **Defense in depth** — bug classes are defended at three independent SDLC phases. Three gates must fail simultaneously for recurrence.
 - **Outcome tracking by value hypothesis** — every feature carries a `value-hypothesis.yaml`; `/metrics` reports the percentage validated, broken down by author role. Anti-Goodhart by construction because the harness writes the source data automatically.
 - **Closed-loop intake via Linear MCP** — `/pull-tickets` pulls tickets, generates PRDs from ticket content + codebase research, builds successful ones, returns rejects with clarifying questions in the source tool.

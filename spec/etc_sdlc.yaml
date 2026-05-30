@@ -941,6 +941,7 @@ standards:
       - tdd-workflow.md
       - code-review-process.md
       - definition-of-done.md
+      - behavioral-runtime-dod.md
       - domain-fidelity.md
       - invariants.md
     code:
