@@ -819,7 +819,173 @@ control-character codepoint (regex `[\x00-\x1f\x7f]`) and cap the
 User-flow sentence at 512 characters (truncate excess). Sanitization
 happens at the capture site, before the sentence is appended to the AC.
 
-**After completing Steps 4a–4d for all user-facing ACs**, proceed to the
+**Step 4e: Per-outcome liveness + milestone elicitation (contract-completeness).**
+
+Run this step for the **intent-tier contract classes** defined in
+`standards/process/contract-completeness.md` (classes 1–3: liveness,
+source-of-truth conflict, open-question→BLOCKER). That standard is the
+single source of truth for the signal lists and the canonical sentence
+forms — do NOT duplicate them inline here. Format/DTO contracts (classes
+4–5) belong to `/architect`, not this step.
+
+After Steps 4a–4d, re-walk each AC and classify it as a **user-outcome
+AC** using Signal list A in `standards/process/contract-completeness.md`
+(observable-outcome verbs, a user-facing surface, or a confirmable state
+change). A pure-internal AC is not a user-outcome AC — the liveness check
+stays silent (Edge Case 1). When `state.yaml.spec_phase.infrastructure_only`
+is `true` (captured in Phase 1 Question 7), the liveness check is exempt
+across all ACs — record nothing and skip to Step 4f (Edge Case 3).
+
+**Idempotency.** An AC that already carries the canonical liveness sentence
+form (`Live at {milestone-id|deferred}; fully-functional means: ...`) is
+already-compliant — skip its elicitation prompt.
+
+For each user-outcome AC not already compliant, print the AC and a
+*prefilled draft* liveness sentence in the canonical form from
+`standards/process/contract-completeness.md`:
+
+```
+Live at {milestone-id|deferred}; fully-functional means: {one acceptance statement}.
+```
+
+When the outcome is deferred, the draft uses the deferral form, and the
+`{reason}` is mandatory:
+
+```
+Live at deferred ({reason}); fully-functional means: {acceptance statement}.
+```
+
+Infer `{milestone-id}` from any wave/milestone named in surrounding prose
+(default the draft to `deferred` when none is named), and
+`{acceptance statement}` from the AC's measurable claim phrased as a
+network/persistence/reload observation. Then invoke `AskUserQuestion`
+(Pattern A):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "AC-N liveness: accept, refine, or mark not-a-user-outcome?",
+    header: "AC-N liveness",
+    multiSelect: false,
+    options: [
+      {
+        label: "Accept the draft liveness sentence (Recommended)",
+        description: "The prefilled `Live at ...; fully-functional means: ...` sentence is appended verbatim to AC-N, and a liveness[] entry is recorded for state.yaml."
+      },
+      {
+        label: "Refine — I have changes",
+        description: "I'll ask what to change via a Pattern B follow-up (milestone id, deferred + reason, or the fully-functional acceptance statement), revise the draft, and re-present this picker."
+      },
+      {
+        label: "Mark this AC not-a-user-outcome",
+        description: "Record an exempt liveness status for AC-N (no observable user outcome). No liveness sentence is required."
+      }
+    ]
+  }]
+)
+```
+
+**If the user picks "Refine — I have changes"**, dispatch a Pattern B
+free-form follow-up:
+
+```
+
+---
+
+**▶ Your answer needed:** What would you change about the liveness sentence for AC-N? Name the milestone id (or `deferred` plus a one-line reason) and the fully-functional acceptance statement.
+
+```
+
+Incorporate the response, update the draft, and re-invoke the
+`AskUserQuestion` above until the user accepts or marks not-a-user-outcome.
+
+**On accept**, append the sentence verbatim to its parent AC, and record a
+`liveness[]` entry for Phase 5 (Step 7) with fields `ac_id`, `outcome`
+(the AC's outcome paraphrase), `live_at` (the milestone id, or the literal
+`deferred`), `acceptance_statement`, and `deferred_reason` (non-null iff
+`live_at == "deferred"`, else `null`). This is the published producer
+interface the future behavioral/runtime DoD gate (#51) consumes — its
+shape is fixed by `standards/process/contract-completeness.md`.
+
+**Sanitize at the capture site.** Before the sentence is appended or any
+`liveness[]` field is recorded, strip every control-character codepoint
+(regex `[\x00-\x1f\x7f]`) and cap each free-form field at 512 characters
+(truncate excess), matching Step 4d. Nothing unsanitized reaches `spec.md`
+or `state.yaml`.
+
+**Step 4f: Source-of-truth conflict capture (contract-completeness class 2).**
+
+Once, at the feature level (not per-AC), capture which of
+`{code, canonical-spec, prototype}` are in play for this feature. The
+tie-breaker rule itself — majority wins, escalate dissent, `[SPEC-WINS]`
+— is a standing MANDATORY standard at
+`standards/process/source-of-truth-conflict-rule.md` and is **never
+re-litigated per feature**; this step only records the in-play *operand
+set*. Do NOT duplicate the rule here. Invoke `AskUserQuestion` (Pattern A,
+`multiSelect: true`):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Which sources of truth are in play for this feature?",
+    header: "Conflict sources",
+    multiSelect: true,
+    options: [
+      {
+        label: "code",
+        description: "Existing code as written is an authoritative description of behavior for this feature."
+      },
+      {
+        label: "canonical-spec",
+        description: "This /spec-produced PRD plus its acceptance criteria is in play."
+      },
+      {
+        label: "prototype",
+        description: "A design mock, reference implementation, or DESIGN.md artifact is in play."
+      }
+    ]
+  }]
+)
+```
+
+Record the selected subset for Phase 5 as `conflict_sources` (a list whose
+members are drawn from `code`, `spec`, `prototype` — map the
+`canonical-spec` label to `spec`). When the author selects "Accept the
+draft …" elsewhere this step still runs once; when sources disagree at
+build time, the standing rule at
+`standards/process/source-of-truth-conflict-rule.md` arbitrates (Edge
+Case 7). Append the feature-level conflict sentence from
+`standards/process/contract-completeness.md`
+(`Sources in play: {subset}; conflicts resolved per source-of-truth-conflict-rule.`)
+to the spec once.
+
+**Step 4g: Open-question → BLOCKER capture (contract-completeness class 3).**
+
+An unresolved contract-level question is recorded as a **BLOCKER with a
+named owner** — distinct from the hard-reject Rejection Flow. A BLOCKER
+lets the spec proceed in a flagged, auditable state. For each unresolved
+contract question the author raises (offer this once per Section #4 pass
+via Pattern B), capture the question and a named owner:
+
+```
+
+---
+
+**▶ Your answer needed:** Any unresolved contract question that should block at build time but should NOT reject this spec? If so, give the question and a named owner (`<question> — owner: <name>`). Reply `none` if there are no blockers.
+
+```
+
+For each non-`none` answer, record a `blockers[]` entry for Phase 5 with
+`question`, `owner` (MUST be non-empty — re-ask if empty), and
+`raised_at` (ISO8601, set at write time), and append the canonical BLOCKER
+sentence from `standards/process/contract-completeness.md`
+(`BLOCKER: {question} — owner: {owner}.`) to the AC the question blocks.
+The BLOCKER never auto-clears; it persists into `state.yaml`, surfaces to
+`/build`, and clearing it is an explicit operator action (Edge Case 10).
+**Sanitize** the question and owner at the capture site (strip
+`[\x00-\x1f\x7f]`, cap at 512 chars) before recording.
+
+**After completing Steps 4a–4g for all user-facing ACs**, proceed to the
 standard section-approval `AskUserQuestion` (step 2 of the outer loop)
 to get final approval on the entire Acceptance Criteria section.
 
@@ -951,6 +1117,76 @@ For example, if AC-3 and AC-7 were offending, append to Edge Cases:
 These lines are the audit trail. Future readers can locate them in the
 Edge Cases section and add User-flow sentences when the surface is actually
 wired up.
+
+#### Liveness Gate (contract-completeness AC-1, AC-6, AC-10)
+
+After the User-Flow Gate, run the liveness gate. It structurally mirrors
+the User-Flow Gate above and reuses the same WARN-with-override machinery
+(BR-010) — it does NOT fork a parallel mechanism. It enforces the
+intent-tier contract classes captured in Phase 3 Steps 4e–4g per
+`standards/process/contract-completeness.md` (the single source of truth;
+do not duplicate its signal lists or sentence forms here).
+
+**Exemption.** When `state.yaml.spec_phase.infrastructure_only` is `true`,
+the liveness gate is exempt — pass silently (Edge Case 3).
+
+**Enumerate offending ACs.** Collect every AC that Phase 3 Step 4e
+classified as a user-outcome AC, that was NOT marked not-a-user-outcome,
+and that does not yet carry an accepted liveness sentence
+(`Live at {milestone-id|deferred}; fully-functional means: ...`). These
+are the offending ACs.
+
+**If no offending ACs exist**, the gate passes silently — proceed to the
+"If all items pass" / "If any items fail" iteration logic below.
+
+**If one or more offending ACs exist**, first emit a prose status block
+(NOT a question) enumerating each by number, then immediately invoke
+Pattern A:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "User-outcome ACs are missing liveness declarations. Continue without them?",
+    header: "Liveness gate",
+    multiSelect: false,
+    options: [
+      {
+        label: "No, fix the missing liveness declarations first (Recommended)",
+        description: "Return to Phase 3 Section #4 Step 4e and complete the per-AC liveness elicitation for each offending AC. The DoR check re-runs after edits."
+      },
+      {
+        label: "Yes, proceed — these outcomes are intentionally deferred",
+        description: "For each offending AC, record an override in state.yaml.spec_phase.contract_completeness.overrides[] with contract_class: liveness, ref: AC-N, and a non-empty reason, and surface it downstream into verification.md / release-notes. Proceed to Phase 5."
+      }
+    ]
+  }]
+)
+```
+
+**Gate is a WARN, not a hard-block.** `infrastructure_only` features,
+backend-only ACs, and intentionally-deferred outcomes are legitimate
+reasons to proceed. Selecting "Yes, proceed" is recorded for audit, never
+silently swallowed.
+
+**Override path (BR-006).** On "Yes, proceed", for each offending AC
+prompt via Pattern B for a one-line override reason (MUST be non-empty —
+re-ask if empty), **sanitize** it at the capture site (strip
+`[\x00-\x1f\x7f]`, cap at 512 chars), and record a Phase 5 `overrides[]`
+entry: `contract_class: liveness`, `ref: AC-N`, `reason: <reason>`,
+`recorded_at: <ISO8601>`. If the author defers *every* contract, all
+deferrals stay listed loudly downstream (verification.md / release-notes);
+mass-deferral is never aggregated-away (Edge Case 4).
+
+**Open-question→BLOCKER is a flagged-state, not a reject (AC-5).** A
+BLOCKER recorded in Phase 3 Step 4g does NOT trigger the Rejection Flow.
+The spec proceeds in a flagged state; the `blockers[]` entry is written to
+`state.yaml` at Phase 5 (Step 7) and surfaced downstream to `/build`. This
+gate never converts a BLOCKER into a hard-reject.
+
+**Forward-only behavior (BR-007).** Legacy specs predating
+contract-completeness are NOT auto-mutated. Re-running this gate on a
+legacy `spec.md` offers only the accept / refine / defer escape hatches
+and changes nothing on disk unless the author acts (Edge Cases 5, 7).
 
 **Forward-only behavior (BR-007).** Legacy specs — those whose `spec.md`
 predates this rule — are NOT auto-modified. When `/spec` resumes on a
@@ -1161,6 +1397,51 @@ the Usage section).
      spec_author_role: <captured value>   # SME | Engineer | PM | Designer | sanitized free-form
      completed_at: <ISO-8601 UTC timestamp>
    ```
+
+   **Contract-completeness block (intent-tier classes 1–3).** Within the
+   same merge-preserve write, add a `contract_completeness` sub-block under
+   `spec_phase` from the Phase 3 Steps 4e–4g captures and the Phase 4
+   liveness-gate overrides. This block is the **published, versioned
+   producer interface** the future behavioral/runtime DoD gate (#51)
+   consumes — its shape is fixed by
+   `standards/process/contract-completeness.md` (do not reshape it without
+   a `schema_version` bump). Match this shape exactly:
+
+   ```yaml
+   spec_phase:
+     contract_completeness:
+       schema_version: 1                 # versioned producer interface (ADR-002)
+       liveness:
+         - ac_id: AC-3
+           outcome: "saving a drawer edit persists and survives reload"
+           live_at: wave-2               # milestone id, or the literal "deferred"
+           acceptance_statement: "on save, a network call persists X; a reload shows it"
+           deferred_reason: null         # REQUIRED (non-null) iff live_at == "deferred"
+       blockers:
+         - question: "<unresolved contract question>"
+           owner: "<named owner>"
+           raised_at: "<ISO8601>"
+       overrides:                         # WARN-override audit trail (BR-006)
+         - contract_class: format|dto|liveness|conflict|blocker
+           ref: "<AC id or field name>"
+           reason: "<operator override reason>"
+           recorded_at: "<ISO8601>"
+       conflict_sources: [code, spec, prototype]   # which sources are in play
+   ```
+
+   Invariants (assert before writing): `schema_version` present and an
+   integer; `deferred_reason` non-empty iff `live_at == "deferred"`; every
+   `override.reason` and every `blocker.owner` non-empty; all free-form
+   fields already sanitized at the Phase 3/Phase 4 capture sites
+   (`[\x00-\x1f\x7f]` stripped, length-capped). `liveness`, `blockers`, and
+   `overrides` are empty lists when nothing was captured; `conflict_sources`
+   holds the Step 4f subset (members from `code`, `spec`, `prototype`).
+   Write **merge-preserve** — `contract_completeness` slots alongside the
+   existing `spec_phase` keys without clobbering them, exactly as the rest
+   of the `spec_phase` block does. Forward-only: a legacy `state.yaml` with
+   no `contract_completeness` key is never auto-populated; the block is
+   written only when Phase 3/Phase 4 actually captured contract data this
+   session.
 
    Forward-only: F001-F009 retain top-level `classification` and
    top-level `author_role` fields and continue to work unchanged. The

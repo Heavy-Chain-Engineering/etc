@@ -272,6 +272,16 @@ The six questions, in order:
 5. Render: `\n\n---\n\n**▶ Your answer needed:** Technology selection — are there technology choices to make (database, queue, framework, library)? List the choices and the trade-offs you already see. If there are no new choices, say so explicitly.`
    Wait.
 
+   While the user answers Questions 4 (NFRs) and 5 (technology selection),
+   listen for the **format-contract** and **response-DTO-obligation** signals
+   that the architecture-tier contract-completeness pass (Phase 3.5) formalizes —
+   any boundary-crossing field with a representation choice (time, date, money,
+   enum, ID/slug, timezone) and any externally/federally-required field. These
+   answers prefill the Phase 3.5 draft sentences; do not gate here — the canonical
+   capture and WARN happen in Phase 3.5 and Phase 4. The classification signal
+   lists are in `standards/process/contract-completeness.md` (signal lists B and C);
+   do not duplicate them into this skill.
+
 6. Render the author-role question using Pattern B. The question lists
    the five role options inline so the user can answer with one of them
    or with a free-form value:
@@ -1082,6 +1092,161 @@ in this list. The ADR template lives in
 `standards/architecture/adr-process.md` — `/architect` does not
 duplicate or fork the template inline.
 
+### Phase 3.5: Contract-completeness elicitation (architecture-tier)
+
+After the design sections are drafted and approved, capture the two
+**architecture-tier** contract classes that
+`standards/process/contract-completeness.md` assigns to `/architect`:
+**format contracts** (storage / wire / display / accept-on-input) and
+**response-DTO obligations**. The intent-tier classes (per-outcome
+liveness, source-of-truth conflict, open-question→BLOCKER) belong to
+`/spec` per the F006 split — do NOT elicit them here.
+
+This pass **reuses** the user-flow-gate machinery and the
+contract-completeness model — it is not a forked mechanism (BR-010). The
+classification signal lists, the canonical declaration sentences, and the
+WARN+recorded-override model are all defined in
+`standards/process/contract-completeness.md`; **cite it by path, do not
+duplicate it** (only liveness gets a `state.yaml` block, and that is the
+`/spec` side — format/DTO contracts live as canonical sentences in
+`design.md` per ADR-002 / GA-001).
+
+These declarations are **canonical sentences appended to the relevant AC**
+inside `design.md` (BR-008) — grep-able and co-located, exactly as
+`user-flow-completeness.md` appends its User-flow sentence. They are
+**forward-only** (BR-007): detection runs on the **current** design only;
+a legacy design predating this standard is **never auto-mutated** — the
+author retains the accept / refine / mark-not-applicable escape hatches and
+nothing changes on disk unless the author acts.
+
+**Phase 3.5 Step 1: Classify each boundary-crossing / required field.**
+
+Read each AC named in the spec's Acceptance Criteria and each field named
+in the drafted Data Model / API Contracts sections. Classify each field
+against the two signal lists in
+`standards/process/contract-completeness.md`:
+
+- **Signal list B — boundary-crossing field** (read/written across a tier;
+  a type with a representation choice such as time/date/money/enum/ID-slug/
+  timezone; or AC/design text implying a regex/parse/format conversion) →
+  **format-contract** elicitation.
+- **Signal list C — externally/federally-required field** (regulatory /
+  compliance language; an external consumer depends on the field; or the
+  field is specified as visible — a UI column / report row / export — but
+  its API-return path is unstated) → **response-DTO-obligation** elicitation.
+
+A field used only inside one tier with no representation choice is **not**
+boundary-crossing, and a field with no external/regulatory consumer carries
+no DTO obligation — the check stays silent (no false-positive WARN on
+pure-internal logic; spec Edge Case 1). A field referenced by several ACs
+needs **one** declaration; dedupe by field name (spec Edge Case 8 / the
+standard's Dedup rule).
+
+**Phase 3.5 Step 2: Elicit the format contract, one field at a time.**
+
+For each field classified boundary-crossing, present the field with a
+prefilled canonical format-contract sentence drafted from the Data Model /
+API Contracts prose, using the canonical form from
+`standards/process/contract-completeness.md`:
+
+> `"Format of {field}: storage={…}; wire={…}; display={…}; accept-on-input={…}."`
+
+Prompt via `AskUserQuestion` (Pattern A):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Format contract for `{field}` — is this draft right?",
+    header: "Format",
+    multiSelect: false,
+    options: [
+      {
+        label: "Accept the draft (Recommended)",
+        description: "Append this format-contract sentence verbatim to the AC: storage / wire / display / accept-on-input as drafted."
+      },
+      {
+        label: "Refine — I have changes",
+        description: "I'll capture the revised sentence via Pattern B, then re-prompt. A facet that genuinely does not apply may be omitted (e.g., a field never displayed has no display=)."
+      },
+      {
+        label: "Mark not-applicable — no boundary-crossing field",
+        description: "Record the field as exempt; no format contract is required and the Phase 4 gate stays silent for it."
+      }
+    ]
+  }]
+)
+```
+
+Per spec Edge Case 1 / the standard, a field may **explicitly omit a facet
+that does not apply** (a never-displayed field has no `display=`; a
+read-only computed field has no `accept-on-input=`). An explicitly-omitted
+facet is **not** a missing contract — do NOT WARN on a genuinely-absent
+facet. Omission is explicit (the author chose it during refine), never
+silent. If the user picks "Refine", capture the revised sentence via
+Pattern B (`**▶ Your answer needed:**`) and re-prompt until accepted.
+
+**Phase 3.5 Step 3: Elicit the response-DTO obligation, one field at a time.**
+
+For each field classified externally/federally-required, present the field
+with a prefilled canonical response-DTO-obligation sentence, using the
+canonical form from `standards/process/contract-completeness.md`:
+
+> `"API-response guarantee: {DTO/endpoint} returns {field} ({type/constraints})."`
+
+This is the pbj fix: **"user sees X" ≠ "API returns X."** A required field
+is declared as an API-response guarantee, not merely a UI column. Prompt via
+`AskUserQuestion` (Pattern A):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Response-DTO obligation for `{field}` — is this draft right?",
+    header: "DTO",
+    multiSelect: false,
+    options: [
+      {
+        label: "Accept the draft (Recommended)",
+        description: "Append this API-response-guarantee sentence verbatim to the AC: the DTO/endpoint, the field, and its type/constraints as drafted."
+      },
+      {
+        label: "Refine — I have changes",
+        description: "I'll capture the revised DTO/endpoint, field, or constraints via Pattern B, then re-prompt."
+      },
+      {
+        label: "Mark not-applicable — not an externally-required field",
+        description: "Record the field as exempt; no DTO obligation is required and the Phase 4 gate stays silent for it."
+      }
+    ]
+  }]
+)
+```
+
+If the user picks "Refine", capture the revised sentence via Pattern B and
+re-prompt until accepted.
+
+**An AC that already carries the canonical sentence form for its class**
+(it starts with `Format of ` for a format contract, or
+`API-response guarantee:` for a DTO obligation) is treated as
+already-compliant; the elicitation step is skipped for that field.
+
+**Phase 3.5 Step 4: Sanitize and append.**
+
+Every free-form contract string the author supplies (format values, regex
+bodies, field names, DTO/endpoint names) is **sanitized at the capture
+site** (BR-011) before it is written into `design.md`: strip every
+control-character codepoint (regex `[\x00-\x1f\x7f]`) and cap each captured
+value at 256 characters (truncate excess). This is the same capture-site
+sanitization contract as the Phase 1 "Other" role value and the user-flow
+gate; nothing unsanitized reaches `design.md` or any downstream parser
+(`verification.md` / `release-notes`). **No automatic Read** of any path a
+contract string might name — a contract string is recorded verbatim, never
+fetched (directory-traversal defense, mirroring the user-flow gate).
+
+Append each accepted (and each explicitly-not-applicable) decision to the
+relevant AC inside the in-progress `<feature_path>/.draft-design.md`, then
+proceed to Phase 4. Records of not-applicable fields are kept so the Phase 4
+gate knows they were considered, not skipped.
+
 ### Phase 4: DoR validation
 
 After all sections are written and approved, run the architect-specific
@@ -1119,6 +1284,58 @@ but with architecture-tier items:
       touched, the section states "No architectural layers touched." The
       `layer_review_mandatory` flag has been captured for the
       `architect_phase` state block.
+- [ ] **Format contracts are present** (contract-completeness, Phase 3.5).
+      Every field classified boundary-crossing (signal list B in
+      `standards/process/contract-completeness.md`) carries a canonical
+      `"Format of {field}: …"` sentence on its AC, OR was explicitly marked
+      not-applicable. A facet genuinely absent (e.g., a never-displayed
+      field with no `display=`) does not count as missing — only an
+      un-elicited boundary-crossing field does. **This item WARNs; it does
+      not hard-block** (see the contract-completeness WARN gate below).
+- [ ] **Response-DTO obligations are present** (contract-completeness,
+      Phase 3.5). Every externally/federally-required field (signal list C)
+      is declared as an `"API-response guarantee: …"` sentence on its AC,
+      not merely a UI column, OR was explicitly marked not-applicable.
+      **This item WARNs; it does not hard-block.**
+
+**Contract-completeness WARN gate (format / DTO).** Enumerate the fields
+flagged boundary-crossing or externally-required during Phase 3.5 and check
+whether each carries its required declaration sentence (or an explicit
+not-applicable record). If any is missing, enter a **WARN** — never a hard
+block (BR-006, AC-2, AC-3, AC-6, AC-10; mirrors the user-flow gate's
+WARN-with-YES/NO model, reusing it rather than forking, BR-010) — and
+present the offending field list via `AskUserQuestion` (Pattern A):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Some boundary-crossing / required fields have no format or DTO contract. How do you want to proceed?",
+    header: "Contracts",
+    multiSelect: false,
+    options: [
+      {
+        label: "No, fix the missing contracts first (Recommended)",
+        description: "Return to Phase 3.5 and elicit the missing format-contract / response-DTO sentences before finalizing the design."
+      },
+      {
+        label: "Yes, proceed — these contracts are intentionally deferred",
+        description: "Record an override for each offending field in state.yaml.spec_phase.contract_completeness.overrides[] (contract_class: format|dto, ref: field name, non-empty reason, recorded_at) and surface it downstream into verification.md / release-notes."
+      }
+    ]
+  }]
+)
+```
+
+The gate does **NOT** hard-block. Selecting "Yes, proceed" records an
+override per offending field with a **non-empty reason** (sanitized at the
+capture site — strip `[\x00-\x1f\x7f]`, cap length — BR-011); the deferral
+is auditable, not a policy violation. **Silent dismissal is prohibited** —
+every override carries a reason and is surfaced downstream. If an operator
+defers *every* contract, the deferrals are listed **loudly** in
+`verification.md` / `release-notes` (spec Edge Case 4); mass-deferral must
+stay conspicuous, never aggregated-away. **Forward-only (BR-007):** running
+this gate on a legacy design auto-mutates nothing — the author retains
+accept / refine / defer and nothing changes on disk unless the author acts.
 
 **If all items pass:** Tell the user the design is ready and proceed
 to output.

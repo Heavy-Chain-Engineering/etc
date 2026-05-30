@@ -204,6 +204,18 @@ See standards/process/stub-marker-grep.md for the full contract.
 CONTEXT
 fi
 
+# ── Base section: Contract-Completeness (always emitted — F-2026-05-29 AC-4) ─
+cat <<CONTEXT
+
+### Contract-Completeness for /spec and /architect (MANDATORY)
+- Specs must pin what the system guarantees, not only what the user sees: /spec and /architect elicit and WARN-when-missing the five contract classes (liveness+milestone, source set, BLOCKER, format, response-DTO) as grep-able sentences on each AC, WARN+recorded-override, forward-only.
+See standards/process/contract-completeness.md for the full rule.
+
+### Source-of-Truth Conflict Rule (MANDATORY, always in force)
+- When \`{code, canonical-spec, prototype}\` disagree, majority wins, dissent escalates to the operator (never silently overridden), and the winning canonical-spec copy is tagged inline \`[SPEC-WINS]\`.
+See standards/process/source-of-truth-conflict-rule.md for the full rule.
+CONTEXT
+
 # ── Base sections: Completion, Diagnostic, Sandbox (always emitted — BR-006) ─
 cat <<CONTEXT
 
