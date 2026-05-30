@@ -465,11 +465,49 @@ def _load_for_cli(args: argparse.Namespace) -> tuple[str, Registry] | None:
     return design_text, registry
 
 
+def _feature_infrastructure_only(design_path: Path) -> bool:
+    """True iff the design's sibling ``state.yaml`` declares infrastructure_only.
+
+    #54: layer detection over-fires on harness-meta features that *discuss*
+    data/api/runtime vocabulary (``schema``, ``query``, ``service``, ``retry``,
+    ``DTO`` …) without *implementing* those application layers. A feature
+    explicitly declared ``spec_phase.infrastructure_only: true`` (harness
+    tooling, no customer-journey trace — the same flag the journey-lineage and
+    liveness gates already honor) has no application layers to review, so both
+    ``detect`` and the completeness ``check`` are exempt.
+
+    Defensive by construction: an absent ``state.yaml``, a read/parse error, or
+    a non-``true`` value all return ``False`` (detect normally). The exemption
+    only fires on an explicit positive declaration, so a hand-authored
+    ``--design`` path outside a feature dir is never silently exempted.
+    """
+    state_path = design_path.parent / "state.yaml"
+    if not state_path.is_file():
+        return False
+    try:
+        data = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    spec_phase = data.get("spec_phase")
+    if not isinstance(spec_phase, dict):
+        return False
+    return spec_phase.get("infrastructure_only") is True
+
+
 def _cli_detect(args: argparse.Namespace) -> int:
     loaded = _load_for_cli(args)
     if loaded is None:
         return 1
     design_text, registry = loaded
+    if _feature_infrastructure_only(Path(args.design)):
+        sys.stderr.write(
+            "[layer-review] exempt: feature declares "
+            "spec_phase.infrastructure_only; skipping layer detection (#54).\n"
+        )
+        print(json.dumps([]))
+        return 0
     print(json.dumps(detect_layers(design_text, registry)))
     return 0
 
@@ -479,6 +517,13 @@ def _cli_check(args: argparse.Namespace) -> int:
     if loaded is None:
         return 1
     design_text, registry = loaded
+    if _feature_infrastructure_only(Path(args.design)):
+        sys.stderr.write(
+            "[layer-review] exempt: feature declares "
+            "spec_phase.infrastructure_only; Layer Impact Analysis not "
+            "required (#54).\n"
+        )
+        return 0
     result = check_completeness(design_text, registry)
     if result.complete:
         return 0

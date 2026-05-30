@@ -149,6 +149,84 @@ def _design_signals_only_in_excluded_regions() -> str:
     )
 
 
+# ── #54 — infrastructure_only features are exempt from layer detection ───
+
+
+def _write_feature(
+    tmp_path: object, *, infra_only: bool | None, design_text: str
+) -> str:
+    """Write design.md + sibling state.yaml in a feature dir; return design path.
+
+    ``infra_only`` of ``None`` writes NO state.yaml at all (the default-not-exempt
+    path); ``True``/``False`` writes ``spec_phase.infrastructure_only`` accordingly.
+    """
+    from pathlib import Path
+
+    feature_dir = Path(str(tmp_path)) / "F-2026-05-30-meta-feature"
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    design_path = feature_dir / "design.md"
+    design_path.write_text(design_text, encoding="utf-8")
+    if infra_only is not None:
+        (feature_dir / "state.yaml").write_text(
+            f"spec_phase:\n  infrastructure_only: {str(infra_only).lower()}\n",
+            encoding="utf-8",
+        )
+    return str(design_path)
+
+
+def test_should_exempt_detect_when_feature_infrastructure_only(
+    tmp_path: object,
+) -> None:
+    # Arrange — a design loaded with data-access signals, but the feature is
+    # infrastructure_only (harness tooling). #54: detection over-fired here.
+    design = _write_feature(
+        tmp_path, infra_only=True, design_text=_design_touching_data_access_only()
+    )
+
+    # Act
+    result = _run_cli("detect", "--design", design)
+
+    # Assert — exempt: empty layer list, exit 0, a note on stderr.
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+    assert "infrastructure_only" in result.stderr
+
+
+def test_should_detect_normally_when_state_not_infrastructure_only(
+    tmp_path: object,
+) -> None:
+    design = _write_feature(
+        tmp_path, infra_only=False, design_text=_design_touching_data_access_only()
+    )
+    result = _run_cli("detect", "--design", design)
+    assert result.returncode == 0, result.stderr
+    assert "data-access" in result.stdout
+
+
+def test_should_detect_normally_when_no_sibling_state(tmp_path: object) -> None:
+    # Default-not-exempt: an arbitrary design path with no sibling state.yaml
+    # detects as usual (the exemption only fires on an explicit declaration).
+    design = _write_feature(
+        tmp_path, infra_only=None, design_text=_design_touching_data_access_only()
+    )
+    result = _run_cli("detect", "--design", design)
+    assert result.returncode == 0, result.stderr
+    assert "data-access" in result.stdout
+
+
+def test_should_pass_check_when_infrastructure_only_even_if_incomplete(
+    tmp_path: object,
+) -> None:
+    # A design with data-access signals but NO Layer Impact Analysis section
+    # would normally fail `check` (exit 2). infrastructure_only exempts it.
+    design = _write_feature(
+        tmp_path, infra_only=True, design_text=_design_touching_data_access_only()
+    )
+    result = _run_cli("check", "--design", design)
+    assert result.returncode == 0, result.stderr
+    assert "infrastructure_only" in result.stderr
+
+
 # ── AC-001 / AC-013: registry schema contract ───────────────────────────
 
 

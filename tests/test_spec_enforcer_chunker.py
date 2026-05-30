@@ -81,6 +81,27 @@ def _write_bullet_spec(spec_path: Path, ac_count: int) -> None:
     spec_path.write_text("".join(lines), encoding="utf-8")
 
 
+def _write_plain_numbered_spec(
+    spec_path: Path, ac_count: int, edge_count: int = 0
+) -> None:
+    """Write a /spec-style spec with PLAIN numbered ACs (no ``AC-NNN`` token).
+
+    This is the exact shape ``/spec`` Phase 3 emits (``1. <text>`` under a
+    ``## Acceptance Criteria`` heading), which #55 reported the chunker could
+    not parse. When ``edge_count > 0``, a trailing ``## Edge Cases`` section
+    with its own numbered list is appended to prove section-scoping (those
+    numbers must NOT be counted as ACs).
+    """
+    lines = ["# PRD: Synthetic\n\n", "## Acceptance Criteria\n\n"]
+    for i in range(1, ac_count + 1):
+        lines.append(f"{i}. A plainly-numbered acceptance criterion {i}.\n")
+    if edge_count:
+        lines.append("\n## Edge Cases\n\n")
+        for i in range(1, edge_count + 1):
+            lines.append(f"{i}. A plainly-numbered edge case {i}.\n")
+    spec_path.write_text("".join(lines), encoding="utf-8")
+
+
 # ── AC-001 — chunked path against F026 (13 ACs) ─────────────────────────
 
 
@@ -271,6 +292,65 @@ def test_should_emit_zero_chunks_when_spec_has_no_recognizable_ac_markers(
         and "downstream spec-enforcer will produce a trivial verdict"
         in result.stderr
     ), f"missing EC-010 warning in stderr: {result.stderr!r}"
+
+
+# ── #55 — plain-numbered ACs (the shape /spec actually emits) ───────────
+
+
+def test_should_parse_plain_numbered_acs_when_spec_has_no_ac_tokens(
+    tmp_path: Path,
+) -> None:
+    # Arrange — /spec emits `1. <text>` under `## Acceptance Criteria` with
+    # no `**AC-NNN` token. #55: the chunker found zero and emitted chunks=[].
+    spec_path = tmp_path / "plain_spec.md"
+    _write_plain_numbered_spec(spec_path, ac_count=12)
+
+    # Act
+    result = _run_cli("partition", str(spec_path))
+
+    # Assert — 12 plain ACs > default threshold 10 → chunked into 6 + 6.
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["strategy"] == "chunked", payload
+    assert [len(c["ac_numbers"]) for c in payload["chunks"]] == [6, 6]
+    # The "no recognizable AC markers" warning must NOT fire anymore.
+    assert "no recognizable AC markers" not in result.stderr
+
+
+def test_should_scope_plain_numbered_detection_to_acceptance_criteria_section(
+    tmp_path: Path,
+) -> None:
+    # Arrange — 3 plain ACs + a 5-item numbered Edge Cases section. Only the
+    # AC-section items must count (Edge Cases numbers must not leak in).
+    spec_path = tmp_path / "plain_with_edges.md"
+    _write_plain_numbered_spec(spec_path, ac_count=3, edge_count=5)
+
+    # Act
+    result = _run_cli("partition", str(spec_path))
+
+    # Assert — exactly 3 ACs (single chunk), NOT 8.
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["strategy"] == "single", payload
+    assert len(payload["chunks"]) == 1
+    assert payload["chunks"][0]["ac_numbers"] == [1, 2, 3]
+
+
+def test_should_prefer_ac_token_shape_over_plain_when_both_present(
+    tmp_path: Path,
+) -> None:
+    # Arrange — a marker-shape spec (`1. **AC-001 ...`). The plain-numbered
+    # fallback must NOT double-count; marker detection wins.
+    spec_path = tmp_path / "marker_spec.md"
+    _write_numbered_spec(spec_path, ac_count=4)
+
+    # Act
+    result = _run_cli("partition", str(spec_path))
+
+    # Assert — 4 ACs (single chunk), not 8.
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["chunks"][0]["ac_numbers"] == [1, 2, 3, 4]
 
 
 # ── AC-007 — Aggregation OR-semantics ───────────────────────────────────

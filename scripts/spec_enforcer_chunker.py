@@ -80,6 +80,23 @@ _AC_NUMBERED_RE = re.compile(r"^(\d+)\.\s+\*\*AC-(\d+)", re.MULTILINE)
 #: ``re.MULTILINE`` is set inline in the pattern.
 _AC_HEADING_RE = re.compile(r"^###\s+AC-(\d+)", re.MULTILINE)
 
+#: Regex matching a PLAIN numbered list item at column 0 (#55). Matches the
+#: shape /spec Phase 3 actually emits — `1. <text>` with NO `AC-NNN` token.
+#: Capture group 1 is the list ordinal (treated as the AC number). Used ONLY
+#: as a fallback, scoped to the Acceptance Criteria section (see
+#: ``_extract_ac_section``), so numbered lists in Edge Cases / Scope do not
+#: leak in, and only when the ``**AC-NNN`` / `### AC-NNN` shapes find nothing
+#: (so ordinal≠AC-number specs are never double-counted).
+_AC_PLAIN_NUMBERED_RE = re.compile(r"^(\d+)\.\s+", re.MULTILINE)
+
+#: Regex matching the `## Acceptance Criteria` section heading (any case).
+_AC_SECTION_HEADING_RE = re.compile(
+    r"^##\s+Acceptance Criteria\b", re.MULTILINE | re.IGNORECASE
+)
+
+#: Regex matching the next level-2 (`## `) heading — the AC section's end.
+_NEXT_H2_RE = re.compile(r"^##\s", re.MULTILINE)
+
 #: Strategy literal emitted when AC count is ≤ threshold.
 _STRATEGY_SINGLE = "single"
 
@@ -177,6 +194,23 @@ def aggregate_verdicts(verdicts: list[str]) -> str:
 # ── Internals ───────────────────────────────────────────────────────────
 
 
+def _extract_ac_section(text: str) -> tuple[str, int] | None:
+    """Return the `## Acceptance Criteria` section body and its char offset.
+
+    Scoping the plain-numbered fallback (#55) to this section keeps numbered
+    lists in Edge Cases / Scope / Requirements from being miscounted as ACs.
+    The body runs from just after the heading line to the next level-2 (`## `)
+    heading, or end-of-file. Returns ``None`` when the section is absent.
+    """
+    heading = _AC_SECTION_HEADING_RE.search(text)
+    if heading is None:
+        return None
+    body_start = heading.end()
+    nxt = _NEXT_H2_RE.search(text, body_start)
+    body_end = nxt.start() if nxt is not None else len(text)
+    return text[body_start:body_end], body_start
+
+
 def _parse_ac_numbers(text: str) -> list[int]:
     """Return AC numbers found in ``text``, deduped, in encounter order.
 
@@ -196,6 +230,19 @@ def _parse_ac_numbers(text: str) -> list[int]:
         found.append((match.start(), int(match.group(2))))
     for match in _AC_HEADING_RE.finditer(text):
         found.append((match.start(), int(match.group(1))))
+
+    # #55 fallback: when neither `**AC-NNN` nor `### AC-NNN` shape is present,
+    # parse PLAIN numbered items (`1. <text>`) — the shape /spec actually
+    # emits — scoped to the `## Acceptance Criteria` section so numbered lists
+    # in Edge Cases / Scope are not miscounted. Gated on `not found` so a
+    # marker-shape spec whose ordinals differ from its AC numbers is never
+    # double-counted (the plain ordinal and the `AC-NNN` integer can diverge).
+    if not found:
+        section = _extract_ac_section(text)
+        if section is not None:
+            body, body_offset = section
+            for match in _AC_PLAIN_NUMBERED_RE.finditer(body):
+                found.append((body_offset + match.start(), int(match.group(1))))
 
     # Sort by encounter order in the file, then dedupe by AC number.
     found.sort(key=lambda pair: pair[0])
