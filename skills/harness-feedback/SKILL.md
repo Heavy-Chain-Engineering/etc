@@ -266,6 +266,67 @@ ask one follow-up Pattern B requesting the layer. If the operator
 cannot name one after the follow-up, refuse via Step 3a (rubric
 condition 2 has retroactively failed).
 
+### Step 4b: Capture `terminates_in` (companion to the proposed rule)
+
+Every lesson-class memory declares where it terminates — the
+feedback loop must close in a gate, not just in memory. The proposed
+rule's target path from Step 4 IS the natural `terminates_in` value:
+the lesson terminates in the gate that will enforce it. For the field
+vocabulary (gate-ref path | `none-yet: #<tracker>` | `note-only`),
+see `standards/process/lessons-terminate-in-gates.md` — do not restate
+it here.
+
+This prompt does NOT block capture: for a freshly-learned lesson the
+gate usually does not exist yet, which is the `none-yet: #<tracker>`
+case. Ask via Pattern A (`AskUserQuestion`):
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Where does this lesson terminate — which gate will enforce it?",
+    header: "Terminates in",
+    multiSelect: false,
+    options: [
+      {
+        label: "The proposed-rule path (gate exists / will be built here)",
+        description: "Use the Step 4 target path verbatim (e.g. standards/process/<file>.md, a hooks/ script, or a skills/…/SKILL.md step). The lesson terminates in that gate. This is the gate-ref form."
+      },
+      {
+        label: "Not built yet — track it (none-yet: #<tracker>)",
+        description: "No gate exists yet (the common case for a fresh lesson). Capture none-yet: #<tracker> with an actionable tracker reference. The loop stays open but tracked; capture is never blocked on a gate already existing."
+      },
+      {
+        label: "note-only — deliberate non-gating note",
+        description: "This lesson is recorded as a note that intentionally terminates in no gate. Closed by declaration."
+      }
+    ]
+  }]
+)
+```
+
+Resolution:
+
+- **Proposed-rule path** → set `terminates_in` to that path string,
+  verbatim, exactly as it appears in Step 4's "Proposed rule".
+- **Not built yet** → ask one Pattern B follow-up for the tracker
+  reference, then set `terminates_in` to `none-yet: #<tracker>`. If
+  the operator has no tracker, guide them to file one (an open loop
+  must be actionable per the standard); capture still proceeds with
+  the `none-yet:` value while the tracker is being filed — never
+  refuse the lesson for lacking a gate.
+- **note-only** → set `terminates_in` to `note-only`.
+
+```
+
+---
+
+**▶ Your answer needed:** What tracker references this open loop? (e.g. `#54`, a Linear/GitHub issue id). The lesson is captured either way; the tracker makes the open loop actionable.
+
+```
+
+The captured value is recorded into the block's `Terminates in`
+field in Step 5.
+
 ### Step 5: Compose the Block
 
 Determine the marker line via context detection:
@@ -305,6 +366,9 @@ are structural — do not rename, reorder, or omit:
 
 **Proposed rule**
 {the concrete change from Step 4 — file path or hook/skill/agent name MUST appear verbatim}
+
+**Terminates in**
+{the value captured in Step 4b — a gate-ref path, `none-yet: #<tracker>`, or `note-only`. Vocabulary: `standards/process/lessons-terminate-in-gates.md`. This is the field the lesson carries when written to memory so the feedback loop is measurable.}
 
 **Origin trace**
 {one paragraph of context so a future etc-repo agent can re-derive the lesson without the full session transcript: what the operator was doing, which agents were involved, what the surface failure looked like, what the operator did instead}
@@ -387,6 +451,12 @@ operator's manual capture.
 - NEVER process more than one observation per invocation. If the
   operator describes multiple, finish the first, then suggest re-
   invoking for the second.
+- ALWAYS capture `terminates_in` (Step 4b) before composing the block,
+  and emit it as the block's `Terminates in` field so the lesson is
+  born with the field declared. NEVER block lesson capture on a gate
+  already existing — `none-yet: #<tracker>` is the common, valid value
+  for a freshly-learned lesson. The field vocabulary lives in
+  `standards/process/lessons-terminate-in-gates.md`; do not duplicate it.
 - ALWAYS run the Before-Starting reads before any Step 1 action. The
   contract document is non-negotiable; the Pattern A/B standard is
   non-negotiable.
@@ -438,6 +508,11 @@ following terminal states holds:
 
 If none of the six terminal states holds, the skill is NOT done. Do
 not report "feedback captured" unless one of the six is true.
+
+Whenever a block is rendered (terminal states 3–6), it MUST carry the
+`Terminates in` field captured in Step 4b — a gate-ref path,
+`none-yet: #<tracker>`, or `note-only`. A block missing the field is
+NOT a valid terminal artifact.
 
 ## Post-Completion Guidance
 

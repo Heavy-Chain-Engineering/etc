@@ -79,11 +79,20 @@ When the hook fires, it emits a block with a specific shape:
 **Proposed rule**
 [concrete rule naming the file/hook/standards doc]
 
+**Terminates in**
+[the gate this lesson terminates in — a standards/hooks/skill-step path,
+or none-yet: #<tracker>, or note-only]
+
 **Origin trace**
 [one paragraph of context so the etc-repo agent can re-derive
 the lesson without the full session transcript]
 ─────────────────────────────────────────────
 ```
+
+The `Terminates in` field vocabulary (gate-ref path | `none-yet:
+#<tracker>` | `note-only`) is owned by
+`standards/process/lessons-terminate-in-gates.md` — see that standard
+for the full rule; it is not duplicated here.
 
 The emoji, the rule lines, and the field names are all structural.
 When a future agent working in the etc repo receives a pasted block, it

@@ -266,6 +266,65 @@ the operator. All entries are for prevention, not exploitation. If a
 root cause appears dual-use, flag it explicitly in the entry body
 rather than omitting it.
 
+**Capture `terminates_in` (companion to the Prevention rule).** The AP
+entry records a lesson, and a recorded lesson must declare where it
+terminates — in a gate, not just in the antipatterns file. The
+Prevention rule you are about to draft IS the natural `terminates_in`
+value: it names the gate (a standard, a hook, a skill-step, or the
+INVARIANTS.md / test / hook change offered in Step 6) that will
+enforce the lesson. For the field vocabulary (gate-ref path |
+`none-yet: #<tracker>` | `note-only`), see
+`standards/process/lessons-terminate-in-gates.md` — do not restate it.
+
+Ask via Pattern A (`AskUserQuestion`). This prompt does NOT block the
+AP entry: for a just-discovered bug the enforcing gate often does not
+exist yet, which is the `none-yet: #<tracker>` case.
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Where does this lesson terminate — which gate will enforce the prevention rule?",
+    header: "Terminates in",
+    multiSelect: false,
+    options: [
+      {
+        label: "A gate that exists / will be built (gate-ref path)",
+        description: "Name the path that enforces it — a standards/ doc, a hooks/ script, or a skills/…/SKILL.md step (often the same gate identified in Step 3 / proposed in Step 6). This is the gate-ref form."
+      },
+      {
+        label: "Not built yet — track it (none-yet: #<tracker>)",
+        description: "No enforcing gate exists yet (common for a fresh incident). Capture none-yet: #<tracker> with an actionable tracker. The loop stays open but tracked; the AP entry is never blocked on a gate already existing."
+      },
+      {
+        label: "note-only — deliberate non-gating note",
+        description: "The prevention rule is recorded as a note that intentionally terminates in no gate. Closed by declaration."
+      }
+    ]
+  }]
+)
+```
+
+Resolution:
+
+- **Gate-ref path** → set `terminates_in` to that path string verbatim.
+- **Not built yet** → ask one Pattern B follow-up for the tracker
+  reference, then set `terminates_in` to `none-yet: #<tracker>`. If the
+  operator has no tracker, guide them to file one (open loops must be
+  actionable per the standard); the AP entry still proceeds with the
+  `none-yet:` value — never block the postmortem for lacking a gate.
+- **note-only** → set `terminates_in` to `note-only`.
+
+```
+
+---
+
+**▶ Your answer needed:** What tracker references this open loop? (e.g. `#54`, a Linear/GitHub issue id). The AP entry is recorded either way; the tracker makes the open loop actionable.
+
+```
+
+The captured value populates the `Terminates in` field of the AP-NNN
+entry below.
+
 Draft the entry and present it to the user for approval before writing:
 
 ```markdown
@@ -276,6 +335,7 @@ Draft the entry and present it to the user for approval before writing:
 - **Gate that should have caught it:** [from Step 3]
 - **Class of bug:** [category from the list above]
 - **Prevention rule:** [specific, actionable rule to prevent recurrence]
+- **Terminates in:** [the value captured above — a gate-ref path, `none-yet: #<tracker>`, or `note-only`; vocabulary: `standards/process/lessons-terminate-in-gates.md`]
 - **Spec impact:** [what future specs must include to prevent this class of bug]
 - **Incident reference:** [incident id if invoked from /hotfix, else "n/a"]
 ```
@@ -451,10 +511,13 @@ incident id.
    directory, contains a header, and contains a new `## AP-NNN:`
    entry whose number is one greater than the previous highest
    AP-NNN in the file (or `AP-001` if the file was just created).
-3. The new AP-NNN entry includes all eight fields from the Step 4
+3. The new AP-NNN entry includes all nine fields from the Step 4
    template: Date discovered, Root cause, Phase introduced, Gate
-   that should have caught it, Class of bug, Prevention rule, Spec
-   impact, Incident reference.
+   that should have caught it, Class of bug, Prevention rule,
+   Terminates in, Spec impact, Incident reference. The Terminates in
+   value was captured via the Step 4 Pattern A prompt (gate-ref path,
+   `none-yet: #<tracker>`, or `note-only`) and the AP entry was never
+   blocked on a gate already existing.
 4. `.etc_sdlc/journal.md` exists and contains a new `### {YYYY-MM-DD
    HH:MM} -- postmortem` entry referencing the AP id.
 5. The Step 6 prevention-improvement prompts were each rendered via

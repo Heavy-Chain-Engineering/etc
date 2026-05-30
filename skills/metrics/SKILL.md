@@ -20,14 +20,15 @@ layers.
 
 ## Response Format (Verbosity)
 
-Terse and structured. Output is a single markdown report with three
-labeled sections (`## Process`, `## Outcome`, `## Cost`) plus a header
-naming the project and the report timestamp. Use tables for per-role
-breakdowns and per-event-type rollups, fenced code blocks for any raw
-commit/tag references, and bullet lists for deferred items. Prose is
-limited to: (a) a one-line preamble naming the report, (b) per-section
-notes when a layer is empty or degraded (e.g. "no `etc/feature/*` tags
-found", "telemetry.db absent"). No preamble ("I'll...", "Here is...").
+Terse and structured. Output is a single markdown report with four
+labeled sections (`## Process`, `## Outcome`, `## Cost`,
+`## Feedback-loop closure`) plus a header naming the project and the
+report timestamp. Use tables for per-role breakdowns and per-event-type
+rollups, fenced code blocks for any raw commit/tag references, and
+bullet lists for deferred items. Prose is limited to: (a) a one-line
+preamble naming the report, (b) per-section notes when a layer is empty
+or degraded (e.g. "no `etc/feature/*` tags found", "telemetry.db
+absent"). No preamble ("I'll...", "Here is...").
 No narrative summary outside the report sections. No emoji. The report
 itself MUST be self-contained — no embedded links to unread files, no
 dangling references.
@@ -103,10 +104,20 @@ rule (AC-014) is read from each hypothesis's own
 | Process | git tags under `refs/tags/etc/feature/...`      | `scripts/git_tags.py::list_etc_tags`  |
 | Outcome | `<resolve_feature_path(F<NNN>)>/value-hypothesis.yaml` (resolved across `features/F<NNN>-<slug>/` legacy flat, `features/active/F<NNN>-<slug>/`, `features/shipped/F<NNN>-<slug>/`, and `rejections/F<NNN>-<slug>/` per F009 BR-003) | `scripts/feature_id.py::resolve_feature_path` then `scripts/value_hypothesis.py::load`   |
 | Cost    | `.etc_sdlc/telemetry.db`                        | `scripts/telemetry.py::connect` + SQL |
+| Feedback-loop closure | operator memory dir (lesson-class memories) | `scripts/lesson_gate_audit.py audit --format json` |
 
-Per BR-010, the three layers do NOT cross-derive. Outcome counts are
-never inferred from cost data, and vice versa. The report renders each
-layer from its own source and never reaches across.
+Per BR-010, the three core layers (Process / Outcome / Cost) do NOT
+cross-derive. Outcome counts are never inferred from cost data, and vice
+versa. The report renders each layer from its own source and never
+reaches across.
+
+The **Feedback-loop closure** section is likewise independent: it reads
+ONLY the `lesson_gate_audit.py` JSON and never reaches into the
+process/outcome/cost layers (BR-010 stays intact). It is a separate,
+read-only report over the operator's lesson-class memories — the
+meta-discipline standard it surfaces is
+`standards/process/lessons-terminate-in-gates.md` (cited by path; not
+duplicated here).
 
 ## Workflow
 
@@ -326,7 +337,86 @@ Render each aggregation as a small markdown table. Do NOT compute
 synthetic metrics like "tokens per validated hypothesis" — that is
 exactly the cross-derivation BR-010 forbids.
 
-### Step 5: Emit the report
+### Step 5: Feedback-loop closure layer — lesson_gate_audit.py
+
+Render `## Feedback-loop closure` from the `lesson_gate_audit.py` CLI.
+This section reports whether etc's own lessons have **terminated in a
+gate** — the meta-discipline defined in
+`standards/process/lessons-terminate-in-gates.md` (cite that path in the
+section; do NOT restate its content). It is read-only and independent of
+the three core layers: it consumes ONLY the engine's JSON and never
+cross-derives from process/outcome/cost (BR-010 unaffected).
+
+Invoke the engine by absolute path — the SAME read pattern Step 1/3 use
+for `value_hypothesis.py load` and Step 4 uses for `telemetry.py
+aggregate`:
+
+```
+python3 ~/.claude/scripts/lesson_gate_audit.py audit --format json
+```
+
+The engine resolves the operator memory directory by convention (no
+flag needed; `--memory-dir` exists only for tests). It **always exits 0**
+on a completed scan — including when the memory dir is absent — so this
+section never fails the report. Parse stdout as JSON with
+`python3 -c "import json,sys; d=json.load(sys.stdin); ..."` (or
+equivalent). The JSON shape (stable key order):
+
+```json
+{
+  "memory_dir": "<resolved path>",
+  "gated_pct": <float>,
+  "counts": {"gated": N, "none-yet": N, "note-only": N, "missing": N, "dangling": N},
+  "records": [
+    {"name": "<file>", "classification": "<status>", "terminates_in": ["<gate-ref>", ...], "detail": "<note>"}
+  ]
+}
+```
+
+Render the section as:
+
+- **Headline:** `% lessons terminated-in-gate` = `gated_pct` (the
+  engine computes `gated / total_lesson_class`). Show it as a single
+  line, e.g. `Terminated in gate: 41% (9 / 22 lesson-class memories)`.
+- **Per-status counts:** a small table from `counts` with one row per
+  classification literal — `gated`, `none-yet`, `note-only`, `missing`,
+  `dangling`:
+
+  | Status | Count | Meaning |
+  |--------|-------|---------|
+  | gated | N | terminates in an existing gate (loop closed) |
+  | none-yet | N | declared-open, with a tracker (loop open, tracked) |
+  | note-only | N | a deliberate non-gating note (loop closed by declaration) |
+  | missing | N | no `terminates_in` field (open loop) |
+  | dangling | N | names a gate path that does not exist (gate-rot) |
+
+- **Open-loop list:** the `records` whose `classification` is in
+  {`missing`, `dangling`, `none-yet`} — these are the unclosed loops the
+  operator should backfill or build. Render as a bullet list, one line
+  per record: `name` — `classification` — `detail` (and the
+  `terminates_in` value for `dangling`/`none-yet` so the operator sees
+  the claimed-but-broken or tracker reference). If the open-loop list is
+  empty, render the single line "No open loops: every lesson-class
+  memory terminates in a gate or a declared note." and proceed.
+
+**Degraded notes (never an error).** Mirror the Step 4 "No telemetry
+data: …" / Step 2 "No `etc/feature/*` tags found" style:
+
+- If `records` is empty AND `memory_dir` indicates no scan target (the
+  engine reports an absent/unreadable memory dir), render the literal
+  note "No memory dir: `{memory_dir}` not found — no lesson-class
+  memories to audit." and proceed. The engine exits 0 in this case, so
+  the section still renders.
+- If the engine binary itself is absent (the CLI is not installed at
+  `~/.claude/scripts/lesson_gate_audit.py`), render "Feedback-loop
+  closure unavailable: `~/.claude/scripts/lesson_gate_audit.py` not
+  found." and proceed — the rest of `/metrics` is unaffected.
+
+This section is read-only: `/metrics` never writes to the memory dir and
+never mutates a lesson file (the audit and any backfill are the
+operator's, per the forward-only rule in the standard).
+
+### Step 6: Emit the report
 
 Print the assembled markdown to stdout. Layout:
 
@@ -342,6 +432,11 @@ Print the assembled markdown to stdout. Layout:
 
 ## Cost
 {cost tables or "no telemetry" note}
+
+## Feedback-loop closure
+{headline % terminated-in-gate}
+{per-status counts table}
+{open-loop list, or "no open loops" / degraded note}
 ```
 
 Do NOT write the report to disk. Do NOT mirror it to `~/.claude/`. The
@@ -351,9 +446,13 @@ report is ephemeral — the operator pipes it where they want it.
 
 - **Non-interactive.** No `AskUserQuestion`, no Pattern B markers, no
   prompts of any kind. The skill runs to completion or fails loudly.
-- **Three layers, three sources, no cross-derivation.** Process from
-  tags only; outcome from hypothesis YAML only; cost from telemetry
-  DB only (BR-010, AC-012).
+- **Three core layers, three sources, no cross-derivation.** Process
+  from tags only; outcome from hypothesis YAML only; cost from telemetry
+  DB only (BR-010, AC-012). The **Feedback-loop closure** section is a
+  fourth, independent read: it consumes ONLY
+  `lesson_gate_audit.py`'s JSON and never reaches into the three core
+  layers (BR-010 stays intact — it is a separate section, not a
+  cross-derivation).
 - **Auto-transition before counting.** Pending → unmeasured for any
   hypothesis past its `predicted.window_days` since the `release`
   tag, applied as a write to disk BEFORE the outcome counts run
@@ -366,10 +465,15 @@ report is ephemeral — the operator pipes it where they want it.
   telemetry rows (AC-016, GA-003).
 - **Headline metric is % hypothesis-validated, by role.** Counts and
   percentages, with an overall total (AC-015, BR-012).
-- **Locality.** Reads only inside the project working tree
-  (`.etc_sdlc/`, `.git/`, `scripts/`, `standards/`). No `~/.claude/`
-  reads or writes. No network calls. No phone-home (AC-017, BR-014,
-  security consideration 4).
+- **Locality.** `/metrics` reads only inside the project working tree
+  (`.etc_sdlc/`, `.git/`, `scripts/`, `standards/`) and never itself
+  reads or writes `~/.claude/`. No network calls. No phone-home
+  (AC-017, BR-014, security consideration 4). The Feedback-loop closure
+  section reads the operator memory dir only *indirectly*, by invoking
+  `lesson_gate_audit.py` as a helper CLI by absolute path — the SAME
+  mechanism already used for the other `~/.claude/scripts/` helpers; the
+  engine performs the read-only memory scan and returns JSON, and
+  `/metrics` never writes to or mutates the memory dir.
 - **Schema-version tolerance.** A `value-hypothesis.yaml` with
   `schema_version > 1` is skipped with a warning (the helper does
   this); not an error.
@@ -396,10 +500,12 @@ and never refuses input.
    `status: unmeasured`. Files that already had a non-pending
    status, files without a `release` tag, and files inside their
    window were left untouched.
-3. The report emitted to stdout contains exactly three labeled
-   sections in this order: `## Process`, `## Outcome`, `## Cost`.
-   No section is omitted; missing data sources are surfaced as
-   inline notes inside their section, not by deleting the section.
+3. The report emitted to stdout contains exactly four labeled
+   sections in this order: `## Process`, `## Outcome`, `## Cost`,
+   `## Feedback-loop closure`. No section is omitted; missing data
+   sources (no telemetry DB, no memory dir, an absent engine binary)
+   are surfaced as inline notes inside their section, not by deleting
+   the section.
 4. The Outcome section contains a per-role table with the columns
    defined in Step 3 and a final `Total` row. The headline
    `% Validated` value is shown both per-role and on the `Total`
@@ -407,9 +513,17 @@ and never refuses input.
 5. The Outcome section explicitly accounts for excluded
    (grandfathered or non-`F<NNN>`) features and for files that
    failed schema validation, by count and filename.
-6. The skill made no writes outside the auto-transition pass in
-   Step 2, made no reads or writes outside the project working
-   tree, and made no network calls (AC-017).
+6. The Feedback-loop closure section shows the headline `% lessons
+   terminated-in-gate` (from `gated_pct`), the per-status counts
+   table (gated / none-yet / note-only / missing / dangling), and the
+   open-loop list (missing + dangling + none-yet), all parsed from
+   `lesson_gate_audit.py`'s JSON. An absent memory dir or a clean
+   no-open-loops scan degrades to an inline note inside the section,
+   never an error — the engine always exits 0.
+7. The skill made no writes outside the auto-transition pass in
+   Step 1, made no reads or writes (other than the helper-CLI
+   invocations by absolute path) outside the project working tree,
+   and made no network calls (AC-017).
 
 If any item is not satisfied, `/metrics` is NOT done. Do not print a
 "report complete" line; just print the report itself and let the

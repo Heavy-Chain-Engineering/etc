@@ -944,6 +944,7 @@ standards:
       - behavioral-runtime-dod.md
       - domain-fidelity.md
       - prototype-as-intent.md
+      - lessons-terminate-in-gates.md
       - invariants.md
     code:
       - clean-code.md
