@@ -167,6 +167,8 @@ decision.
 /design --sync                                         -- re-import designer decisions from file-watch JSON
 /design --sync-from <path>                             -- operator-selectable file-watch path
 /design --retrofit <feature_path>                      -- add design_phase block to an existing feature
+/design "..." --prototype <path>                       -- declare a prototype/mock input (read for intent only)
+/design "..." --prototype <path> --component-lib <path> -- also declare the real component library tokens come from
 ```
 
 `/design` IS the first phase to touch `features/` when invoked
@@ -394,6 +396,88 @@ AskUserQuestion(
   }]
 )
 ```
+
+**Phase 1 Step 3.5: Prototype declaration (per
+`standards/process/prototype-as-intent.md`; ADR-001 explicit
+declaration, not heuristic detection).**
+
+A prototype or mock (a clickable HTML/React/Figma-export demo) is a
+legitimate design *input* — but the pbj P0 class proves it must be
+read for **intent**, never carried forward as canonical
+implementation (its hand-coded classes, ad-hoc tokens, DOM, `fetch`
+calls, and scaffolding data must not become the design's source of
+truth). The full discipline lives in
+`standards/process/prototype-as-intent.md` (cited by path, NOT
+duplicated here — that standard is the single source of truth; this
+skill is thin orchestration per
+`standards/architecture/abstraction-rules.md`).
+
+Detection is **explicit declaration** (ADR-001) — `/design` never
+heuristically scans the repo for prototype-shaped files. Resolve the
+declaration as follows:
+
+- If the operator passed `--prototype <path>` (and optionally
+  `--component-lib <path>`) on the `/design` invocation, treat those
+  as the declared values and SKIP the Pattern B question for whatever
+  was supplied. Ask Pattern B only for any missing half (e.g.,
+  `--prototype` given but `--component-lib` omitted).
+- Otherwise ask the declaration question, ONE AT A TIME via Pattern B
+  (per `standards/process/interactive-user-input.md`):
+
+  ```
+
+  ---
+
+  **▶ Your answer needed:** Is a prototype or mock an input to this design? If so, where is it (a path or URL)? A prototype is read for INTENT only — its classes, tokens, DOM, and fetch wiring never become canonical. Answer "no" if there is no prototype.
+
+  ```
+
+  Wait for the answer. If the answer is "no" / "none" / absent, record
+  `declared: false` and skip every prototype-hygiene rule below
+  (forward-only — the rest of `/design` behaves exactly as it does
+  with no prototype). Do not ask the component-lib follow-up.
+
+  If the operator names a prototype path, ask the component-library
+  follow-up via Pattern B:
+
+  ```
+
+  ---
+
+  **▶ Your answer needed:** Which real component library / design system should supply the canonical tokens (a path)? Tokens come from this library, never from the prototype's own token names. Answer "none" if the project has no component library yet — I'll record that as a gap.
+
+  ```
+
+**Path-sanitization contract (capture-site).** Every operator-supplied
+path (`--prototype`, `--component-lib`, or the Pattern B answers) is
+sanitized at the capture site BEFORE any write: strip every
+control-character codepoint (regex `[\x00-\x1f\x7f]`) and cap the
+length at 512 characters (truncate excess). The sanitized value is
+recorded **verbatim** into `state.yaml` — it is never
+shell-interpolated, never auto-fetched, and never read as code (the
+prototype is data, per the design.md Security Considerations and
+ADR-003 declare-not-execute). This mirrors the Phase 1 Question 6
+"Other" sanitization contract above (F006 Security item 2).
+
+**Record the declaration into `state.yaml.design_phase.prototype`**
+(merge-preserve per F006 BR-008 — the actual write happens in Phase 5
+Step 5 alongside the rest of the `design_phase` block; capture the
+values in skill-local state now). The sub-block schema:
+
+```yaml
+design_phase:
+  prototype:
+    declared: true                 # false → no hygiene applied (forward-only)
+    path: "<sanitized prototype path>"
+    component_lib_path: "<sanitized component-lib path, or null + a recorded gap when "none">"
+```
+
+A `declared: false` block records only `declared: false` (omit `path`
+and `component_lib_path`, or set them null) and is the forward-only
+no-op state. When the operator declares a prototype but answers "none"
+for the component library, set `component_lib_path: null` and record a
+gray-area / DoR gap (the standard requires a real token source; the
+gap is surfaced, not silently swallowed — ADR-002 component-lib-first).
 
 **Phase 1 Step 4: Write the design/start git tag.**
 
@@ -1133,6 +1217,64 @@ existing `<feature_path>`.
    Format mirrors the deprecated `agents/ui-designer.md`'s output
    format adapted for impeccable's token vocabulary (per BR-007).
 
+4.4. **Prototype-hygiene post-processing rules (apply ONLY when
+   `state.yaml.design_phase.prototype.declared == true`).** When
+   `declared` is `false` or absent, SKIP this entire step — the
+   token and component-spec writes above stand exactly as today
+   (forward-only). The four rules below enforce
+   `standards/process/prototype-as-intent.md` against the artifacts
+   from Steps 3-4; the standard is the single source of truth and is
+   cited by path, NOT duplicated here.
+
+   1. **Intent-only extraction (per the standard; ADR-001 + ADR-003).**
+      Read the declared prototype for *intent* only — which surfaces
+      exist, what each affords, the user-flow shape. Do NOT carry the
+      prototype's own CSS classes, ad-hoc token names, DOM structure,
+      or `fetch`/`axios` wiring into `component-specs.md` or
+      `design-tokens.json` as canonical. The prototype's auth/fetch
+      code is NEVER promoted as the design's canonical auth story —
+      the design declares intent ("this surface persists X"); the
+      build wires real auth at the real trust boundary (design.md
+      Security Considerations).
+
+   2. **REQUIRED / ILLUSTRATIVE affordance annotation (ADR-002 /
+      AGA-003).** Annotate every affordance in `component-specs.md`
+      with a trailing `REQUIRED` or `ILLUSTRATIVE` tag, co-located
+      with the affordance line or row (grep-able). `REQUIRED` = an
+      affordance the design genuinely demands; `ILLUSTRATIVE` = a
+      detail the prototype happened to show but that is not binding.
+      This is the convention named in design.md API Contracts; the
+      semantics of the two tags live in the standard.
+
+   3. **Real-token sourcing (ADR-002 component-lib-first; Edge
+      Case 5 provenance-over-coincidence).** Source the
+      `design-tokens.json` token *values* from the declared
+      `component_lib_path` — never from the prototype's own token
+      names. If `component_lib_path` is `null` (the operator answered
+      "none" in Phase 1 Step 3.5), do NOT invent tokens from the
+      prototype; record the missing-token-source gap (carried from
+      Phase 1 Step 3.5) and surface it at the Phase 4 Definition of
+      Ready. Provenance over coincidence: a token in
+      `design-tokens.json` must trace to the real library, not to a
+      value the prototype happened to hardcode.
+
+   4. **Data-fidelity + clean-template declaration (ADR-003
+      declare-not-execute; the Gap A consumer).** Declare — as prose
+      — the data-fidelity and clean-template requirement into the
+      design output (`component-specs.md` and/or DESIGN.md), using the
+      canonical sentence from design.md API Contracts: "Data fidelity:
+      seed/fixture data MUST reproduce every value the prototype
+      displays; the ingestible template carries no scaffolding rows."
+      `/design` only *declares* this requirement; the build-time
+      runtime gate (Gap A) consumes and enforces it. This is the
+      architectural defense against the pbj P0 (scaffolding rows
+      ingested as real records).
+
+   These rules add to `component-specs.md` and `design-tokens.json`;
+   they never mutate impeccable's PRODUCT.md / DESIGN.md (read-only
+   post-process per ADR-F011-005) and never duplicate the standard's
+   rules into this skill (F002 standards-doc citation pattern).
+
 4.5. **Compose the Google-spec DESIGN.md (F018).** After impeccable's
    freeform PRODUCT.md + DESIGN.md exist at the repo root, dispatch the
    compose script to produce a canonical Google-spec DESIGN.md:
@@ -1199,6 +1341,10 @@ existing `<feature_path>`.
      impeccable_version_pinned: <semver, e.g. "3.0.7">
      google_designmd_version_pinned: <semver or "alpha">   # F018
      tier_0_promoted: <bool>
+     prototype:                                            # Gap C — see Phase 1 Step 3.5
+       declared: <bool>                                    # false → no hygiene applied (forward-only)
+       path: <sanitized prototype path, or null>           # present only when declared: true
+       component_lib_path: <sanitized component-lib path, or null>  # null + recorded gap when "none"
      completed_at: <ISO-8601 UTC>
    ```
 
@@ -1225,6 +1371,14 @@ existing `<feature_path>`.
      PRODUCT.md or Phase 1 Q3 when /design runs ahead of
      /spec); else `false`. See "Conditional tier-0 promotion"
      below for the hook contract.
+   - `prototype` — the Gap C declaration captured in Phase 1
+     Step 3.5 (per `standards/process/prototype-as-intent.md` +
+     ADR-001). `declared: false` (the forward-only no-op) records
+     only the boolean; `declared: true` records the sanitized
+     `path` and `component_lib_path` (the latter `null` + a recorded
+     gap when the operator answered "none"). Merge-preserve like the
+     rest of the block; the values are recorded verbatim, never
+     shell-interpolated.
    - `completed_at` — ISO-8601 UTC timestamp of Phase 5
      completion.
 
@@ -1488,6 +1642,22 @@ is absent (mirrors F006 GA-008 for /architect).
 - NEVER duplicate impeccable's anti-pattern rules or reference
   domains into this skill — those are impeccable's authoritative
   surface (per ADR-F011-001).
+- The prototype-as-intent discipline (Gap C) is detected by
+  **explicit declaration only** (Phase 1 Step 3.5; `--prototype` /
+  `--component-lib` flags), NEVER by heuristic repo scanning (per
+  ADR-001). A `declared: false` (or absent) prototype block applies
+  ZERO hygiene — a no-prototype run behaves exactly as today
+  (forward-only).
+- NEVER duplicate `standards/process/prototype-as-intent.md`'s rules
+  (intent-only extraction, REQUIRED/ILLUSTRATIVE annotation,
+  component-lib-first token sourcing, data-fidelity + clean-template)
+  into this skill — cite by path (F002 standards-doc citation
+  pattern); that standard is the single source of truth.
+- Operator-supplied prototype/component-lib paths are sanitized at
+  the capture site (strip `[\x00-\x1f\x7f]`, length-cap), recorded
+  verbatim into `state.yaml.design_phase.prototype`, and NEVER
+  shell-interpolated or auto-fetched (per ADR-003 declare-not-execute
+  + design.md Security Considerations).
 - The git tag pair `etc/feature/<feature_id>/design/start` and
   `etc/feature/<feature_id>/design/done` MUST both be written
   (start at Phase 1 Step 4, done at Phase 5 Step 8). `/metrics`
@@ -1572,7 +1742,13 @@ research-assisted paths, and item 13 applies to the rejected path
    or `rejected`. The schema is load-bearing for `/spec` Phase 2
    and `/build` Step 1c; do not rename fields or values. The
    `design_phase` block coexists with any existing `spec_phase` or
-   `architect_phase` block (F006 BR-008 merge-preserve).
+   `architect_phase` block (F006 BR-008 merge-preserve). The
+   `design_phase` block carries a `prototype` sub-block recording the
+   Phase 1 Step 3.5 declaration (`declared` boolean; `path` +
+   `component_lib_path` when `declared: true`, sanitized + verbatim).
+   When `declared: false` (or no prototype was declared), no
+   prototype-hygiene rules were applied and the artifacts match a
+   no-prototype run (forward-only).
 3. `<feature_path>/gray-areas-design.md` exists. If no gray areas
    were found, the file contains the literal sentinel line "No
    design gray areas identified — impeccable's reference domains
