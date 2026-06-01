@@ -105,6 +105,14 @@ exact paths:
    textual patterns, cross-language search, non-code files, or
    uncovered languages.
 
+6. `standards/architecture/review-depth.md` — engage with architecture,
+   not surface lint. Every architectural judgment in this skill (the
+   Architecture Overview, Module Structure, Trade-offs, and especially the
+   Phase 2.9 Layer Impact Analysis) reasons about boundaries, data flow,
+   coupling, dependency direction, invariants, and the masquerade gap — NOT
+   formatting, naming nits, import order, or line length, which linters and
+   `verify-green` already own. Cite this standard by path; do not restate it.
+
 If `standards/process/interactive-user-input.md` does not exist, STOP
 and report the missing file to the user — no phase in this skill can
 proceed without it, because every user interaction is Pattern A or

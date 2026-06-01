@@ -964,6 +964,7 @@ standards:
       - abstraction-rules.md
       - adr-process.md
       - layer-boundaries.md
+      - review-depth.md
     security:
       - data-handling.md
       - owasp-checklist.md

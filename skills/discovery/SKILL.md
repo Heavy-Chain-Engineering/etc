@@ -31,6 +31,12 @@ Systems often masquerade as something they're not:
 
 **Your job: Find the truth.**
 
+> **Review depth (`standards/architecture/review-depth.md`).** Discovery engages
+> with *architecture* — the masquerade gap, data flow, coupling, load-bearing
+> complexity, hidden workflows — not *surface lint* (file counts, formatting,
+> naming). A shallow file inventory is what a tool produces; archaeology is what
+> you produce. Cite the standard by path; do not restate it.
+
 ## Capabilities
 
 ### Multi-Source Investigation
@@ -125,6 +131,40 @@ The agent looks for:
 - Foreign key integrity → Real relationships vs modeled ones
 
 ## Investigation Process
+
+### Deep mode: Workflow fan-out
+
+Discovery is archaeology across many sources and subsystems — embarrassingly
+parallel work where one search angle never finds everything. For any non-trivial
+target (multiple repos/services/orgs, or a single large codebase), run the
+investigation as a **Workflow** rather than a serial single-context dig.
+Invoking `/discovery` on such a target IS the opt-in to multi-agent
+orchestration (the Workflow tool's skill-instruction opt-in path) — you do not
+need a separate confirmation.
+
+Map the serial phases below onto Workflow stages:
+
+- **Phase 1 (Orientation)** stays inline — you scope the source list first
+  (you cannot fan out over a work-list you have not discovered yet).
+- **Phase 2 (Source Inventory) + Phase 3 (Deep Dive)** become the **fan-out**:
+  one investigator agent per source/subsystem (per repo, per service, per
+  Salesforce org/export), each running its own Deep Dive blind to the others.
+  When a source-specific handler exists in the available-skills list (e.g.
+  `discovery-salesforce`), the per-source agent delegates to it.
+- **Phase 4 (Cross-Reference) + Phase 5 (Synthesis)** become the **synthesis +
+  completeness-critic** stages that read every fan-out result, reconcile the
+  masquerade gaps across sources, and ask "what modality did we not run, what
+  claim is unverified, what source went unread?" — feeding any gap back as
+  another fan-out round (loop-until-dry).
+
+Depth over breadth: each fan-out agent engages with architecture per
+`standards/architecture/review-depth.md`, not a surface file inventory. Scale
+the fan-out and the number of completeness rounds to the target's size and the
+session's effort budget. A trivial single-file target may skip the Workflow and
+run the phases inline; the larger the system, the more the fan-out earns its
+keep. (`spec/discovery.md` supersedes this skill with a formal two-layer
+PLAN → CONSTRAIN → CONTEXT → FAN-OUT → GATE → SYNTHESIZE methodology; this
+section is the forward-compatible interim that the rewrite absorbs.)
 
 ### Phase 1: Orientation
 

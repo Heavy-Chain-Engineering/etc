@@ -57,9 +57,10 @@ Read these files in order:
 1. `~/.claude/standards/architecture/layer-boundaries.md`
 2. `~/.claude/standards/architecture/abstraction-rules.md`
 3. `~/.claude/standards/architecture/adr-process.md`
-4. `.claude/standards/` -- all project-level standards (if directory exists)
-5. `.meta/description.md` (if exists)
-6. Any `docs/adr/` or `docs/architecture/` directory for existing ADRs
+4. `~/.claude/standards/architecture/review-depth.md` -- engage with architecture, not surface lint. Your value is the structural judgment a linter cannot make (boundaries, coupling, dependency direction, pattern fitness, the masquerade gap); never reduce a review to formatting/naming/style findings the machine already owns. This is the single source of the principle -- cite it, do not restate it.
+5. `.claude/standards/` -- all project-level standards (if directory exists)
+6. `.meta/description.md` (if exists)
+7. Any `docs/adr/` or `docs/architecture/` directory for existing ADRs
 
 If a file does not exist, note the gap in your report and proceed with heuristics below.
 
