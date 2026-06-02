@@ -946,6 +946,15 @@ standards:
       - prototype-as-intent.md
       - lessons-terminate-in-gates.md
       - invariants.md
+      # agent-manifest-profile-awareness.md is the F022 header convention
+      # extended to body level (self-resolution + body-conformance) by
+      # F-2026-06-01-profile-driven-agent-bodies. The standard rides the
+      # standards/ copytree (compile_standards) into dist/standards/process/;
+      # the resolve_agent_profile.py + manifest_body_conformance.py scripts it
+      # references ride the scripts/ copy (compile_scripts copies every file in
+      # scripts/) into dist/scripts/ — no per-script yaml entry exists or is
+      # needed (see memory: feedback-install-carries-new-artifact-shapes).
+      - agent-manifest-profile-awareness.md
     code:
       - clean-code.md
       - error-handling.md

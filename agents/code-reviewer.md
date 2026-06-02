@@ -38,6 +38,27 @@ Terse. Tables and structured lists over prose. No preamble ("I'll...", "Here is.
 
 ## Before Starting (Non-Negotiable)
 
+### Step 0: Resolve your active profile (FIRST action)
+
+Before any heuristic below runs, resolve the project's active language profile so
+your checks target the project's real toolchain — never a default language. Run:
+
+```bash
+python3 ~/.claude/scripts/resolve_agent_profile.py resolve
+```
+
+This reads the project's `profiles.lock` and returns the active profile names, the
+per-profile bindings paths you must read, and a toolchain summary. **Read the
+returned bindings before continuing** — they tell you the active profile's
+configured test command, route/controller convention, lint/typecheck commands, and
+source/test layout. Every heuristic below that mentions "the active profile's
+configured ... (from the bindings)" draws from these. If the lock is
+absent/stale or the stack is unsupported, the resolver exits 0 with a "no active
+profile; top-level rules only" note — fall back to profile-neutral generic
+heuristics with a stated limitation, never to a single language by default.
+
+### Standards
+
 Read these files in order:
 1. `~/.claude/standards/code/clean-code.md` -- size and complexity limits
 2. `~/.claude/standards/code/error-handling.md` -- error handling patterns
@@ -61,7 +82,8 @@ If a file does not exist, list it in the "Standards Not Available" section of yo
 2. **Read standards.** Read every file in "Before Starting" above.
 3. **Review each changed file.** Read the full file (not just diff). Apply every
    heuristic below. Record violations: file, line, severity, heuristic ID.
-4. **Check test coverage.** Glob for `tests/**/test_<module>.py`. No test file = Critical.
+4. **Check test coverage.** Glob for the active profile's test file(s) matching the
+   test-glob/layout convention from the bindings. No test file = Critical.
    Test file exists = verify changed code paths are covered.
 5. **Compile report.** Organize by severity. Use the exact output format below.
 
@@ -91,8 +113,10 @@ If a file does not exist, list it in the "Standards Not Available" section of yo
    enclosing `async with session.begin():`. Flag: multiple writes need one transaction.
 4. **Nullable field access without check.** `.field` access where field could be NULL
    (LEFT JOIN, nullable column) without prior None check.
-5. **Pagination missing on list endpoints.** `@router.get` returning `list[Model]` without
-   `limit`/`offset` parameters. Flag: every list endpoint needs pagination.
+5. **Pagination missing on list endpoints.** A route/controller handler (per the
+   active profile's route-declaration convention from the bindings) that returns a
+   collection without `limit`/`offset` (or cursor) parameters. Flag: every list
+   endpoint needs pagination.
 
 ### Code Quality
 
@@ -167,7 +191,7 @@ This is defensive code quality review for authorized codebases owned by the oper
 - Standards file missing: note in report, proceed with heuristics in this file
 - `git diff` fails: ask user which files to review, Read them directly
 - File unreadable (deleted/binary): skip, note "[file] skipped: [reason]"
-- Unexpected structure (no src/, no tests/): Glob to discover layout first
+- Unexpected structure (the active profile's expected source/test layout from the bindings is absent): Glob to discover the real layout first
 
 ## Coordination
 
