@@ -56,9 +56,13 @@ AGE_MINUTES="unknown"
 if [ ! -f "$CHECKPOINT" ]; then
   IS_STALE=1
 else
-  # BSD/macOS: stat -f %m. GNU: stat -c %Y. Fall through to 0 on both
-  # failing (forces "unknown age", treated as stale to be safe).
-  MTIME=$(stat -f %m "$CHECKPOINT" 2>/dev/null || stat -c %Y "$CHECKPOINT" 2>/dev/null || echo 0)
+  # mtime in epoch seconds. GNU FIRST, BSD second: `stat -c %Y` is GNU; it
+  # fails CLEANLY on macOS (illegal option -> exit 1) so the `||` falls
+  # through to BSD `stat -f %m`. The reverse order is broken on GNU/Linux,
+  # where `-f` is `--file-system` (a VALID flag) so `stat -f %m` emits
+  # filesystem text instead of failing into the fallback (HARNESS-FEEDBACK-002).
+  # Fall through to 0 if both fail (forces "unknown age", treated as stale).
+  MTIME=$(stat -c %Y "$CHECKPOINT" 2>/dev/null || stat -f %m "$CHECKPOINT" 2>/dev/null || echo 0)
   NOW=$(date +%s)
   AGE_MINUTES=$(( (NOW - MTIME) / 60 ))
   if [ "$AGE_MINUTES" -gt "$STALE_MINUTES" ]; then

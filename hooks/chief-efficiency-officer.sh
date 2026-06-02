@@ -63,7 +63,7 @@ detect_current_task() {
     while IFS= read -r f; do
       [ -z "$f" ] && continue
       local mt
-      mt=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+      mt=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
       if [ "$mt" -gt "$latest_mtime" ]; then
         latest_mtime=$mt
         latest=$f
@@ -84,7 +84,7 @@ detect_current_task() {
     while IFS= read -r f; do
       [ -z "$f" ] && continue
       local mt
-      mt=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+      mt=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
       if [ "$mt" -gt "$latest_mtime" ]; then
         latest_mtime=$mt
         latest=$f
