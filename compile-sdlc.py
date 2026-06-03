@@ -17,14 +17,22 @@ Usage:
 """
 
 import argparse
+import contextlib
+import hashlib
 import json
 import re
 import shutil
 import sys
+import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import yaml
+
+try:
+    from filelock import FileLock
+except ImportError:  # pragma: no cover - minimal installer envs may lack filelock
+    FileLock = None  # type: ignore[assignment,misc]
 
 # Windows ships cp1252 as the default stdio encoding; force utf-8 so prints of
 # box-drawing chars and other non-ASCII content don't crash on Windows. No-op
@@ -41,14 +49,14 @@ CODEX_COMMAND_EVENTS = frozenset({
     "SubagentStart",
 })
 
-CODEX_RESULT_PARITY_BUCKETS = {
+CODEX_RESULT_PARITY_BUCKETS: Final = {
     "TaskCreated": "skill-artifact-readiness",
     "TaskCompleted": "subagent-artifact-completion",
     "SubagentStop": "subagent-artifact-review",
     "ConfigChange": "edit-bash-ci-guard",
 }
 
-CODEX_ARTIFACT_SCHEMAS = {
+CODEX_ARTIFACT_SCHEMAS: Final = {
     "readiness": [
         "schema_version",
         "task_id",
@@ -621,6 +629,25 @@ def compile_scripts(dist_dir: Path, repo_root: Path) -> None:
             if script.is_file():
                 shutil.copy2(script, scripts_dst / script.name)
                 (scripts_dst / script.name).chmod(0o755)
+
+
+def _compile_lock(repo_root: Path) -> contextlib.AbstractContextManager[Any]:
+    """Serialize concurrent compiles so parallel invocations don't race.
+
+    reset_output_dir() rmtree+rebuilds the shared output tree, so two compiles
+    running at once (xdist test workers, CI) can have one rmtree while another
+    writes — a non-atomic-reset race that surfaces as a spurious non-zero exit.
+    This lock serializes them. Best-effort: when filelock is unavailable (a
+    minimal installer env) compile proceeds unlocked, since install-time
+    compiles are single-invocation and never race. The lock lives in the system
+    temp dir (keyed by repo path) so it survives the dist/ rmtree and never
+    pollutes the repo tree.
+    """
+    if FileLock is None:
+        return contextlib.nullcontext()
+    key = hashlib.sha1(str(repo_root).encode("utf-8")).hexdigest()[:12]
+    lock_path = Path(tempfile.gettempdir()) / f"etc-compile-sdlc-{key}.lock"
+    return FileLock(str(lock_path))
 
 
 def reset_output_dir(output_dir: Path) -> None:
@@ -1484,20 +1511,23 @@ def main() -> None:
     print(f"Compiling SDLC spec: {args.spec_path}")
     print(f"Client target: {args.client}")
 
-    if args.client == "all":
+    # Serialize concurrent compiles (xdist test workers / CI) — reset_output_dir
+    # rmtree+rebuilds the shared dist tree and is not atomic across processes.
+    with _compile_lock(repo_root):
+        if args.client == "all":
+            output_dir = args.output or repo_root / "dist"
+            reset_output_dir(output_dir)
+            compile_claude_target(spec, output_dir / "claude", repo_root)
+            compile_codex_target(spec, output_dir / "codex", repo_root)
+            return
+
+        if args.client == "codex":
+            output_dir = args.output or repo_root / "dist" / "codex"
+            compile_codex_target(spec, output_dir, repo_root)
+            return
+
         output_dir = args.output or repo_root / "dist"
-        reset_output_dir(output_dir)
-        compile_claude_target(spec, output_dir / "claude", repo_root)
-        compile_codex_target(spec, output_dir / "codex", repo_root)
-        return
-
-    if args.client == "codex":
-        output_dir = args.output or repo_root / "dist" / "codex"
-        compile_codex_target(spec, output_dir, repo_root)
-        return
-
-    output_dir = args.output or repo_root / "dist"
-    compile_claude_target(spec, output_dir, repo_root)
+        compile_claude_target(spec, output_dir, repo_root)
 
 
 if __name__ == "__main__":

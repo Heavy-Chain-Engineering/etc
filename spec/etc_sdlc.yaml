@@ -955,6 +955,16 @@ standards:
       # scripts/) into dist/scripts/ — no per-script yaml entry exists or is
       # needed (see memory: feedback-install-carries-new-artifact-shapes).
       - agent-manifest-profile-awareness.md
+      # build-review-gate.md (F-2026-06-02) is the citable standard for the
+      # /build Step 7 review gate (firing policy GA-001, the ADR-001 emission
+      # contract, severity-gated blocking ADR-003). It rides the standards/
+      # copytree (compile_standards) into dist/standards/process/. Its helper,
+      # scripts/review_gate.py, rides the broad scripts/ copy: compile_scripts
+      # does `for script in scripts_src.iterdir(): if script.is_file()` and
+      # copies EVERY file in scripts/ into dist/scripts/ — no per-script yaml
+      # entry exists or is needed (NOT the narrowed-glob failure mode; see
+      # memory: feedback-install-carries-new-artifact-shapes).
+      - build-review-gate.md
     code:
       - clean-code.md
       - error-handling.md

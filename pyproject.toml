@@ -34,6 +34,12 @@ dev-dependencies = [
     # `"$PYTHON" -m mypy ...`. Without it in the venv, every Stop event
     # fails the type-check step with "No module named mypy".
     "mypy>=1.10",
+    # F-2026-06-02: compile-sdlc.py serializes concurrent compiles with a
+    # filelock so parallel test workers (pytest-xdist) don't race on the
+    # shared dist/ tree. compile-sdlc falls back to nullcontext when filelock
+    # is absent (install-time is single-invocation), but the dev/CI suite runs
+    # parallel and MUST have it for the lock to engage.
+    "filelock>=3.12",
 ]
 
 [tool.pytest.ini_options]

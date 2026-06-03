@@ -79,7 +79,16 @@ without it.
 /build .etc_sdlc/features/auth/spec.md --autonomous          # F014: drive via /goal, skip operator prompts
 /build .etc_sdlc/features/auth/spec.md --autonomous --max-turns 75
 /build .etc_sdlc/features/auth/spec.md --autonomous --goal-condition "<override>"
+/build --resume --skip-review-gate "<reason>"               # F-2026-06-02: override a blocking CRITICAL/HIGH review finding (reason logged)
 ```
+
+`--skip-review-gate "<reason>"` overrides a blocking Step 7 review-gate
+verdict (CRITICAL/HIGH finding). The reason MUST be non-empty (empty →
+the gate rejects it); it is logged verbatim to `verification.md` and
+`release-notes.md` under a Review Gate subsection. Routine use defeats the
+gate's discipline — same pattern as `--skip-spec-coupling-check` (F015)
+and `--skip-journey-check` (F017). Full policy:
+`standards/process/build-review-gate.md`.
 
 ## Autonomous Mode (F014)
 
@@ -1676,6 +1685,117 @@ successfully at Step 6:
    release tag or release-notes.md** while remediation is
    outstanding — release artifacts are gated on a successful
    terminal-phase close.
+
+3.5. **Step 7 review gate — dispatch the review agents (F-2026-06-02).**
+
+   This sub-step runs AFTER spec-enforcer (item 3) and BEFORE the
+   Step 7.4 journey gate. It fires the `code-reviewer`,
+   `security-reviewer`, and (conditionally) `architect-reviewer` agents
+   against the build's changed fileset. The full policy — firing matrix
+   (GA-001), severity-gated blocking (ADR-003), the emission contract
+   (ADR-001), the override discipline, and the changed-fileset scope
+   (GA-003) — lives in `standards/process/build-review-gate.md` and is
+   NOT duplicated here; this sub-step is orchestration only. The
+   mechanics (firing decision, fileset derivation, severity aggregation)
+   live in `scripts/review_gate.py`.
+
+   **3.5a. Plan which agents fire.** Invoke the helper:
+
+   ```bash
+   python3 ~/.claude/scripts/review_gate.py plan \
+       --feature-dir .etc_sdlc/features/active/<feature_dir_name>
+   ```
+
+   It emits JSON to stdout:
+
+   ```json
+   {
+     "agents": ["code-reviewer", "security-reviewer", "architect-reviewer"],
+     "changed_files": ["path/one.py", "path/two.ts"],
+     "architect_reviewer_fires": true,
+     "skip_reason": null
+   }
+   ```
+
+   `code-reviewer` and `security-reviewer` are ALWAYS in `agents`;
+   `architect-reviewer` is present iff `architect_reviewer_fires` is
+   `true`. When `architect_reviewer_fires` is `false`, record the skip
+   and the `skip_reason` in `verification.md` (audited, never silent —
+   see item 4's Review Findings template).
+
+   **3.5b. Dispatch the review agents in a single parallel fan-out.**
+   Issue one Agent-tool call per agent in `agents`, all in the same
+   conductor turn (mirroring item-3c's chunked parallel dispatch — no
+   serial loop). For each agent, set `subagent_type` to the agent name.
+   Each dispatch prompt embeds the `changed_files` to review (the agent
+   reviews the changed fileset, not the whole repo), the `spec.md` and
+   (if present) `design.md` paths as intent context, and the ADR-001
+   emission-contract clause VERBATIM so the agent ends its output with a
+   parseable findings block:
+
+   ```
+   Agent({
+     subagent_type: "<agent-name>",
+     prompt: "Review the changed fileset for feature '{slug}' against the spec at {spec_path} and design at {design_path} (if present). Files to review:\n{changed_files}\n\nEnd your output with EXACTLY this block (the review-gate emission contract, standards/process/build-review-gate.md):\n\n## Review Findings\n- [CRITICAL|HIGH|MEDIUM|LOW] <file:line> — <one-line finding>\n- ...\nGATE: BLOCK | PASS\n\nEach finding line is `- [<SEVERITY>] <file:line> — <one-line finding>`, where <SEVERITY> is a member of the closed set {CRITICAL, HIGH, MEDIUM, LOW}. The block ends with exactly one GATE: line valued BLOCK, PASS, or CLEAN. When there are no findings, emit a single `GATE: CLEAN` line in place of the finding list. Do not invent severities."
+   })
+   ```
+
+   When the changed fileset exceeds a review agent's tool budget,
+   partition it across dispatches using the same Step 7 chunking /
+   fan-out pattern as item-3c (per GA-003).
+
+   **3.5c. Capture each agent's output + aggregate.** Capture each
+   dispatched agent's output to a separate file (one file per agent),
+   then fold the per-agent findings into one verdict:
+
+   ```bash
+   python3 ~/.claude/scripts/review_gate.py aggregate \
+       --findings <file1> <file2> [<file3>] \
+       [--skip-review-gate "<reason>"]
+   ```
+
+   Exit codes:
+   - **2** = BLOCK. ≥1 CRITICAL/HIGH finding, OR an
+     unparseable/INSUFFICIENT_EVIDENCE block from any agent (conservative
+     block — the gate never silently passes an agent whose verdict it
+     could not read). STOP the terminal close (see below).
+   - **0** = PROCEED. All blocks CLEAN or only MEDIUM/LOW, OR
+     `--skip-review-gate` carried a non-empty reason. The build proceeds
+     to Step 7.4. MEDIUM/LOW findings are recorded in `verification.md`,
+     not blocking.
+   - **1** = usage / IO error (e.g. `--skip-review-gate ""`). Treat as a
+     hard fault; surface stderr verbatim and STOP.
+
+   The command prints the `verification.md` Review Findings fragment to
+   stdout; record it in `verification.md` (item 4) **regardless of the
+   verdict** — both proceed and block outcomes are audited.
+
+   **On exit 2 (BLOCK): block the terminal close.** Do NOT write the
+   release tag, do NOT write `release-notes.md`, and do NOT attempt the
+   active→shipped move — exactly like a NON-COMPLIANT spec-enforcer
+   (item 3). Route the findings to the responsible task owners for
+   remediation; re-run on `/build --resume`. The review-gate verdict
+   **aggregates with spec-enforcer's onto the same release-gating path**:
+   the terminal close (Step 7 item 5) proceeds ONLY when spec-enforcer is
+   COMPLIANT AND the review gate exited 0 (no outstanding CRITICAL/HIGH
+   review finding). See `standards/process/build-review-gate.md` for the
+   full policy.
+
+   **Operator override.** A blocking CRITICAL/HIGH finding may be
+   overridden only via `/build --skip-review-gate "<reason>"` (non-empty
+   reason; empty → exit 1, the flag does not silently no-op). The reason
+   is logged verbatim to both `verification.md` and `release-notes.md`
+   under a Review Gate subsection. Routine override is the cry-wolf /
+   dead-gate failure mode `/metrics` surfaces — see the standard.
+
+   **Autonomous mode (F014) interaction:** under `--autonomous`, the gate
+   still runs. An exit-2 BLOCK (CRITICAL/HIGH) routes through the existing
+   Step 7 remediation path under the /goal evaluator loop — the evaluator
+   reads the structured Review Findings fragment and dispatches the fix as
+   remediation work, then the gate re-runs on the next `/build --resume`
+   iteration; on max-turns it stops with the blocking finding surfaced,
+   NEVER a silent clean release. MEDIUM/LOW findings are recorded and do
+   not interrupt the autonomous run.
 4. Write `.etc_sdlc/features/{slug}/verification.md`:
 
 ```markdown
@@ -1701,6 +1821,14 @@ successfully at Step 6:
 - [ ] Type checking: {pass/fail/skipped}
 - [ ] Lint: {pass/fail/skipped}
 - [ ] Invariants: {pass/fail/no invariants}
+
+## Review Findings
+{the `## Review Findings` fragment emitted by `review_gate.py aggregate`
+(Step 7 item 3.5): the overall verdict (PROCEED / BLOCK / overridden),
+one line per finding `- [SEVERITY] file:line — finding`, any
+INSUFFICIENT_EVIDENCE source, and the `--skip-review-gate` reason when
+present. When `architect-reviewer` was gated out, record the skip and its
+`skip_reason` here. Policy: standards/process/build-review-gate.md.}
 
 ## Files Modified
 {list of all files created or modified across all tasks}
