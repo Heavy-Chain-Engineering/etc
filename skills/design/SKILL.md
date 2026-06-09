@@ -1194,6 +1194,23 @@ existing `<feature_path>`.
    design-tokens.json alongside spec.md (per BR-007 + F006 BR-005
    pattern).
 
+   **Layer-3 conformance (advisory, optional).** This file is
+   Layer 2 (machine-readable tokens). The operator MAY now run the
+   Layer-3 conformance gate to check the project's *existing* code
+   actually uses these tokens instead of hardcoding design values:
+
+   ```
+   python3 ~/.claude/scripts/design_token_gate.py scan \
+     --tokens <feature_path>/design-tokens.json --dir <project-src>
+   ```
+
+   v1 is **colors-only and advisory** (exit 0 even with violations;
+   `--strict` opts into blocking). It is NOT part of `/build`'s
+   blocking path. The full policy lives in
+   `standards/process/design-token-conformance.md` (cited, not
+   inlined). This step is optional — skip it if there is no existing
+   code to scan yet.
+
 4. **Write `<feature_path>/component-specs.md`** with the
    reviewed-and-approved component specs from Phase 3 Artifact 2.
    Format mirrors the deprecated `agents/ui-designer.md`'s output

@@ -965,6 +965,17 @@ standards:
       # entry exists or is needed (NOT the narrowed-glob failure mode; see
       # memory: feedback-install-carries-new-artifact-shapes).
       - build-review-gate.md
+      # design-token-conformance.md (#69) is the citable standard for the
+      # Layer-3 design-token conformance gate (the AI-ready 3-layer design
+      # system: DESIGN.md narrative -> design-tokens.json -> this gate). v1 is
+      # colors-only + advisory. It rides the standards/ copytree
+      # (compile_standards) into dist/standards/process/. Its helper,
+      # scripts/design_token_gate.py, rides the broad scripts/ copy
+      # (compile_scripts copies EVERY file in scripts/ into dist/scripts/) — no
+      # per-script yaml entry exists or is needed (mirrors build-review-gate.md
+      # + review_gate.py; NOT the narrowed-glob failure mode; see memory:
+      # feedback-install-carries-new-artifact-shapes).
+      - design-token-conformance.md
     code:
       - clean-code.md
       - error-handling.md
