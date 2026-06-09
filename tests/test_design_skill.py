@@ -275,6 +275,64 @@ def test_skill_design_exists_with_required_frontmatter(
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Regression guard (#68): the /design skill must target impeccable's CURRENT
+# surface — the `init` command, no fictional version pin, and the canonical
+# skills-install channel. impeccable renamed `teach` → `init`, never shipped
+# a v3.0.7, and is distributed via `npx impeccable skills install` (or the
+# Claude Code plugin marketplace), NOT `npm install -g impeccable`. The stale
+# strings broke /design for users on current impeccable (reported from the
+# athletica-app project). This test keeps the stale strings from returning.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_skill_design_targets_current_impeccable_surface(
+    skill_design_text: str,
+) -> None:
+    """Regression (#68): skills/design/SKILL.md targets impeccable's current
+    `init` command + skills-install channel, with no fictional version pin.
+
+    Asserts, against the skill body:
+      - it dispatches ``/impeccable init`` (the current context-setup command),
+      - it does NOT mention the renamed-away ``impeccable teach`` command,
+      - it does NOT pin the fictional ``3.0.7`` version impeccable never shipped,
+      - it does NOT tell users to ``npm install -g impeccable`` (wrong channel),
+      - it references the canonical install channel (``impeccable skills
+        install`` OR the ``plugin marketplace add pbakaus/impeccable`` path).
+    """
+    assert "/impeccable init" in skill_design_text, (
+        "skills/design/SKILL.md does not dispatch '/impeccable init'; "
+        "impeccable renamed its context-setup command from 'teach' to 'init' "
+        "(verified against upstream pbakaus/impeccable). The skill must "
+        "target the current command (#68)."
+    )
+    assert "impeccable teach" not in skill_design_text, (
+        "skills/design/SKILL.md still references 'impeccable teach'; that "
+        "command was renamed to 'init' upstream. The stale name breaks "
+        "/design for users on current impeccable (#68)."
+    )
+    assert "3.0.7" not in skill_design_text, (
+        "skills/design/SKILL.md still pins impeccable version '3.0.7'; "
+        "impeccable never shipped that version (current CLI is 2.3.2). The "
+        "fictional version gate must be removed entirely — replaced by a "
+        "presence check, not another semver (#68)."
+    )
+    assert "npm install -g impeccable" not in skill_design_text, (
+        "skills/design/SKILL.md still tells users to 'npm install -g "
+        "impeccable'; impeccable is distributed as a skill/CLI via "
+        "'npx impeccable skills install' (or the Claude Code plugin "
+        "marketplace), NOT a global npm install (#68)."
+    )
+    canonical_channels = (
+        "impeccable skills install",
+        "plugin marketplace add pbakaus/impeccable",
+    )
+    assert any(channel in skill_design_text for channel in canonical_channels), (
+        f"skills/design/SKILL.md missing the canonical impeccable install "
+        f"channel; expected at least one of {canonical_channels!r} (#68)."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Contract group (b): skill body contains all 7 phase headers verbatim.
 # Per F011 spec.md AC3 + BR-002.
 # ─────────────────────────────────────────────────────────────────────────
@@ -346,7 +404,7 @@ def test_skill_design_phase_1_documents_wrap_and_invoke(
     skill_design_text: str,
 ) -> None:
     """Group (d): Phase 1 documents the wrap-and-invoke contract: detect
-    PRODUCT.md + DESIGN.md at repo root, dispatch ``/impeccable teach`` via
+    PRODUCT.md + DESIGN.md at repo root, dispatch ``/impeccable init`` via
     the Skill tool (NOT subprocess), Pattern A picker when both present.
 
     Per F011 spec.md BR-003 + AC7. The "via Skill tool, NOT subprocess"
@@ -380,11 +438,13 @@ def test_skill_design_phase_1_documents_wrap_and_invoke(
         "mandates Phase 1 detect DESIGN.md at repo root"
     )
 
-    # Wrap-and-invoke contract: dispatch /impeccable teach via Skill tool.
-    assert "/impeccable teach" in phase_1_region, (
-        "Phase 1 region missing '/impeccable teach' wrap reference; "
+    # Wrap-and-invoke contract: dispatch /impeccable init via Skill tool.
+    # impeccable renamed its context-setup command from 'teach' to 'init'
+    # (#68; verified against upstream pbakaus/impeccable).
+    assert "/impeccable init" in phase_1_region, (
+        "Phase 1 region missing '/impeccable init' wrap reference; "
         "F011 BR-003 + GA-001 mandates wrap-and-invoke contract documented "
-        "in Phase 1"
+        "in Phase 1, targeting impeccable's current 'init' command (#68)"
     )
     assert "Skill tool" in phase_1_region, (
         "Phase 1 region missing 'Skill tool' reference; F011 BR-003 "
@@ -645,8 +705,9 @@ def test_preflights_py_documents_impeccable_preflight_info() -> None:
     The full canonical line is preserved verbatim from install.sh:
 
         INFO: impeccable not detected. /design phase requires impeccable
-        (etc F011+). Install via: npm install -g impeccable (or
-        equivalent). Features without a /design phase work without it.
+        (etc F011+). Install via: npx impeccable skills install
+        (recommended) or /plugin marketplace add pbakaus/impeccable
+        (Claude Code). Features without a /design phase work without it.
 
     Note: F010's INFO line ends with "Single-wave builds work without it"
     — that's a DIFFERENT feature's contract. F011's line ends with
@@ -670,11 +731,13 @@ def test_preflights_py_documents_impeccable_preflight_info() -> None:
         f"{INSTALL_F011_PHRASE!r}; this phrase distinguishes the F011 INFO "
         f"line from F010's gh-stack INFO line per F011 AC15 / BR-009"
     )
-    # Install instruction verbatim per BR-009.
-    assert "npm install -g impeccable" in preflights_text, (
+    # Install instruction verbatim per BR-009. Impeccable's distribution
+    # moved off `npm install -g` to the skills/plugin channel (#68); the
+    # mandated install text follows it to `npx impeccable skills install`.
+    assert "npx impeccable skills install" in preflights_text, (
         "etc_installer/preflights.py missing literal install instruction "
-        "'npm install -g impeccable'; F011 BR-009 + AC15 mandate the "
-        "verbatim text"
+        "'npx impeccable skills install'; F011 BR-009 + AC15 mandate the "
+        "verbatim text (updated for impeccable's current install channel, #68)"
     )
 
 

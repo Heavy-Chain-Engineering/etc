@@ -51,8 +51,9 @@ _F010 = (
 
 _F011 = (
     "INFO: impeccable not detected. /design phase requires impeccable "
-    "(etc F011+). Install via: npm install -g impeccable (or "
-    "equivalent). Features without a /design phase work without it."
+    "(etc F011+). Install via: npx impeccable skills install (recommended) "
+    "or /plugin marketplace add pbakaus/impeccable (Claude Code). Features "
+    "without a /design phase work without it."
 )
 
 _F016 = (

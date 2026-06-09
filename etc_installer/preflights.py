@@ -53,7 +53,7 @@ from rich.prompt import Prompt
 # consumers (install_steps.py) import these constants by name.
 
 F010_INFO_LINE = "INFO: gh-stack not detected. Stacked-PR builds (etc F010+) require gh-stack (GitHub's official extension, currently in private preview at https://github.github.com/gh-stack/). Install via: gh extension install github/gh-stack (or equivalent). Single-wave builds work without it."  # noqa: E501
-F011_INFO_LINE = "INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npm install -g impeccable (or equivalent). Features without a /design phase work without it."  # noqa: E501
+F011_INFO_LINE = "INFO: impeccable not detected. /design phase requires impeccable (etc F011+). Install via: npx impeccable skills install (recommended) or /plugin marketplace add pbakaus/impeccable (Claude Code). Features without a /design phase work without it."  # noqa: E501
 F016_INFO_LINE = "INFO: Mergiraf not detected. Semantic merge conflicts (etc F016+) are resolved manually without it. Install via: brew install mergiraf (macOS) | cargo install mergiraf | https://mergiraf.org for other platforms."  # noqa: E501
 F018_INFO_LINE = "INFO: @google/design.md not detected. /design phase output (etc F018+) validates against Google's DESIGN.md spec (https://github.com/google-labs-code/design.md). Install via: npm install -g @google/design.md (or run via npx). Features without /design work without it."  # noqa: E501
 

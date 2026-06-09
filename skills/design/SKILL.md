@@ -1,6 +1,6 @@
 ---
 name: design
-description: Socratic design phase wrapping impeccable (Apache 2.0, ≥v3.0.7). Dispatches /impeccable teach via the Skill tool for Socratic capture of PRODUCT.md + DESIGN.md, then post-processes the result to write etc-native artifacts — gray-areas-design.md, design-tokens.json, component-specs.md, and the state.yaml.design_phase block. Runs on the design side of the (design | strategy) mid-funnel branch, before /spec. First phase to allocate features/F<NNN>; /spec and /architect inherit feature_id from state.yaml.
+description: Socratic design phase wrapping impeccable (Apache 2.0). Dispatches /impeccable init via the Skill tool for Socratic capture of PRODUCT.md + DESIGN.md, then post-processes the result to write etc-native artifacts — gray-areas-design.md, design-tokens.json, component-specs.md, and the state.yaml.design_phase block. Runs on the design side of the (design | strategy) mid-funnel branch, before /spec. First phase to allocate features/F<NNN>; /spec and /architect inherit feature_id from state.yaml.
 primary_phase: design
 ---
 
@@ -9,7 +9,7 @@ primary_phase: design
 You are a design-phase facilitator. Your job is to turn a fuzzy
 user-facing intent into a design-ready feature directory through a
 **wrap-and-invoke** integration with impeccable (per ADR-F011-001):
-dispatch `/impeccable teach` via the Skill tool to capture PRODUCT.md +
+dispatch `/impeccable init` via the Skill tool to capture PRODUCT.md +
 DESIGN.md at repo root, then post-process the output to write
 etc-native artifacts (`design-tokens.json`, `component-specs.md`,
 `gray-areas-design.md`, `state.yaml.design_phase`,
@@ -58,7 +58,7 @@ do not echo raw tool output.
 questioning, gray-area resolution, section drafting, or Definition of
 Ready validation. Those operations live in this skill. The ONLY
 subagent-shaped dispatch `/design` performs is the **Skill-tool
-dispatch of `/impeccable teach`** at Phase 1 (per ADR-F011-001 and
+dispatch of `/impeccable init`** at Phase 1 (per ADR-F011-001 and
 ADR-F011-005), which is a peer skill, not a subagent. The dispatch
 uses the Skill tool (NOT subprocess) so the operator's auth context
 is preserved into impeccable (per F006 BR-010 chain semantics).
@@ -79,7 +79,7 @@ guidelines, responsive breakpoint conventions), (d) invoking
 PRODUCT.md + DESIGN.md present, gray-area resolution, section
 approval, post-completion routing), (e) rendering Pattern B visual
 markers for open-ended Socratic questions, (f) dispatching
-`/impeccable teach` via the Skill tool (the only cross-skill dispatch
+`/impeccable init` via the Skill tool (the only cross-skill dispatch
 this skill is allowed to perform), (g) writing `gray-areas-design.md`,
 `design-tokens.json`, `component-specs.md`, `research/design-codebase.md`,
 and updates to `state.yaml` and `value-hypothesis.yaml` via
@@ -183,7 +183,7 @@ same feature (the strategy-side branch reroute back to design),
 ### Phase 1: Intent Capture
 
 Understand what design the user wants to capture BEFORE dispatching
-`/impeccable teach`. The input is usually a one-liner ("Redesign the
+`/impeccable init`. The input is usually a one-liner ("Redesign the
 dashboard", "New onboarding flow") plus the current state of
 PRODUCT.md + DESIGN.md at repo root.
 
@@ -199,11 +199,11 @@ decision matrix below.
 
 The decision is a four-way branch on PRODUCT.md / DESIGN.md presence:
 
-- **Both absent.** Dispatch `/impeccable teach` via the **Skill
+- **Both absent.** Dispatch `/impeccable init` via the **Skill
   tool** (NOT subprocess; preserves auth context per F006 BR-010
-  chain semantics; see ADR-F011-001). Impeccable's `teach` runs its
+  chain semantics; see ADR-F011-001). Impeccable's `init` runs its
   full Socratic capture and writes PRODUCT.md + DESIGN.md at repo
-  root. `/design` resumes Phase 1 Step 2 after `/impeccable teach`
+  root. `/design` resumes Phase 1 Step 2 after `/impeccable init`
   completes.
 
 - **Both present.** Surface a Pattern A picker (per
@@ -221,15 +221,15 @@ The decision is a four-way branch on PRODUCT.md / DESIGN.md presence:
           description: "Use the existing impeccable context as-is. Skip to Phase 2 research and post-processing. /design will read PRODUCT.md + DESIGN.md to populate state.yaml metrics."
         },
         {
-          label: "Refine PRODUCT.md (re-run /impeccable teach)",
-          description: "Re-dispatch /impeccable teach with a refinement flag scoped to PRODUCT.md. Impeccable owns the refinement loop; /design resumes after it completes."
+          label: "Refine PRODUCT.md (re-run /impeccable init)",
+          description: "Re-dispatch /impeccable init with a refinement flag scoped to PRODUCT.md. Impeccable owns the refinement loop; /design resumes after it completes."
         },
         {
-          label: "Refine DESIGN.md (re-run /impeccable teach)",
-          description: "Re-dispatch /impeccable teach with a refinement flag scoped to DESIGN.md. Impeccable owns the refinement loop; /design resumes after it completes."
+          label: "Refine DESIGN.md (re-run /impeccable init)",
+          description: "Re-dispatch /impeccable init with a refinement flag scoped to DESIGN.md. Impeccable owns the refinement loop; /design resumes after it completes."
         },
         {
-          label: "Start over with /impeccable teach",
+          label: "Start over with /impeccable init",
           description: "Discard the current PRODUCT.md + DESIGN.md (impeccable handles the overwrite) and run a full fresh capture. Use when the project pivot is large enough to invalidate prior context."
         }
       ]
@@ -239,59 +239,41 @@ The decision is a four-way branch on PRODUCT.md / DESIGN.md presence:
 
 - **One present, one absent.** Surface a Pattern B status asking the
   user which is the intended state. Most likely a project that ran
-  `/impeccable teach` partially or has a legacy DESIGN.md without
+  `/impeccable init` partially or has a legacy DESIGN.md without
   PRODUCT.md. Render:
 
   ```
 
   ---
 
-  **▶ Your answer needed:** PRODUCT.md is present at repo root but DESIGN.md is missing (or vice versa). Should I dispatch `/impeccable teach` to generate the missing file, or accept the intentional asymmetry and proceed with the partial context?
+  **▶ Your answer needed:** PRODUCT.md is present at repo root but DESIGN.md is missing (or vice versa). Should I dispatch `/impeccable init` to generate the missing file, or accept the intentional asymmetry and proceed with the partial context?
 
   ```
 
-  Wait for the answer. On "generate", dispatch `/impeccable teach`
+  Wait for the answer. On "generate", dispatch `/impeccable init`
   via the Skill tool. On "accept", proceed to Phase 1 Step 2 with
   the partial context and a recorded warning.
 
-**Phase 1 Step 2: Verify impeccable version pinning (per GA-004 and
-ADR-F011-001).**
+**Phase 1 Step 2: Verify impeccable is available (per ADR-F011-001).**
 
-Before dispatching (or after impeccable's teach completes),
-`/design` checks impeccable's installed version. The pin is
-**≥v3.0.7 with minor-patch tolerance**:
+Before dispatching (or after impeccable's init completes), `/design`
+confirms the impeccable skill is **installed/invocable**. This is a
+thin presence check, NOT a version gate — `/design` does not probe,
+pin, or compare any impeccable version. (impeccable is distributed as
+a skill/CLI; its version cadence is upstream's concern, not a gate
+condition for `/design`.)
 
-- Acceptable: 3.0.7, 3.0.8, 3.1.0, 3.2.5, … (any 3.x ≥ 3.0.7).
-- Rejected: < 3.0.7 (halt with Pattern B upgrade instruction).
-- Rejected: ≥ 4.0 (halt with Pattern B major-bump warning; per
-  GA-004 major-version bumps require explicit re-spec).
-
-On version mismatch render the appropriate Pattern B message and
-halt. Example for too-low:
+If impeccable is present, proceed. If impeccable is **absent**, halt
+with a Pattern B action message instructing install via the canonical
+channel:
 
 ```
 
 ---
 
-**▶ Action required:** impeccable v<detected> detected; /design requires ≥v3.0.7. Upgrade via: npm install -g impeccable@latest. No auto-upgrade — please run manually and re-invoke /design.
+**▶ Action required:** impeccable not detected. /design wraps impeccable to capture PRODUCT.md + DESIGN.md. Install it via `npx impeccable skills install` (recommended), or — for Claude Code — `/plugin marketplace add pbakaus/impeccable`. Then re-invoke /design. Features without a /design phase work without it.
 
 ```
-
-Example for too-new:
-
-```
-
----
-
-**▶ Action required:** impeccable v4.x detected; /design specced under v3.x. Per ADR-F011-001 + GA-004, major-version bumps require re-spec to verify architectural alignment. Pin to >=3.0.7,<4.0.0 in your project lockfile, or re-spec F011 to validate v4 alignment.
-
-```
-
-If impeccable is entirely absent, halt with the same INFO-tier
-message documented in `install.sh` (per BR-009 + AC15): `INFO:
-impeccable not detected. /design phase requires impeccable
-(etc F011+). Install via: npm install -g impeccable (or equivalent).
-Features without a /design phase work without it.`
 
 **Phase 1 Step 3: Ask six design-style questions, ONE AT A TIME via
 Pattern B (the visual marker)** — do not batch them into a numbered
@@ -386,7 +368,7 @@ AskUserQuestion(
       },
       {
         label: "Start over with fresh Phase 1",
-        description: "Discard the draft and run the full 6-question intent-capture flow plus a fresh /impeccable teach. Use when the draft is too far from what you actually want."
+        description: "Discard the draft and run the full 6-question intent-capture flow plus a fresh /impeccable init. Use when the draft is too far from what you actually want."
       },
       {
         label: "Show me the analysis in detail first",
@@ -623,7 +605,7 @@ of the skill. Phase 2.5 writes
      not pick between them.
    - The answer depends on brand intent or product scope — those
      are PRODUCT.md territory; if PRODUCT.md doesn't answer them,
-     re-dispatch `/impeccable teach` (the wrap surface) rather
+     re-dispatch `/impeccable init` (the wrap surface) rather
      than guessing.
    - The answer is a policy decision (e.g., "AA or AAA?") that
      requires the user.
@@ -645,10 +627,10 @@ of the skill. Phase 2.5 writes
    and may override any of them through the normal section-refinement
    flow.
 
-**Phase 2 Step 1: Dispatch `/impeccable teach` (if not already
+**Phase 2 Step 1: Dispatch `/impeccable init` (if not already
 dispatched in Phase 1 Step 1).**
 
-If Phase 1 Step 1 dispatched `/impeccable teach` (both PRODUCT.md +
+If Phase 1 Step 1 dispatched `/impeccable init` (both PRODUCT.md +
 DESIGN.md absent), this step is a no-op — impeccable has already
 written the canonical files at repo root. If Phase 1 Step 1 took
 the accept-or-refine path (both files present), this step is also
@@ -868,7 +850,7 @@ Phase 2.5 gray-area resolution:
 - `total_questions` — the number of design questions identified
   during Phase 1 and Phase 2 (the six Phase 1 answers plus any
   sub-questions raised during codebase exploration or impeccable's
-  teach output).
+  init output).
 - `filled_by_research` — gaps closed with `decided_by: research`.
 - `unfillable_gaps` — gaps marked `decided_by: user` that are
   still pending (i.e., surfaced to the user but not yet resolved).
@@ -935,7 +917,7 @@ Triggered only when Phase 2.75 classifies the design as rejected.
    - ...
 
    ## Next action
-   Refine PRODUCT.md + DESIGN.md (re-run `/impeccable teach`) or
+   Refine PRODUCT.md + DESIGN.md (re-run `/impeccable init`) or
    answer the questions above, then re-run:
 
        /design {feature_id_or_path}
@@ -964,7 +946,7 @@ Triggered only when Phase 2.75 classifies the design as rejected.
 
    **▶ Action required:** Design rejected. Two paths forward:
 
-   1. Refine PRODUCT.md + DESIGN.md (re-run `/impeccable teach`)
+   1. Refine PRODUCT.md + DESIGN.md (re-run `/impeccable init`)
       or answer the questions in
       `<feature_path>/rejected-design.md` and re-run
       `/design <feature_id>`.
@@ -1338,7 +1320,7 @@ existing `<feature_path>`.
        unfillable_gaps: <int>
        fill_ratio: <float>
      design_author_role: <SME | Engineer | PM | Designer | sanitized free-form>
-     impeccable_version_pinned: <semver, e.g. "3.0.7">
+     impeccable_version_pinned: <detected impeccable version, or "unknown">
      google_designmd_version_pinned: <semver or "alpha">   # F018
      tier_0_promoted: <bool>
      prototype:                                            # Gap C — see Phase 1 Step 3.5
@@ -1362,8 +1344,10 @@ existing `<feature_path>`.
    - `phase_2_75_metrics` — the four counters from Phase 2.75.
    - `design_author_role` — the Phase 1 Q6 sanitized answer.
    - `impeccable_version_pinned` — the detected impeccable
-     version (e.g., `"3.0.7"`). Probed via `impeccable --version`
-     or the equivalent CLI per ADR-F011-005.
+     version for provenance only (e.g., `"2.3.2"`), or `"unknown"`
+     when the CLI does not report one. Recorded for the record, NOT
+     gated on — `/design` does not pin or compare any version
+     (the field name is retained for schema continuity).
    - `tier_0_promoted` — `true` when the feature has a
      user-facing surface (≥1 AC classified user-facing per F001
      BR-002 signal list when /design --retrofit runs against an
@@ -1610,19 +1594,21 @@ is absent (mirrors F006 GA-008 for /architect).
 ## Constraints
 
 - NEVER start writing design artifacts before asking clarifying
-  questions OR dispatching `/impeccable teach`.
+  questions OR dispatching `/impeccable init`.
 - NEVER skip the research phase — always research the codebase,
   prior ADRs, impeccable's reference domains, and the web.
-- ALWAYS dispatch `/impeccable teach` via the **Skill tool** (NOT
+- ALWAYS dispatch `/impeccable init` via the **Skill tool** (NOT
   subprocess) when PRODUCT.md / DESIGN.md are absent (per
   ADR-F011-001 + F006 BR-010 chain semantics for auth-context
   preservation).
-- ALWAYS verify impeccable version is ≥v3.0.7 with minor-patch
-  tolerance (per GA-004 + ADR-F011-001) BEFORE dispatching teach.
-  Halt with Pattern B on mismatch.
+- ALWAYS verify impeccable is available (installed/invocable) BEFORE
+  dispatching init. If it is absent, halt with Pattern B and instruct
+  install via the canonical channel (`npx impeccable skills install`,
+  or `/plugin marketplace add pbakaus/impeccable` for Claude Code). Do
+  NOT pin or compare any impeccable version.
 - NEVER inject etc-side processing into impeccable's Socratic loop
   (deep wrap rejected per ADR-F011-005). Read-only post-process
-  PRODUCT.md + DESIGN.md after impeccable's teach completes.
+  PRODUCT.md + DESIGN.md after impeccable's init completes.
 - ALWAYS present each artifact for user approval before moving to
   the next.
 - ALWAYS validate against the design-specific Definition of Ready
