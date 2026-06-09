@@ -141,10 +141,6 @@ def added_line_indices(current: str, baseline: str) -> set[int]:
     }
 
 
-def all_line_indices(text: str) -> set[int]:
-    return set(range(len(text.splitlines())))
-
-
 def strip_code_block_lines(text: str) -> set[int]:
     """Return 0-indexed lines that are inside fenced code blocks."""
     in_code = False
@@ -298,27 +294,41 @@ def scan_feature(feature_dir: Path) -> tuple[list[Finding], list[CoverageResult]
             continue
         text = source_path.read_text(encoding="utf-8")
 
-        # AC-06: scan only lines added since spec/done tag if it exists
+        # Scan only the lines ADDED since the prior tracked spec baseline.
+        #
+        # The baseline is the spec content committed and tagged at the LEAF
+        # tag `/spec` actually writes — `etc/feature/<id>/spec` (NOT
+        # `…/spec/done`; a git ref cannot be both a leaf and a directory, so
+        # `…/spec/done` could never exist — #46).
+        #
+        # When there is NO usable baseline, PASS CLEAN (scan nothing). A
+        # fresh spec has no prior version to detect a scope CHANGE against —
+        # there is nothing to "couple". This is the normal state for every
+        # first-time build: the harness gitignores feature dirs, so spec.md is
+        # untracked and `git show <tag>:<rel>` fails even when the tag exists.
+        # Whole-spec-scanning in that case over-fired on every fresh build
+        # (#46, 6th occurrence). "No baseline" is not an error condition.
         scan_lines: set[int]
         if feature_id is None:
-            scan_lines = all_line_indices(text)
+            # No parseable feature id → no tag to look up → no baseline.
+            scan_lines = set()
         else:
             # Determine the relative path from repo_root for git show
             try:
                 rel = str(source_path.resolve().relative_to(repo_root.resolve()))
             except ValueError:
                 rel = str(source_path)
-            tag = f"etc/feature/{feature_id}/spec/done"
-            baseline, err = get_spec_at_tag(repo_root, tag, rel)
+            tag = f"etc/feature/{feature_id}/spec"
+            baseline, _ = get_spec_at_tag(repo_root, tag, rel)
             if baseline is None:
-                # Tag missing — scan whole file with warning
-                sys.stderr.write(
-                    f"WARNING: git tag {tag} not found ({err}). "
-                    f"Scanning entire {source_name}; may flag pre-existing markers.\n"
-                )
-                scan_lines = all_line_indices(text)
+                # No tracked baseline at the tag (tag absent, or the spec is
+                # untracked/gitignored at that tag): nothing to couple against.
+                scan_lines = set()
             else:
                 scan_lines = added_line_indices(text, baseline)
+
+        if not scan_lines:
+            continue
 
         findings.extend(find_findings_in_text(text, scan_lines, source_name))
 

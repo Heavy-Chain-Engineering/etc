@@ -76,6 +76,11 @@ _FRONTMATTER_PATTERN = re.compile(
 # ``#DEV-001``). The tracker must be non-empty after the hash.
 _TRACKER_TOKEN_PATTERN = re.compile(r"#\S+")
 
+# The "no gate yet" sentinel, accepting either spacing the write-time prompts
+# emit: ``none-yet`` (canonical) or ``none yet`` (the quoted bare form, #58).
+# Matched at the START of the value so a real gate-ref path is never swallowed.
+_NONE_YET_PREFIX_PATTERN = re.compile(r"^none[ -]yet\b", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class LessonRecord:
@@ -205,7 +210,7 @@ def _classify_scalar(value: str, repo_root: Path) -> tuple[str, str]:
     stripped = value.strip()
     if stripped == "note-only":
         return "note-only", ""
-    if stripped.startswith("none-yet"):
+    if _NONE_YET_PREFIX_PATTERN.match(stripped):
         return _classify_none_yet(stripped)
     return _classify_path_list([stripped], repo_root)
 

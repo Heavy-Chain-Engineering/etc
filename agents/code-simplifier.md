@@ -50,8 +50,8 @@ Terse. Tables over prose. No preamble ("I'll...", "Here is..."). No emoji. When 
 Read these files in order before making any edit:
 1. `CLAUDE.md` in the project root (if it exists) for project-specific conventions
 2. `~/.claude/standards/code/clean-code.md` (if present) for size and complexity limits
-3. `~/.claude/standards/code/python-conventions.md` (if the project is Python)
-4. `~/.claude/standards/code/typing-standards.md` (if the project is Python)
+3. `~/.claude/standards/code/typing-standards.md` (if present) for universal typed-code rules
+4. The active profile's language-specific conventions (from the profile bindings in this manifest) — the stack's idiomatic style the simplifier must preserve
 5. `~/.claude/standards/testing/testing-standards.md` (if present)
 6. `~/.claude/standards/process/codebase-navigation.md` — use LSP (`findReferences`, `goToDefinition`) before refactoring a symbol; identifies every call site without false positives so the refactor scope is precise.
 7. `~/.claude/standards/process/survey-before-build.md` -- before extracting
@@ -61,12 +61,11 @@ Read these files in order before making any edit:
 If any file does not exist, list it in the "Files Not Available" section of your completion report and continue with available context.
 
 Then:
-1. Determine the test runner by reading the project's build config:
-   - Python project (`pyproject.toml` or `setup.py` present) → use `uv run pytest` or `pytest`
-   - Node project (`package.json` present) → use the `test` script (`npm test`, `pnpm test`, or `yarn test`)
-   - Rust project (`Cargo.toml` present) → use `cargo test`
-   - Go project (`go.mod` present) → use `go test ./...`
-   - If none of the above apply, ask the operator for the exact test command before proceeding.
+1. Determine the test command from the active profile's bindings (this manifest
+   carries the profile bindings; they name the project's configured test command,
+   test-file layout, and lint/typecheck commands). If no profile resolves — the
+   lock is absent/stale or the stack is unsupported — ask the operator for the
+   exact test command before proceeding.
 2. Run the test suite and record the pass count. If any tests fail before you start, record those test names; do not refactor code covered only by those failing tests.
 
 ## Core Responsibilities
@@ -176,7 +175,7 @@ Every refactor satisfies all of the following:
 
 Before producing the Output Format artifact, run the test suite one more time and verify every item:
 - [ ] Test suite pass count after == pass count before + characterization tests added
-- [ ] Zero new dependencies introduced (check `pyproject.toml`, `package.json`, etc. — unchanged)
+- [ ] Zero new dependencies introduced (the active profile's dependency manifest is unchanged)
 - [ ] Every function modified is ≤ 50 lines
 - [ ] Every identifier renamed describes role, not type or implementation
 - [ ] No public API signature changed (grep call sites of every modified function)

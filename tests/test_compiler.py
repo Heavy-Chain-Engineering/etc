@@ -7,8 +7,10 @@ content, and correctness of the generated files.
 
 from __future__ import annotations
 
+import errno
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -491,6 +493,39 @@ def _load_compile_sdlc_module() -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_reset_output_dir_clears_contents_when_dir_is_bind_mount(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#62: a bind-mounted dist/ cannot be unlinked — rmtree raises
+    OSError(EBUSY) on the mountpoint rmdir. reset_output_dir must fall back
+    to clearing the directory's CONTENTS in place instead of crashing.
+    """
+    compile_sdlc = _load_compile_sdlc_module()
+
+    out = tmp_path / "dist"
+    out.mkdir()
+    (out / "stale.txt").write_text("old")
+    (out / "sub").mkdir()
+    (out / "sub" / "nested.txt").write_text("old")
+
+    real_rmtree = shutil.rmtree
+
+    def fake_rmtree(path: Any, *args: Any, **kwargs: Any) -> None:
+        # Simulate a bind mount: the mountpoint itself can't be removed,
+        # but its children can (delegate those to the real rmtree).
+        if Path(path) == out:
+            raise OSError(errno.EBUSY, "Device or resource busy")
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(compile_sdlc.shutil, "rmtree", fake_rmtree)
+
+    # Must not raise, must preserve the mountpoint, must empty the contents.
+    compile_sdlc.reset_output_dir(out)
+
+    assert out.exists(), "bind-mount point must survive (not be removed)"
+    assert list(out.iterdir()) == [], "dist/ contents must be cleared"
 
 
 def test_should_copy_skill_subdir_when_templates_present(tmp_path: Path) -> None:

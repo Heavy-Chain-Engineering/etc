@@ -650,10 +650,35 @@ def _compile_lock(repo_root: Path) -> contextlib.AbstractContextManager[Any]:
     return FileLock(str(lock_path))
 
 
+def _clear_dir_contents(directory: Path) -> None:
+    """Remove every child of ``directory`` without removing the dir itself."""
+    for child in directory.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
 def reset_output_dir(output_dir: Path) -> None:
-    """Create a clean compiler output directory."""
-    if output_dir.exists():
+    """Create a clean compiler output directory.
+
+    Normally removes and recreates ``output_dir``. When ``output_dir`` is a
+    bind-mount, the mountpoint itself cannot be unlinked — ``shutil.rmtree``
+    raises ``OSError`` (errno EBUSY/16, "Device or resource busy") on the
+    final ``rmdir``. In that case we clear the directory's CONTENTS in place
+    so the mountpoint survives and the compile still gets a clean tree (#62).
+    """
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+        return
+    try:
         shutil.rmtree(output_dir)
+    except OSError:
+        # output_dir itself can't be removed (e.g. a bind-mount point).
+        # rmtree clears children before failing on the mountpoint rmdir;
+        # clear any stragglers in place and keep the existing directory.
+        _clear_dir_contents(output_dir)
+        return
     output_dir.mkdir(parents=True)
 
 

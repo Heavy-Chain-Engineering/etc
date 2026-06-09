@@ -23,6 +23,16 @@ def _run(feature_dir: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        timeout=10,
+        capture_output=True,
+        text=True,
+    )
+
+
 def _make_feature(
     tmp_path: Path,
     feature_id: str = "F999",
@@ -30,21 +40,50 @@ def _make_feature(
     design_body: str | None = None,
     decisions: dict[str, str] | None = None,
     adrs: dict[str, str] | None = None,
+    baseline_spec: str | None = None,
+    baseline_design: str | None = None,
 ) -> Path:
     """Build a fake feature directory + optional ADR layout under tmp_path.
 
-    Returns the feature_dir path. No git tag is created — the detector
-    falls back to "scan whole file" when the tag is missing.
+    Returns the feature_dir path.
+
+    Baseline semantics: the detector only scans lines that are NEW relative
+    to a usable git baseline (the spec content committed and tagged at
+    `etc/feature/<id>/spec`). When `baseline_spec` is provided, that content
+    is committed and the leaf `spec` tag is laid down BEFORE `spec_body` is
+    written on top — so `spec_body`'s added lines are the scan surface and
+    markers in them fire. When `baseline_spec` is None there is NO usable
+    baseline (the tag is absent, and in the real harness the feature dir is
+    gitignored so the content is untracked anyway) — the detector must then
+    PASS CLEAN, scanning nothing.
     """
     repo = tmp_path
     # Init a git repo at the fixture root so repo_root_from() resolves to
-    # `repo` and finds docs/adrs/ correctly. The detector's git-tag lookup
-    # gracefully degrades when the tag is missing — that's fine for these
-    # tests; we just need the repo root.
+    # `repo` and finds docs/adrs/ correctly.
     subprocess.run(["git", "init", "-q", str(repo)], check=True, timeout=10)
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
     feature_dir = repo / ".etc_sdlc" / "features" / f"{feature_id}-test-feature"
     feature_dir.mkdir(parents=True)
-    (feature_dir / "spec.md").write_text(spec_body, encoding="utf-8")
+    spec_path = feature_dir / "spec.md"
+
+    if baseline_spec is not None or baseline_design is not None:
+        # Lay down a real, tracked baseline + leaf tag the detector can diff
+        # against. Force-add because the harness gitignores feature dirs; the
+        # fixture commits the baseline so `git show <tag>:<rel>` succeeds.
+        rel_paths: list[str] = []
+        if baseline_spec is not None:
+            spec_path.write_text(baseline_spec, encoding="utf-8")
+            rel_paths.append(str(spec_path.relative_to(repo)))
+        if baseline_design is not None:
+            design_path = feature_dir / "design.md"
+            design_path.write_text(baseline_design, encoding="utf-8")
+            rel_paths.append(str(design_path.relative_to(repo)))
+        _git(repo, "add", "-f", *rel_paths)
+        _git(repo, "commit", "-q", "-m", "baseline spec")
+        _git(repo, "tag", f"etc/feature/{feature_id}/spec")
+
+    spec_path.write_text(spec_body, encoding="utf-8")
     if design_body is not None:
         (feature_dir / "design.md").write_text(design_body, encoding="utf-8")
     if decisions:
@@ -78,6 +117,7 @@ class TestMarkerDetection:
     ) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- AC-12: Widget normalizer **deferred** to F999.\n",
         )
         result = _run(feature_dir)
@@ -89,6 +129,7 @@ class TestMarkerDetection:
     ) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- BR-007: counter has been **removed**.\n",
         )
         result = _run(feature_dir)
@@ -98,6 +139,7 @@ class TestMarkerDetection:
     def test_scope_narrowed_with_anchor_triggers(self, tmp_path: Path) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- AC-05: scope narrowed; only handles uppercase.\n",
         )
         result = _run(feature_dir)
@@ -121,6 +163,7 @@ class TestAnchorRequirement:
         """A marker paired with a backticked quoted phrase counts as anchored."""
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\nThe `operating_locations` field is **deferred** to a follow-up.\n",
         )
         result = _run(feature_dir)
@@ -170,6 +213,7 @@ class TestCoverageByDecisionMemo:
     def test_finding_covered_by_decision_memo_passes(self, tmp_path: Path) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- AC-12: Normalizer **deferred** to F999.\n",
             decisions={
                 "ac-12-decision.md": (
@@ -187,6 +231,7 @@ class TestCoverageByDecisionMemo:
     ) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- AC-12: Normalizer **deferred** to F999.\n",
             decisions={
                 "unrelated.md": "# Decision: something else entirely.\n\nNo AC reference here.\n",
@@ -204,6 +249,7 @@ class TestCoverageByADRAppendix:
     ) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- BR-007: ETL backfill **scope-narrowed** to addresses only.\n",
             adrs={
                 "F999-001.md": (
@@ -221,6 +267,7 @@ class TestCoverageByADRAppendix:
         / 'scope-narrowed' — does NOT count as coverage."""
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- BR-007: ETL backfill **scope-narrowed** to addresses only.\n",
             adrs={
                 "F999-001.md": (
@@ -239,6 +286,7 @@ class TestBlockReport:
     def test_block_report_includes_file_line(self, tmp_path: Path) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n\n- AC-12: Normalizer **deferred** to F999.\n",
         )
         result = _run(feature_dir)
@@ -248,6 +296,7 @@ class TestBlockReport:
     def test_block_report_lists_remediation_options(self, tmp_path: Path) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- AC-12: Normalizer **deferred**.\n",
         )
         result = _run(feature_dir)
@@ -278,6 +327,8 @@ class TestDesignMdScanned:
     def test_design_md_marker_triggers_finding(self, tmp_path: Path) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
+            baseline_design="# Architecture\n",
             spec_body="# Feature\n\n- AC-01: ship widgets.\n",
             design_body="# Architecture\n\n- BR-007: caching layer **removed**.\n",
         )
@@ -312,6 +363,7 @@ class TestRelativeFeatureDirPath:
     ) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- AC-12: Normalizer **deferred** to F999.\n",
             decisions={
                 "ac-12-decision.md": (
@@ -334,6 +386,7 @@ class TestRelativeFeatureDirPath:
     ) -> None:
         feature_dir = _make_feature(
             tmp_path,
+            baseline_spec="# Feature\n",
             spec_body="# Feature\n\n- BR-007: ETL backfill **scope-narrowed** to addresses only.\n",
             adrs={
                 "F999-001.md": (
@@ -348,3 +401,80 @@ class TestRelativeFeatureDirPath:
         assert "Traceback" not in result.stderr, result.stderr
         assert "ValueError" not in result.stderr, result.stderr
         assert result.returncode == 0, (result.returncode, result.stderr)
+
+
+class TestNoBaselinePassesClean:
+    """#46 regression: a fresh spec with NO usable git baseline must PASS CLEAN
+    instead of over-firing on every marker in the whole file.
+
+    Real-world mechanism (verified): `/spec` writes the LEAF tag
+    `etc/feature/F<NNN>/spec` (not `…/spec/done`), and the feature dir is
+    gitignored so spec.md is untracked. The detector therefore has no prior
+    spec version to diff against — there is nothing to "couple" a scope change
+    to. Treating the whole spec as "added" blocked the release tag on every
+    fresh build (6th occurrence). With no usable baseline the gate must scan
+    nothing and exit 0.
+    """
+
+    def test_fresh_spec_with_markers_but_no_baseline_passes_clean(
+        self, tmp_path: Path
+    ) -> None:
+        # Markers galore, anchored — but no baseline tag/commit exists.
+        feature_dir = _make_feature(
+            tmp_path,
+            spec_body=(
+                "# Feature\n\n"
+                "- AC-12: Widget normalizer **deferred** to a follow-up.\n"
+                "- BR-007: legacy counter **removed**.\n"
+                "- AC-05: scope narrowed; only uppercase handled.\n"
+            ),
+        )
+        result = _run(feature_dir)
+        assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+        assert "COUPLING GATE FAILED" not in result.stdout
+
+    def test_no_baseline_does_not_warn_about_missing_tag(
+        self, tmp_path: Path
+    ) -> None:
+        """The old code emitted a 'tag not found, scanning entire file'
+        warning and then over-fired. No usable baseline is the NORMAL state
+        for a fresh spec, not a warning condition."""
+        feature_dir = _make_feature(
+            tmp_path,
+            spec_body="# Feature\n\n- AC-12: Normalizer **deferred** to F999.\n",
+        )
+        result = _run(feature_dir)
+        assert result.returncode == 0
+        assert "Scanning entire" not in result.stderr
+
+
+class TestGenuineBaselineStillFires:
+    """#46: the legitimate behaviour must survive. When a real prior baseline
+    DOES exist (a re-spec) and the new spec gained a scope-change marker that
+    was NOT in the baseline, the gate must still fire (exit 2)."""
+
+    def test_new_marker_since_baseline_fires(self, tmp_path: Path) -> None:
+        feature_dir = _make_feature(
+            tmp_path,
+            baseline_spec="# Feature\n\n- AC-12: ship the widget normalizer.\n",
+            spec_body=(
+                "# Feature\n\n"
+                "- AC-12: ship the widget normalizer.\n"
+                "- AC-13: rollup metric **deferred** to a follow-up.\n"
+            ),
+        )
+        result = _run(feature_dir)
+        assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
+        assert "AC-13" in result.stdout
+
+    def test_marker_present_in_baseline_does_not_fire(self, tmp_path: Path) -> None:
+        """A marker that already existed in the baseline is not a NEW scope
+        change — it must not re-fire on an unrelated re-spec."""
+        unchanged = "# Feature\n\n- AC-12: rollup metric **deferred** to a follow-up.\n"
+        feature_dir = _make_feature(
+            tmp_path,
+            baseline_spec=unchanged,
+            spec_body=unchanged + "\n- AC-14: add a new chart (no scope change).\n",
+        )
+        result = _run(feature_dir)
+        assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)

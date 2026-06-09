@@ -1927,10 +1927,16 @@ present. When `architect-reviewer` was gated out, record the skip and its
    paragraph/bullet as an `AC-\d+`, `BR-\d+`, or `ADR-\d+` reference,
    OR a backtick-quoted spec phrase. Bare narrative use is excluded.
    Markers inside fenced code blocks and inside literal "Out of Scope"
-   / "Not in Scope" section headers are also excluded. When the
-   `etc/feature/F<NNN>/spec/done` git tag exists, the detector diffs
-   current spec.md against the tag and flags only markers added since;
-   pre-existing markers from the original spec are excluded.
+   / "Not in Scope" section headers are also excluded. The detector
+   needs a prior spec to detect a scope CHANGE against: when the
+   `etc/feature/F<NNN>/spec` git tag exists AND the spec content is
+   tracked at that tag, the detector diffs current spec.md against the
+   tagged baseline and flags only markers added since; pre-existing
+   markers from the original spec are excluded. When there is NO usable
+   baseline — the normal state for a first-time build, where the feature
+   dir is gitignored so spec.md is untracked — the gate has nothing to
+   couple against and PASSES CLEAN (exit 0). It only fires on a re-spec
+   that genuinely added a scope-change marker.
 
    **Operator override:** `--skip-spec-coupling-check="<reason>"` (the
    reason MUST be non-empty). The reason is appended to

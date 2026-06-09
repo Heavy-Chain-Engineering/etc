@@ -58,3 +58,12 @@ def test_should_behavior_when_condition():
 - No testing implementation details (test behavior, not structure)
 - No flaky tests (if a test is flaky, quarantine and fix it — don't retry)
   - **Enforce:** none / **Fallback:** required-reading
+
+## Running the suite under the agent sandbox
+A red pytest result from inside the agent command-sandbox is not, by itself, a
+failure signal — the sandbox can fail a correct test by denying network, file,
+or socket access. Before judging a red run, apply
+[`../process/sandboxed-pytest-discipline.md`](../process/sandboxed-pytest-discipline.md):
+classify the failure as sandbox-caused or code-caused, and re-run any
+sandbox-caused failure WITHOUT the sandbox to get the authoritative verdict.
+Never report green from a run you know was sandbox-degraded.

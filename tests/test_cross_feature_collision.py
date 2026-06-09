@@ -28,10 +28,16 @@ def _make_feature(
     slug: str = "test",
     files_in_scope: list[str] | None = None,
     location: str = "flat",
+    released: bool = False,
 ) -> Path:
     """Create a feature directory with one task whose files_in_scope is
     the given list. `location` can be 'flat' (features/F<NNN>-...),
     'active' (features/active/F<NNN>-...), 'shipped', or 'rejections'.
+
+    When `released` is True, a state.yaml with a terminal `build.completed_at`
+    timestamp is written. This models a feature that shipped IN PLACE (flat or
+    active layout) without ever being moved into shipped/ — the #56 false
+    positive: such a feature is done and must not be treated as in-flight.
     """
     features_root = tmp_path / ".etc_sdlc" / "features"
     if location == "flat":
@@ -54,6 +60,13 @@ def _make_feature(
             f"title: test task\n"
             f"status: pending\n"
             f"files_in_scope:\n{files_yaml}\n",
+            encoding="utf-8",
+        )
+    if released:
+        (feature_dir / "state.yaml").write_text(
+            "build:\n"
+            "  current_step: 8\n"
+            "  completed_at: '2026-05-01T22:50:55.938959+00:00'\n",
             encoding="utf-8",
         )
     return feature_dir
@@ -125,6 +138,44 @@ class TestExclusions:
         _make_feature(tmp_path, "F098", files_in_scope=["src/shared.py"], location="rejections")
         result = _run(current)
         assert result.returncode == 0
+
+    def test_should_exclude_feature_released_in_place_when_completed_at_is_set(
+        self, tmp_path: Path
+    ) -> None:
+        """#56 — a feature that shipped IN PLACE (flat layout, never moved to
+        shipped/) carries build.completed_at. It is done and must not produce a
+        cross-feature collision even though it claims the same file."""
+        current = _make_feature(tmp_path, "F100", files_in_scope=["src/shared.py"])
+        _make_feature(
+            tmp_path,
+            "F099",
+            files_in_scope=["src/shared.py"],
+            location="flat",
+            released=True,
+        )
+        result = _run(current)
+        assert result.returncode == 0, result.stdout
+
+    def test_should_still_collide_with_active_feature_alongside_released_one(
+        self, tmp_path: Path
+    ) -> None:
+        """#56 control — excluding released features must NOT suppress a real
+        collision from an in-flight (not-yet-completed) feature."""
+        current = _make_feature(tmp_path, "F100", files_in_scope=["src/shared.py"])
+        _make_feature(
+            tmp_path,
+            "F099",
+            files_in_scope=["src/shared.py"],
+            location="flat",
+            released=True,
+        )
+        _make_feature(
+            tmp_path, "F101", files_in_scope=["src/shared.py"], location="active"
+        )
+        result = _run(current)
+        assert result.returncode == 2
+        assert "F101" in result.stdout
+        assert "F099" not in result.stdout
 
     def test_self_excluded_from_collision_check(self, tmp_path: Path) -> None:
         """The current feature's OWN files don't count as collisions."""

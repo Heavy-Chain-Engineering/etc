@@ -309,11 +309,15 @@ Resolution:
 - **Proposed-rule path** → set `terminates_in` to that path string,
   verbatim, exactly as it appears in Step 4's "Proposed rule".
 - **Not built yet** → ask one Pattern B follow-up for the tracker
-  reference, then set `terminates_in` to `none-yet: #<tracker>`. If
-  the operator has no tracker, guide them to file one (an open loop
-  must be actionable per the standard); capture still proceeds with
-  the `none-yet:` value while the tracker is being filed — never
-  refuse the lesson for lacking a gate.
+  reference, then set `terminates_in` to the **quoted** sentinel
+  `terminates_in: "none-yet: #<tracker>"`. If the operator has no
+  tracker, emit the quoted bare sentinel `terminates_in: "none yet"`
+  and guide them to file one (an open loop must be actionable per the
+  standard); capture still proceeds while the tracker is being filed —
+  never refuse the lesson for lacking a gate. **Always quote** the
+  none-yet value: written bare, `none-yet: #54` is a YAML error that
+  makes the whole frontmatter unparseable, and a blank value parses to
+  `null` (#58).
 - **note-only** → set `terminates_in` to `note-only`.
 
 ```
@@ -368,7 +372,7 @@ are structural — do not rename, reorder, or omit:
 {the concrete change from Step 4 — file path or hook/skill/agent name MUST appear verbatim}
 
 **Terminates in**
-{the value captured in Step 4b — a gate-ref path, `none-yet: #<tracker>`, or `note-only`. Vocabulary: `standards/process/lessons-terminate-in-gates.md`. This is the field the lesson carries when written to memory so the feedback loop is measurable.}
+{the value captured in Step 4b — a gate-ref path, the quoted `"none-yet: #<tracker>"` / `"none yet"` sentinel, or `note-only`. Vocabulary: `standards/process/lessons-terminate-in-gates.md`. Quote any none-yet value so the frontmatter YAML round-trips (#58). This is the field the lesson carries when written to memory so the feedback loop is measurable.}
 
 **Origin trace**
 {one paragraph of context so a future etc-repo agent can re-derive the lesson without the full session transcript: what the operator was doing, which agents were involved, what the surface failure looked like, what the operator did instead}

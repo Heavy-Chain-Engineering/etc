@@ -215,6 +215,66 @@ def test_should_downgrade_none_yet_to_missing_when_tracker_absent(
     assert detail == "none-yet without tracker"
 
 
+# ── #58: the quoted "none yet" write-time sentinel ──────────────────────
+
+
+def test_should_round_trip_quoted_none_yet_sentinel_through_frontmatter(
+    engine: ModuleType,
+) -> None:
+    """The write-time sentinel MUST be quoted so the YAML round-trips.
+
+    An unquoted ``none-yet: #42`` is a YAML error (``mapping values are not
+    allowed here``) which makes parse_frontmatter return None and silently
+    masks the whole memory as unparseable. A blank value parses to None. Only
+    a QUOTED scalar survives the round-trip as the intended string (#58).
+    """
+    text = '---\ntype: feedback\nterminates_in: "none yet"\n---\nbody\n'
+
+    parsed = engine.parse_frontmatter(text)
+
+    assert parsed is not None
+    assert parsed["terminates_in"] == "none yet"
+
+
+def test_should_classify_quoted_none_yet_sentinel_as_missing_not_dangling(
+    engine: ModuleType, repo: Path
+) -> None:
+    """A bare ``"none yet"`` (no tracker) is the none-yet/missing state, not a
+    gate-path claim. It must NOT be resolved as a path (which would mis-report
+    it as ``dangling`` — a phantom never-built gate) and must not crash."""
+    frontmatter = {"type": "feedback", "terminates_in": "none yet"}
+
+    classification, detail = engine.classify_lesson(frontmatter, "feedback-x.md", repo)
+
+    assert classification == "missing"
+    assert "none" in detail.lower()
+
+
+def test_should_classify_quoted_hyphenated_none_yet_without_tracker_as_missing(
+    engine: ModuleType, repo: Path
+) -> None:
+    """The hyphenated spelling without a tracker is equally a tracker-less
+    open loop — missing, never a path resolution."""
+    frontmatter = {"type": "feedback", "terminates_in": "none-yet"}
+
+    classification, _ = engine.classify_lesson(frontmatter, "feedback-x.md", repo)
+
+    assert classification == "missing"
+
+
+def test_should_classify_quoted_none_yet_with_tracker_as_none_yet(
+    engine: ModuleType, repo: Path
+) -> None:
+    """When the operator adds a tracker, the quoted sentinel is the tracked
+    open loop (none-yet) — both spacing variants accepted."""
+    for value in ("none yet: #58", "none-yet: #58"):
+        frontmatter = {"type": "feedback", "terminates_in": value}
+
+        classification, _ = engine.classify_lesson(frontmatter, "feedback-x.md", repo)
+
+        assert classification == "none-yet", value
+
+
 def test_should_classify_gated_when_path_exists(engine: ModuleType, repo: Path) -> None:
     frontmatter = {
         "type": "feedback",
@@ -592,16 +652,28 @@ def test_should_exit_two_on_argparse_usage_error(engine: ModuleType) -> None:
     assert excinfo.value.code == 2
 
 
-# ── Live-corpus smoke (forward-only: all lesson-class are missing) ──────
+# ── Live-corpus smoke (well-formedness only — never asserts content) ────
 
 
-def test_should_not_crash_on_live_corpus_and_all_missing(engine: ModuleType) -> None:
+def test_should_not_crash_on_live_corpus(engine: ModuleType) -> None:
+    """Smoke: audit_memory_dir must not choke on the operator's real memory
+    corpus (catches crashes on real-world frontmatter shapes).
+
+    #67: this used to assert every live lesson was "missing". That coupled
+    the test to corpus *content* and broke the moment lessons began declaring
+    terminates_in gates (exactly what #53 drives). Content classification is
+    covered hermetically by the tmp_path tests above; this test now asserts
+    only that the report is WELL-FORMED, regardless of what real lessons exist.
+    """
     live = engine.resolve_memory_dir()
     if not live.is_dir():
         pytest.skip(f"live memory dir absent: {live}")
 
     report = engine.audit_memory_dir(live, REPO_ROOT)
 
-    # Forward-only: no live lesson has declared terminates_in yet.
-    assert all(record.classification == "missing" for record in report.records)
-    assert report.records, "expected lesson-class records in the live corpus"
+    # Well-formed report — no assumption about the corpus's contents.
+    assert isinstance(report.records, list)
+    assert isinstance(report.counts, dict)
+    assert 0.0 <= report.gated_pct <= 100.0
+    for record in report.records:
+        assert isinstance(record.classification, str) and record.classification

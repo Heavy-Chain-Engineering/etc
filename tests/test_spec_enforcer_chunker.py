@@ -561,6 +561,55 @@ def test_should_emit_effective_chunk_size_and_threshold_to_stderr(
     assert "12" in result.stderr
 
 
+# ── #57 — stdout JSON purity (diagnostics must never pollute stdout) ─────
+
+
+def _assert_stdout_is_pure_json(result: subprocess.CompletedProcess[str]) -> dict:
+    """Assert stdout parses as JSON with no leading/trailing diagnostic text."""
+    # json.loads tolerates surrounding whitespace but raises on any
+    # non-JSON line (e.g. an "effective chunk-size=..." or "warning: ..."
+    # diagnostic), so a clean parse proves stdout carries only the payload.
+    payload = json.loads(result.stdout)
+    assert "effective chunk-size" not in result.stdout
+    assert "warning:" not in result.stdout
+    assert "error:" not in result.stdout
+    return payload
+
+
+def test_should_keep_stdout_pure_json_when_partitioning_a_normal_spec(
+    tmp_path: Path,
+) -> None:
+    # #57 — consumers parse stdout as JSON; the operator-transparency
+    # diagnostic line must go to stderr, never stdout.
+    spec_path = tmp_path / "normal.md"
+    _write_numbered_spec(spec_path, ac_count=4)
+
+    result = _run_cli("partition", str(spec_path))
+
+    assert result.returncode == 0, result.stderr
+    payload = _assert_stdout_is_pure_json(result)
+    assert payload["strategy"] == "single"
+    # The diagnostic belongs on stderr.
+    assert "effective chunk-size" in result.stderr
+
+
+def test_should_keep_stdout_pure_json_when_spec_has_no_recognizable_ac_markers(
+    tmp_path: Path,
+) -> None:
+    # #57 — the EC-010 "no recognizable AC markers" warning is the path
+    # most prone to leaking onto stdout; assert stdout stays parseable JSON
+    # while the warning lands on stderr.
+    spec_path = tmp_path / "bullet.md"
+    _write_bullet_spec(spec_path, ac_count=3)
+
+    result = _run_cli("partition", str(spec_path))
+
+    assert result.returncode == 0, result.stderr
+    payload = _assert_stdout_is_pure_json(result)
+    assert payload["chunks"] == []
+    assert "no recognizable AC markers" in result.stderr
+
+
 # ── Public-API contracts (Python import, not CLI) ───────────────────────
 
 

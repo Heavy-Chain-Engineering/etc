@@ -31,15 +31,30 @@ filename starts `feedback-`/`lessons-` **OR** `type ∈ {feedback, lessons}`
    `terminates_in:` frontmatter field. Its value is one of three forms:
    - a **gate-ref path** — a path under `standards/`, `hooks/`, `scripts/`, or
      a `skills/…/SKILL.md` step-ref (the gate that now enforces the lesson);
-   - **`none-yet: #<tracker>`** — declared-open, with an actionable tracker
+   - **`"none-yet: #<tracker>"`** — declared-open, with an actionable tracker
      reference (a `#<tracker>` token is REQUIRED; without it the loop is not
-     actionable and is treated as `missing`);
+     actionable and is treated as `missing`). When NO gate exists yet, emit
+     the **quoted sentinel** `terminates_in: "none yet"` (or
+     `"none-yet: #<tracker>"` once a tracker is filed) — **never** a blank or
+     unquoted value;
    - **`note-only`** — a deliberate non-gating note (closed by declaration, not
      flagged).
 
    When a lesson terminates in multiple gates, `terminates_in` is a **YAML
    list**; **all** entries must resolve to an existing path or the lesson is
    dangling.
+
+   **Quote the none-yet sentinel (write-time, #58).** A `none-yet` value
+   carries a `:` and a `#` and so MUST be written as a **quoted YAML scalar**
+   (`terminates_in: "none-yet: #54"`). Written bare, `none-yet: #54` is a YAML
+   error (`mapping values are not allowed here`) that makes the whole
+   frontmatter fail to parse — the audit then reports the lesson as `missing`
+   "frontmatter unparseable", masking every other field. A blank value
+   (`terminates_in:`) parses to `null` and is equally useless. Always emit a
+   quoted scalar so the value round-trips. The audit accepts either spacing
+   (`none yet` / `none-yet`) and classifies a tracker-less sentinel as
+   `missing` (open loop, no landing place) and a tracker-bearing one as
+   `none-yet` (open but tracked).
 
 2. **The audit reads the declaration, never invents it.**
    `scripts/lesson_gate_audit.py` scans the memory directory and classifies

@@ -11,6 +11,9 @@ Excludes:
   - The current feature (identified by directory name)
   - .etc_sdlc/features/shipped/ (already done, won't collide)
   - .etc_sdlc/features/rejections/ (not in flight)
+  - Any feature with a terminal build.completed_at in its state.yaml —
+    i.e. one that shipped IN PLACE (flat/active layout) without being
+    moved into shipped/ (#56)
 
 Exit codes:
   0 = no collisions
@@ -64,6 +67,35 @@ def load_files_in_scope(task_yaml: Path) -> list[str]:
     return [str(f) for f in files if isinstance(f, str)]
 
 
+def is_released(feature_dir: Path) -> bool:
+    """Return True when the feature has already shipped/released.
+
+    A feature that completed /build carries a terminal ``build.completed_at``
+    timestamp in its ``state.yaml`` (written when /build reaches its final
+    step). Such a feature is done and cannot generate new cross-feature
+    conflicts, so it must be excluded from the active-collision scan — even
+    when it shipped IN PLACE (flat or active layout) without being moved into
+    ``shipped/`` (#56). Path-based ``shipped/`` exclusion alone misses these.
+
+    Returns False on any missing/unreadable state.yaml so an unknown-status
+    feature is treated as in-flight (fail-safe toward flagging, not hiding).
+    """
+    state_yaml = feature_dir / "state.yaml"
+    if not state_yaml.is_file():
+        return False
+    try:
+        with state_yaml.open(encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    build = data.get("build")
+    if not isinstance(build, dict):
+        return False
+    return bool(build.get("completed_at"))
+
+
 def feature_files(feature_dir: Path) -> set[str]:
     """Aggregate files_in_scope across every tasks/*.yaml in a feature dir."""
     tasks_dir = feature_dir / "tasks"
@@ -97,6 +129,10 @@ def enumerate_in_flight_features(
             if fid is None:
                 continue
             if fid == current_feature_id:
+                continue
+            # #56 — a feature released in place (flat/active layout, never
+            # moved into shipped/) is done and cannot collide. Skip it.
+            if is_released(child):
                 continue
             files = feature_files(child)
             if not files:
