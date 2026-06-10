@@ -15,13 +15,30 @@
 version: "1.0"
 
 # ─── Defaults ────────────────────────────────────────────────────────────
-# Applied to all gates unless overridden at the gate level.
+# HONESTY CONTRACT (audit init 3) — which keys the compiler actually reads:
+#
+#   model            — READ (compile-sdlc.py: prompt/agent gates inherit it).
+#                      Editing it changes compiled behavior.
+#   on_failure       — DOCUMENTATION ONLY. The compiler does not emit it to
+#                      settings-hooks.json; Claude Code honors each script's
+#                      own exit code directly. Per-gate on_failure lines
+#                      document the gate's intended posture for readers —
+#                      editing them changes NOTHING at runtime.
+#   on_loop,         — DOCUMENTATION ONLY (same as on_failure). They record
+#   max_retries        the intended escalation model; no mechanism reads them.
+#   changeset_budget — DOCUMENTATION ONLY here. The OPERATIVE copy is
+#                      scripts/tasks.py::COMPLEXITY_THRESHOLDS (the scorer);
+#                      keep the two aligned — each side carries a
+#                      cross-reference comment.
+#
+# If you need one of the documentation-only knobs to become real, build the
+# mechanism first; do not edit the value and assume enforcement changed.
 defaults:
   model: haiku                            # Default: fast/cheap for mechanical checks. Override per gate where reasoning matters.
   on_failure: block            # block = give agent feedback to retry
   on_loop: escalate            # escalate = fail loud, kill agent, tell human
   max_retries: 2               # After N retries on same gate, escalate
-  changeset_budget:
+  changeset_budget:            # operative copy: scripts/tasks.py COMPLEXITY_THRESHOLDS
     target_loc: 300            # Ideal lines of code per task
     warn_loc: 500              # Warn if task exceeds this
     max_loc: 1000              # Block if task exceeds this
@@ -1076,72 +1093,41 @@ skills:
 
 standards:
   source_dir: standards/
-  categories:
-    process:
-      - sdlc-phases.md
-      - tdd-workflow.md
-      - code-review-process.md
-      - definition-of-done.md
-      - behavioral-runtime-dod.md
-      - domain-fidelity.md
-      - prototype-as-intent.md
-      - lessons-terminate-in-gates.md
-      - invariants.md
-      # agent-manifest-profile-awareness.md is the F022 header convention
-      # extended to body level (self-resolution + body-conformance) by
-      # F-2026-06-01-profile-driven-agent-bodies. The standard rides the
-      # standards/ copytree (compile_standards) into dist/standards/process/;
-      # the resolve_agent_profile.py + manifest_body_conformance.py scripts it
-      # references ride the scripts/ copy (compile_scripts copies every file in
-      # scripts/) into dist/scripts/ — no per-script yaml entry exists or is
-      # needed (see memory: feedback-install-carries-new-artifact-shapes).
-      - agent-manifest-profile-awareness.md
-      # build-review-gate.md (F-2026-06-02) is the citable standard for the
-      # /build Step 7 review gate (firing policy GA-001, the ADR-001 emission
-      # contract, severity-gated blocking ADR-003). It rides the standards/
-      # copytree (compile_standards) into dist/standards/process/. Its helper,
-      # scripts/review_gate.py, rides the broad scripts/ copy: compile_scripts
-      # does `for script in scripts_src.iterdir(): if script.is_file()` and
-      # copies EVERY file in scripts/ into dist/scripts/ — no per-script yaml
-      # entry exists or is needed (NOT the narrowed-glob failure mode; see
-      # memory: feedback-install-carries-new-artifact-shapes).
-      - build-review-gate.md
-      # design-token-conformance.md (#69) is the citable standard for the
-      # Layer-3 design-token conformance gate (the AI-ready 3-layer design
-      # system: DESIGN.md narrative -> design-tokens.json -> this gate). v1 is
-      # colors-only + advisory. It rides the standards/ copytree
-      # (compile_standards) into dist/standards/process/. Its helper,
-      # scripts/design_token_gate.py, rides the broad scripts/ copy
-      # (compile_scripts copies EVERY file in scripts/ into dist/scripts/) — no
-      # per-script yaml entry exists or is needed (mirrors build-review-gate.md
-      # + review_gate.py; NOT the narrowed-glob failure mode; see memory:
-      # feedback-install-carries-new-artifact-shapes).
-      - design-token-conformance.md
-    code:
-      - clean-code.md
-      - error-handling.md
-      - typing-standards.md
-      - python-conventions.md
-      - import-discipline.md
-      - ruff-reference.toml
-      - ruff-audit.md
-    testing:
-      - testing-standards.md
-      - test-naming.md
-      - llm-evaluation.md
-      - test-isolation.md
-      - fixture-fidelity.md
-    architecture:
-      - abstraction-rules.md
-      - adr-process.md
-      - layer-boundaries.md
-      - review-depth.md
-    security:
-      - data-handling.md
-      - owasp-checklist.md
-    quality:
-      - metrics.md
-
+  # SHIPS WHOLESALE: compile_standards copytrees the ENTIRE standards/
+  # tree into dist/standards/ — there is no per-file registry. An earlier
+  # `categories:` list here was DECORATIVE (the compiler never read it)
+  # and had silently rotted to ~12 of 31 process standards, which made
+  # the registry look authoritative while meaning nothing (audit init 3).
+  # To add a standard: drop the file under standards/<category>/ — it
+  # ships. Provenance notes for gate-coupled standards, preserved from
+  # the old list:
+  # agent-manifest-profile-awareness.md is the F022 header convention
+  # extended to body level (self-resolution + body-conformance) by
+  # F-2026-06-01-profile-driven-agent-bodies. The standard rides the
+  # standards/ copytree (compile_standards) into dist/standards/process/;
+  # the resolve_agent_profile.py + manifest_body_conformance.py scripts it
+  # references ride the scripts/ copy (compile_scripts copies every file in
+  # scripts/) into dist/scripts/ — no per-script yaml entry exists or is
+  # needed (see memory: feedback-install-carries-new-artifact-shapes).
+  # build-review-gate.md (F-2026-06-02) is the citable standard for the
+  # /build Step 7 review gate (firing policy GA-001, the ADR-001 emission
+  # contract, severity-gated blocking ADR-003). It rides the standards/
+  # copytree (compile_standards) into dist/standards/process/. Its helper,
+  # scripts/review_gate.py, rides the broad scripts/ copy: compile_scripts
+  # does `for script in scripts_src.iterdir(): if script.is_file()` and
+  # copies EVERY file in scripts/ into dist/scripts/ — no per-script yaml
+  # entry exists or is needed (NOT the narrowed-glob failure mode; see
+  # memory: feedback-install-carries-new-artifact-shapes).
+  # design-token-conformance.md (#69) is the citable standard for the
+  # Layer-3 design-token conformance gate (the AI-ready 3-layer design
+  # system: DESIGN.md narrative -> design-tokens.json -> this gate). v1 is
+  # colors-only + advisory. It rides the standards/ copytree
+  # (compile_standards) into dist/standards/process/. Its helper,
+  # scripts/design_token_gate.py, rides the broad scripts/ copy
+  # (compile_scripts copies EVERY file in scripts/ into dist/scripts/) — no
+  # per-script yaml entry exists or is needed (mirrors build-review-gate.md
+  # + review_gate.py; NOT the narrowed-glob failure mode; see memory:
+  # feedback-install-carries-new-artifact-shapes).
 # ─── SDLC Phases ────────���────────────────────────────────────────────────
 # Phase definitions compile to tracker templates in dist/sdlc/.
 # Each phase has a Definition of Done that gates transition to the next.

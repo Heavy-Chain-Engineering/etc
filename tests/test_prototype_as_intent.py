@@ -160,11 +160,21 @@ class TestDesignSkillContract:
 
 
 class TestStandardRegisteredInSpec:
-    """prototype-as-intent.md is registered under standards.categories.process."""
+    """prototype-as-intent.md ships via the standards/ wholesale copytree.
 
-    def test_registered_under_process_category(self, spec_doc: dict) -> None:
-        process = spec_doc["standards"]["categories"]["process"]
-        assert "prototype-as-intent.md" in process
+    The old assertion read the yaml `standards.categories` registry, which
+    was DECORATIVE (the compiler never read it) and silently rotted; audit
+    init 3 replaced it with an explicit ships-wholesale comment. The
+    operative registration IS the file's presence on disk — compile_standards
+    copytrees the entire tree (parity with dist is asserted by the
+    TestSourceToDistParity class below)."""
+
+    def test_standard_exists_on_disk(self) -> None:
+        standard = REPO_ROOT / "standards" / "process" / "prototype-as-intent.md"
+        assert standard.is_file(), (
+            "standards/process/prototype-as-intent.md must exist — presence "
+            "on disk is what ships it (standards/ copies wholesale)"
+        )
 
 
 # -- AC: source -> dist parity (the #18 named-set-equality precedent) ---------

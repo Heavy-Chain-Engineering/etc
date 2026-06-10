@@ -62,7 +62,11 @@ REQUIRED_FIELDS = (
     "acceptance_criteria",
 )
 
-# ── Complexity scoring thresholds (from DSL changeset_budget) ────────────
+# ── Complexity scoring thresholds ─────────────────────────────────────────
+# This is the OPERATIVE copy of the changeset budget. The values mirror
+# spec/etc_sdlc.yaml defaults.changeset_budget, which is documentation-only
+# (the compiler never reads it — see the yaml defaults HONESTY CONTRACT,
+# audit init 3). When changing these, update BOTH places.
 COMPLEXITY_THRESHOLDS = {  # cq-exempt: CQ-001
     "target_loc": 300,
     "warn_loc": 500,
