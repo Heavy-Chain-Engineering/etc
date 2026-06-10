@@ -974,6 +974,91 @@ skills:
     source: skills/janitor/SKILL.md
     model: opus
 
+  # ── Core pipeline skills ───────────────────────────────────────────────
+  # These eight skills exist on disk and ship today, but the registry had
+  # drifted to omit them (audit init 3). Declared here to make the single
+  # source of truth honest. Descriptions taken from each SKILL.md frontmatter.
+
+  spec:
+    name: "spec"
+    description: >
+      Socratic specification loop that turns a vague idea into an
+      implementation-ready PRD through questioning, codebase research, web
+      research, and iterative refinement. Output passes the Definition of
+      Ready and is consumed by /architect and /build.
+    usage: "/spec <one-line description of the feature>"
+    source: skills/spec/SKILL.md
+
+  architect:
+    name: "architect"
+    description: >
+      Socratic architecture-design loop that turns a finalized spec.md into
+      an implementation-ready design.md plus 1-N ADRs through questioning,
+      codebase research, gray-area resolution, and iterative section
+      drafting. Runs after /spec, before /build.
+    usage: "/architect [<feature_path>]"
+    source: skills/architect/SKILL.md
+
+  build:
+    name: "build"
+    description: >
+      Full pipeline conductor — validate, decompose recursively, plan waves,
+      dispatch each wave via Agent-tool subagent calls, verify. The single
+      entry point for building any feature from spec to working code. Owns the
+      full lifecycle so nothing is skipped (unlike /implement or /decompose).
+    usage: "/build [<feature_path>]"
+    source: skills/build/SKILL.md
+
+  decompose:
+    name: "decompose"
+    description: >
+      Recursively decompose complex tasks into implementable subtasks. Reads a
+      PRD or task, scores complexity, and breaks down anything too large for a
+      single agent session — continuing until every leaf task fits one session.
+      Generates the task YAML files that /build and /implement dispatch.
+    usage: "/decompose <path-to-prd-or-task>"
+    source: skills/decompose/SKILL.md
+
+  tasks:
+    name: "tasks"
+    description: >
+      Native task tracker. View and manage task status, find the next ready
+      task, and show the dependency tree across features and the global task
+      directory. Operates directly on .etc_sdlc/ task YAML via the tasks.py
+      CLI — the shared contract for /build, /decompose, and /implement.
+    usage: "/tasks [<subcommand>]"
+    source: skills/tasks/SKILL.md
+
+  checkpoint:
+    name: "checkpoint"
+    description: >
+      Save the current session state to disk before compaction or session end
+      so work can be safely compacted or resumed later. Writes a reasoned
+      checkpoint (Decisions / Discovered / Pending) richer than the best-effort
+      PreCompact-hook checkpoint. Run before /compact or when ending a session.
+    usage: "/checkpoint"
+    source: skills/checkpoint/SKILL.md
+
+  postmortem:
+    name: "postmortem"
+    description: >
+      Trace an escaped bug to its root cause, identify which harness gate
+      should have caught it, and append a structured prevention rule to the
+      antipatterns learning loop so the same class of bug never escapes again.
+      Typically invoked after /hotfix; also runs standalone on any escaped bug.
+    usage: "/postmortem"
+    source: skills/postmortem/SKILL.md
+
+  init-project:
+    name: "init-project"
+    description: >
+      Bootstrap any repository — greenfield or brownfield — into a state where
+      the ETC harness can operate on it. Orchestrates technical scaffolding
+      (via project-bootstrapper), interactive DOMAIN.md creation, a tiered docs
+      skeleton, and starter role manifests, in strict order.
+    usage: "/init-project"
+    source: skills/init-project/SKILL.md
+
 # ─── Standards ───���───────────────────────────────────────────────────────
 # Engineering standards passed through to dist/standards/.
 # These are read by agents and referenced in hook prompts.
