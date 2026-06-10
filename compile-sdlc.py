@@ -358,6 +358,77 @@ def compile_skills(dist_dir: Path, repo_root: Path) -> None:
                 shutil.copytree(skill_path, dst, dirs_exist_ok=True)
 
 
+def _disk_skill_names(repo_root: Path) -> set[str]:
+    """Names of on-disk skill dirs (those holding a SKILL.md)."""
+    skills_src = repo_root / "skills"
+    if not skills_src.is_dir():
+        return set()
+    return {
+        d.name
+        for d in skills_src.iterdir()
+        if d.is_dir() and (d / "SKILL.md").exists()
+    }
+
+
+def _disk_agent_names(repo_root: Path) -> set[str]:
+    """Stems of on-disk agent .md files."""
+    agents_src = repo_root / "agents"
+    if not agents_src.is_dir():
+        return set()
+    return {p.stem for p in agents_src.glob("*.md")}
+
+
+def _declared_agent_stems(spec: dict) -> set[str]:
+    """Agent stems the spec declares (derived from each agent's source path)."""
+    stems: set[str] = set()
+    for agent_name, agent_def in spec.get("agents", {}).items():
+        source = agent_def.get("source")
+        stems.add(Path(source).stem if source else agent_name)
+    return stems
+
+
+def check_disk_parity(spec: dict, repo_root: Path) -> list[str]:
+    """Return parity violations between the spec registry and on-disk surface.
+
+    Enforces three rules so the spec stays the honest single source of truth:
+      (a) every on-disk skill dir must be declared in `skills:`;
+      (b) every on-disk agent .md must be declared in `agents:` or parked in
+          the `unregistered_agents:` allowlist;
+      (c) anything declared (skill or agent) must exist on disk.
+    """
+    declared_skills = set(spec.get("skills", {}).keys())
+    disk_skills = _disk_skill_names(repo_root)
+    allowed_agents = set(spec.get("unregistered_agents", {}).keys())
+    declared_agents = _declared_agent_stems(spec)
+    disk_agents = _disk_agent_names(repo_root)
+
+    violations: list[str] = []
+    for name in sorted(disk_skills - declared_skills):
+        violations.append(f"undeclared skill on disk: skills/{name}/ (add it to skills:)")
+    for name in sorted(declared_skills - disk_skills):
+        violations.append(f"declared skill missing on disk: skills/{name}/ (declared but no dir)")
+    for name in sorted(disk_agents - declared_agents - allowed_agents):
+        violations.append(
+            f"undeclared agent on disk: agents/{name}.md "
+            f"(add it to agents: or list it under unregistered_agents:)"
+        )
+    for name in sorted(declared_agents - disk_agents):
+        violations.append(
+            f"declared agent missing on disk: agents/{name}.md (declared but no file)"
+        )
+    return violations
+
+
+def enforce_disk_parity(spec: dict, repo_root: Path) -> None:
+    """Fail the compile (exit 1) if the registry and disk have drifted."""
+    violations = check_disk_parity(spec, repo_root)
+    if violations:
+        print("ERROR: declared-vs-disk parity check failed:", file=sys.stderr)
+        for violation in violations:
+            print(f"  - {violation}", file=sys.stderr)
+        sys.exit(1)
+
+
 def generate_implement_skill(skill_def: dict, skills_dir: Path, spec: dict) -> None:
     """Generate the /implement skill — the primary user-facing entry point."""
     defaults = spec.get("defaults", {})
@@ -1345,6 +1416,9 @@ def compile_claude_target(spec: dict, dist_dir: Path, repo_root: Path) -> None:
     print()
     print(f"  Spec version: {spec['version']}")
 
+    print("  Checking declared-vs-disk parity...")
+    enforce_disk_parity(spec, repo_root)
+
     print("  Compiling gates → settings-hooks.json + hook scripts...")
     hooks_config = compile_gates(spec, dist_dir, repo_root)
     with open(dist_dir / "settings-hooks.json", "w", encoding="utf-8") as f:
@@ -1424,6 +1498,9 @@ def compile_codex_target(spec: dict, dist_dir: Path, repo_root: Path) -> None:
     print(f"Output directory: {dist_dir}")
     print()
     print(f"  Spec version: {spec['version']}")
+
+    print("  Checking declared-vs-disk parity...")
+    enforce_disk_parity(spec, repo_root)
 
     print("  Compiling Codex gates → .codex/hooks.json + classification...")
     hooks_config, classifications = compile_codex_gates(spec, dist_dir, repo_root)

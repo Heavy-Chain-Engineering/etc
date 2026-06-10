@@ -767,6 +767,18 @@ agents:
       network. All delivery is the orchestrator's privilege.
     source: agents/janitor.md
 
+# ─── Unregistered agents (allowlist) ───────────────────────────────────────
+# Agents that exist on disk under agents/ but are deliberately NOT compiled
+# into the harness yet. The compiler's declared-vs-disk parity gate
+# (compile-sdlc.py check_disk_parity) FAILS on any undeclared agent that is
+# not listed here, so this key is the explicit, reasoned escape hatch — an
+# undeclared agent can no longer slip onto disk and be silently dropped.
+# Each entry's value is a one-line reason. Move an agent UP into agents: to
+# ship it, or delete its file to drop it; do not leave it dangling.
+unregistered_agents:
+  gemini-analyzer: "pending operator in-or-out decision (audit init 3)"
+  multi-tenant-auditor: "pending operator in-or-out decision (audit init 3)"
+
 # ─── Skills ────────────────────────────���─────────────────────────────────
 # Skills compile to .md files in dist/skills/.
 # The /implement skill is the primary user-facing entry point.
