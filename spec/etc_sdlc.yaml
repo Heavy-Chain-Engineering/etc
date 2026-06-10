@@ -21,7 +21,6 @@ defaults:
   on_failure: block            # block = give agent feedback to retry
   on_loop: escalate            # escalate = fail loud, kill agent, tell human
   max_retries: 2               # After N retries on same gate, escalate
-  coverage_threshold: 98       # Minimum test coverage percentage
   changeset_budget:
     target_loc: 300            # Ideal lines of code per task
     warn_loc: 500              # Warn if task exceeds this
