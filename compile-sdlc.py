@@ -267,7 +267,14 @@ def compile_gates(spec: dict, dist_dir: Path, repo_root: Path) -> dict:
 
     helpers_src = repo_root / "hooks" / "helpers"
     if helpers_src.exists():
-        shutil.copytree(helpers_src, hooks_dir / "helpers", dirs_exist_ok=True)
+        # Filter caches like the codex copy path (is_generated_cache_path)
+        # does — this site shipped __pycache__/*.pyc into dist (audit init 8).
+        shutil.copytree(
+            helpers_src,
+            hooks_dir / "helpers",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
 
     # Build the final settings-hooks.json structure
     hooks_config: dict[str, list] = {}

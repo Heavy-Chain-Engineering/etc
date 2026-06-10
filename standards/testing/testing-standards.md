@@ -4,8 +4,15 @@
 ## Applies to: Backend Developer, Frontend Developer, Verifier, Code Reviewer
 
 ## Coverage Requirements
-- **98% line and branch coverage minimum**
-- Enforced by: `pyproject.toml` (`fail_under = 98`), Stop hook, CI pipeline
+- **50% line coverage minimum on the scoped harness layer** (`scripts/` +
+  `hooks/helpers/` per `[tool.coverage.run]`; F020 honest-coverage scope)
+- Enforced by: `pyproject.toml` (`fail_under = 50`). There is no CI pipeline
+  and no Stop-hook coverage check today — the pyproject floor, applied when
+  the suite runs with `--cov`, is the only mechanism. Do not cite phantom
+  enforcers.
+- The floor is a RATCHET: raise it as measured coverage genuinely improves
+  (a drift test pins this number to pyproject's `fail_under`); never lower
+  it to silence a failure.
 - Coverage may not decrease between PRs
 - `# pragma: no cover` requires a justification comment AND linked issue
 

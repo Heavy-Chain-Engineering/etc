@@ -97,6 +97,75 @@ def _make_feature(
     return feature_dir
 
 
+def _make_dated_feature(
+    tmp_path: Path,
+    feature_id: str,
+    spec_body: str,
+    baseline_spec: str,
+) -> Path:
+    """Build a date-form feature whose directory NAME IS the feature_id.
+
+    Date-form ids (``F-YYYY-MM-DD-<slug>``) carry no separate ``-<slug>``
+    suffix — the directory name itself is the id, and the baseline tag is
+    ``etc/feature/<full-id>/spec``. This mirrors the real layout the gate
+    must support after the F023 ID-scheme revision.
+    """
+    repo = tmp_path
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, timeout=10)
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    feature_dir = repo / ".etc_sdlc" / "features" / feature_id
+    feature_dir.mkdir(parents=True)
+    spec_path = feature_dir / "spec.md"
+
+    spec_path.write_text(baseline_spec, encoding="utf-8")
+    _git(repo, "add", "-f", str(spec_path.relative_to(repo)))
+    _git(repo, "commit", "-q", "-m", "baseline spec")
+    _git(repo, "tag", f"etc/feature/{feature_id}/spec")
+
+    spec_path.write_text(spec_body, encoding="utf-8")
+    return feature_dir
+
+
+class TestDateFormFeatureId:
+    """The ID scheme moved to ``F-YYYY-MM-DD-<slug>``. The F015 baseline-tag
+    lookup must fire for date-form features (the gate previously parsed only
+    legacy ``F<NNN>`` ids → the tag ``etc/feature/<id>/spec`` was never built →
+    the gate silently no-opped for every current feature)."""
+
+    def test_should_find_baseline_tag_when_feature_is_date_form(
+        self, tmp_path: Path
+    ) -> None:
+        feature_dir = _make_dated_feature(
+            tmp_path,
+            feature_id="F-2026-06-02-build-review-agent-gate",
+            baseline_spec="# Feature\n",
+            spec_body="# Feature\n\n- AC-12: Widget normalizer **deferred** to a follow-up.\n",
+        )
+        result = _run(feature_dir)
+        # The baseline tag IS found → the new marker line is the scan surface
+        # → the uncovered finding fires (exit 2). A legacy-only parser would
+        # never build the tag, scan nothing, and pass clean (exit 0).
+        assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
+        assert "AC-12" in result.stdout
+
+    def test_should_not_fire_when_marker_present_in_date_form_baseline(
+        self, tmp_path: Path
+    ) -> None:
+        """Control: a marker already present in the date-form baseline is not a
+        NEW scope change. Proves the baseline diff is real, not a whole-file
+        scan that would over-fire."""
+        unchanged = "# Feature\n\n- AC-12: rollup metric **deferred** to a follow-up.\n"
+        feature_dir = _make_dated_feature(
+            tmp_path,
+            feature_id="F-2026-06-02-build-review-agent-gate",
+            baseline_spec=unchanged,
+            spec_body=unchanged + "\n- AC-14: add a new chart (no scope change).\n",
+        )
+        result = _run(feature_dir)
+        assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+
+
 class TestNoFindings:
     """When the spec has no markers, exit 0 with empty output."""
 

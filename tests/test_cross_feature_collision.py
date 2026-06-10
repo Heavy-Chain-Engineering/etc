@@ -51,6 +51,41 @@ def _make_feature(
     else:
         raise ValueError(f"unknown location {location!r}")
     feature_dir = parent / f"{feature_id}-{slug}"
+    return _populate_feature(feature_dir, files_in_scope, released)
+
+
+def _make_dated_feature(
+    tmp_path: Path,
+    feature_id: str,
+    files_in_scope: list[str] | None = None,
+    location: str = "flat",
+    released: bool = False,
+) -> Path:
+    """Create a date-form feature directory whose NAME IS the feature_id.
+
+    Date-form IDs (``F-YYYY-MM-DD-<slug>``) have no separate ``-<slug>``
+    suffix to strip — the directory name itself is the feature id. This
+    mirrors the real layout produced by scripts/feature_id.py::allocate_temp
+    after the F023 revision.
+    """
+    features_root = tmp_path / ".etc_sdlc" / "features"
+    parents = {
+        "flat": features_root,
+        "active": features_root / "active",
+        "shipped": features_root / "shipped",
+        "rejections": features_root / "rejections",
+    }
+    if location not in parents:
+        raise ValueError(f"unknown location {location!r}")
+    feature_dir = parents[location] / feature_id
+    return _populate_feature(feature_dir, files_in_scope, released)
+
+
+def _populate_feature(
+    feature_dir: Path,
+    files_in_scope: list[str] | None,
+    released: bool,
+) -> Path:
     (feature_dir / "tasks").mkdir(parents=True)
     if files_in_scope is not None:
         # Write a minimal valid task YAML
@@ -121,6 +156,45 @@ class TestCollisions:
         _make_feature(tmp_path, "F101", files_in_scope=["src/shared.py"], location="active")
         result = _run(current)
         assert result.returncode == 2
+        assert "F101" in result.stdout
+
+    def test_should_enumerate_dateform_sibling_when_it_overlaps(
+        self, tmp_path: Path
+    ) -> None:
+        """The feature-ID scheme moved to ``F-YYYY-MM-DD-<slug>``. A date-form
+        sibling claiming an overlapping file MUST be enumerated and collide;
+        the gate previously parsed only legacy ``F<NNN>`` ids and silently
+        excluded every date-form feature."""
+        current = _make_feature(tmp_path, "F100", files_in_scope=["src/shared.py"])
+        dated_id = "F-2026-06-02-build-review-agent-gate"
+        _make_dated_feature(
+            tmp_path,
+            dated_id,
+            files_in_scope=["src/shared.py"],
+            location="active",
+        )
+        result = _run(current)
+        assert result.returncode == 2, result.stdout
+        assert dated_id in result.stdout
+
+    def test_should_use_dateform_current_feature_id_when_current_is_dated(
+        self, tmp_path: Path
+    ) -> None:
+        """When the CURRENT feature is date-form, its id must parse so it can
+        be excluded from its own collision set and named in the report."""
+        dated_id = "F-2026-06-09-current-dated-feature"
+        current = _make_dated_feature(
+            tmp_path,
+            dated_id,
+            files_in_scope=["src/shared.py"],
+            location="active",
+        )
+        _make_feature(
+            tmp_path, "F101", files_in_scope=["src/shared.py"], location="active"
+        )
+        result = _run(current)
+        assert result.returncode == 2, result.stdout
+        # The current dated feature must NOT collide with itself.
         assert "F101" in result.stdout
 
 

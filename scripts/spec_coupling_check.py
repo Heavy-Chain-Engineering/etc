@@ -77,11 +77,29 @@ class CoverageResult:
     evidence: str  # path to memo/ADR that covers it, or "" if uncovered
 
 
+# Legacy sequential form: the feature id is the F<NNN> PREFIX (slug stripped).
+_LEGACY_ID_PATTERN = re.compile(r"^(F\d+)-")
+# Date-based form (current scheme): the directory NAME *is* the feature id;
+# there is no separate -<slug> suffix to strip. Mirror scripts/feature_id.py.
+_DATED_ID_PATTERN = re.compile(r"^F-\d{4}-\d{2}-\d{2}-.+$")
+
+
 def parse_feature_id(feature_dir: Path) -> str | None:
-    """Extract F<NNN> from a directory name like 'F015-foo-bar' or 'shipped/F015-foo-bar'."""
+    """Extract the feature id from a directory name, accepting both grammars.
+
+    - Legacy sequential ``F015-foo-bar`` → ``"F015"`` (the prefix; slug stripped).
+    - Date-based ``F-2026-06-02-build-review-agent-gate`` → the FULL directory
+      name (the name itself is the id). The baseline tag this gate looks up,
+      ``etc/feature/<id>/spec``, is built on this exact id — so the date-form
+      name must be returned verbatim, not truncated.
+
+    Returns ``None`` when the name matches neither grammar.
+    """
     name = feature_dir.name
-    match = re.match(r"(F\d+)-", name)
-    return match.group(1) if match else None
+    if _DATED_ID_PATTERN.match(name):
+        return name
+    legacy = _LEGACY_ID_PATTERN.match(name)
+    return legacy.group(1) if legacy else None
 
 
 def repo_root_from(feature_dir: Path) -> Path:

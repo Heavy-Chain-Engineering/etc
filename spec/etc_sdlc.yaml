@@ -546,6 +546,51 @@ gates:
     # directly. "block" documents the gate's intentional manual-block path.
     on_failure: block
 
+  # The next three hooks shipped compiled-and-installed but were never
+  # declared here, so they fired in NO installed environment (audit init 2,
+  # built-but-never-wired family). Each header documents the exact event
+  # it was built for; these declarations make those claims true.
+
+  tier-0-design-preflight:
+    description: >
+      Conditional tier-0 preflight for design-promoted features (F011
+      BR-006, ADR-F011-003). When the enclosing feature's state.yaml has
+      design_phase.tier_0_promoted = true, blocks Edit/Write until
+      PRODUCT.md + DESIGN.md exist at repo root. Exit 0 for every
+      non-promoted feature. skills/design/SKILL.md documents this blocking
+      behavior — unregistered, that documentation was false.
+    event: PreToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: tier-0-design-preflight.sh
+    timeout: 5
+    on_failure: block
+
+  diagnostic-evidence:
+    description: >
+      F021 diagnostic-dismissal discipline, PreToolUse side. Scans the
+      recent transcript for new-diagnostics reminders lacking a
+      subsequent evidence block and emits a Pattern B stderr warning.
+      Advisory — always exits 0. Complements (does not duplicate) the
+      Stop-side residual scan in check-completion-discipline.sh Step 1.5.
+    event: PreToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-diagnostic-evidence.sh
+    timeout: 10
+
+  profiles-fresh:
+    description: >
+      F022 profile staleness check. Warns (never blocks) at session start
+      when .etc_sdlc/profiles.lock is missing, stale (>7 days), or has
+      drifted from detect_profiles.py output, so agents do not run a whole
+      session against a wrong-stack profile.
+    event: SessionStart
+    matcher: startup
+    type: command
+    script: check-profiles-fresh.sh
+    timeout: 10
+
 # ─── Agents ────────���─────────────────────────────────────────────────────
 # Agent definitions that compile to .md files in dist/agents/.
 # Each agent has a role, tools, and behavioral constraints.

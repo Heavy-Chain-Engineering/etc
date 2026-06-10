@@ -495,6 +495,91 @@ def _load_compile_sdlc_module() -> Any:
     return module
 
 
+def _wired_hook_scripts(hooks_json: dict[str, Any]) -> set[str]:
+    """Basenames of every .sh script referenced by a wired hook command."""
+    wired: set[str] = set()
+    for groups in hooks_json.get("hooks", {}).values():
+        for group in groups:
+            for handler in group.get("hooks", []):
+                for token in str(handler.get("command", "")).split():
+                    if token.endswith(".sh"):
+                        wired.add(token.rsplit("/", 1)[-1])
+    return wired
+
+
+# Hooks that legitimately are NOT event-wired: they are invoked directly by
+# other hooks or by skill bodies (verified call sites), not by Claude Code
+# events. Adding a hook here requires naming its real call site.
+INDIRECTLY_INVOKED_HOOKS = frozenset(
+    {
+        "verify-green.sh",  # invoked by mark-dirty/check-completion-discipline/inject-standards/runtime-verify
+        "runtime-verify.sh",  # invoked by /build Step 6c + behavioral-runtime-dod standard
+    }
+)
+
+
+def test_every_hook_on_disk_is_wired_or_allowlisted(hooks_json: dict[str, Any]) -> None:
+    """Audit init 2 (built-but-never-wired family): three hooks shipped
+    compiled-and-installed but fired in NO installed environment because
+    they were never declared in the DSL. This is the structural gate: every
+    hooks/*.sh must either appear in a wired hook command or be explicitly
+    allowlisted as indirectly invoked (with its real call site named).
+    """
+    on_disk = {p.name for p in (REPO_ROOT / "hooks").glob("*.sh")}
+    wired = _wired_hook_scripts(hooks_json)
+    dead = on_disk - wired - INDIRECTLY_INVOKED_HOOKS
+    assert not dead, (
+        f"hooks on disk that no event wires and no allowlist entry covers: "
+        f"{sorted(dead)}. Either declare them in spec/etc_sdlc.yaml gates, "
+        f"delete them, or allowlist them here WITH their real call site."
+    )
+
+
+def test_audit_revived_hooks_are_wired(hooks_json: dict[str, Any]) -> None:
+    """The three formerly-dead hooks must stay wired (audit init 2)."""
+    wired = _wired_hook_scripts(hooks_json)
+    for script in (
+        "tier-0-design-preflight.sh",
+        "check-diagnostic-evidence.sh",
+        "check-profiles-fresh.sh",
+    ):
+        assert script in wired, f"{script} regressed to unwired"
+
+
+def test_dist_contains_no_python_bytecode(tmp_path: Path) -> None:
+    """No __pycache__/*.pyc may ship in compiler output (audit init 8).
+
+    The claude hooks-helpers copy site lacked the cache filter the codex
+    path has (is_generated_cache_path), so host bytecode shipped into
+    dist/hooks/helpers/. Compile into a tmp dir (hermetic — does not touch
+    the operator's real dist/) and assert the output is bytecode-free.
+    """
+    compile_sdlc = _load_compile_sdlc_module()
+
+    # Seed a real-looking helpers tree with a bytecode cache in it.
+    fake_repo = tmp_path / "repo"
+    helpers = fake_repo / "hooks" / "helpers"
+    (helpers / "__pycache__").mkdir(parents=True)
+    (helpers / "helper.py").write_text("x = 1\n")
+    (helpers / "__pycache__" / "helper.cpython-312.pyc").write_bytes(b"\x00")
+    (fake_repo / "hooks" / "real-hook.sh").write_text("#!/bin/bash\nexit 0\n")
+
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+
+    compile_sdlc.compile_gates({"gates": {}}, dist_dir, fake_repo)
+
+    offenders = [
+        p
+        for p in dist_dir.rglob("*")
+        if p.name == "__pycache__" or p.suffix == ".pyc"
+    ]
+    assert not offenders, (
+        f"compiler output must not contain Python bytecode; found: "
+        f"{[str(p.relative_to(dist_dir)) for p in offenders]}"
+    )
+
+
 def test_reset_output_dir_clears_contents_when_dir_is_bind_mount(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

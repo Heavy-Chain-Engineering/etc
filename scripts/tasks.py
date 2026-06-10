@@ -79,8 +79,8 @@ DECOMPOSE_THRESHOLD = 7  # Tasks scoring > 7 should be decomposed
 # places new features under `.etc_sdlc/features/active/F<NNN>-<slug>/`;
 # legacy features remain at `.etc_sdlc/features/F<NNN>-<slug>/`;
 # shipped features move to `.etc_sdlc/features/shipped/F<NNN>-<slug>/`.
-# These helpers are inlined (rather than imported from feature_paths.py)
-# so tasks.py remains a single-file CLI that runs without sys.path setup.
+# These helpers are inlined so tasks.py remains a single-file CLI that runs
+# without sys.path setup.
 
 _FEATURE_LIFECYCLE_DIRS = ("active", "shipped", "rejections")
 

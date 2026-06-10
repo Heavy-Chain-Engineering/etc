@@ -129,6 +129,61 @@ class TestDailyReport:
         assert content.count("Stop event @") == 2
 
 
+class TestLongEngagementProposal:
+    """Positive path for the 3-hour long-engagement threshold push.
+
+    Audit init 2: a pipe-into-while subshell discarded the accumulated
+    active_engagement_seconds, so the parent always saw 0 and this proposal
+    — built after the ~$10k stuck-loop incident — could never fire. The
+    prior tests asserted only negative paths (no proposal when muted /
+    no task), which stayed vacuously green with the bug present. This test
+    synthesizes >3h of same-task turn history and asserts the proposal
+    actually fires.
+    """
+
+    def test_proposal_fires_after_three_hours_same_task(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        task = "F-2026-06-09-long-task"
+        feature_dir = tmp_path / ".etc_sdlc" / "features" / "active" / task
+        feature_dir.mkdir(parents=True)
+        (feature_dir / "state.yaml").write_text(f"feature_id: {task}\n")
+
+        eff_dir = tmp_path / ".etc_sdlc" / "efficiency"
+        eff_dir.mkdir(parents=True)
+        now = datetime.now(UTC)
+        # 55 events, 4 min apart (≤ the 5-min idle threshold), newest 4 min
+        # ago — the hook's own appended "now" event chains onto them. Total
+        # active engagement ≈ 55 × 4 min = 220 min > the 180-min threshold.
+        lines = []
+        for i in range(55, 0, -1):
+            ts = (now - timedelta(minutes=4 * i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            lines.append(
+                json.dumps(
+                    {
+                        "event_id": f"turn-{i}",
+                        "ended_at": ts,
+                        "cwd": str(tmp_path),
+                        "current_task": task,
+                    }
+                )
+            )
+        (eff_dir / "turn-events.jsonl").write_text("\n".join(lines) + "\n")
+
+        result = _run_hook(CEO_HOOK, {"cwd": str(tmp_path)}, tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        today = now.strftime("%Y-%m-%d")
+        proposal = eff_dir / "proposals" / f"{today}-long-engagement-{task}.md"
+        assert proposal.exists(), (
+            "3h same-task engagement must produce a long-engagement proposal; "
+            f"proposals dir: {list((eff_dir / 'proposals').glob('*')) if (eff_dir / 'proposals').is_dir() else 'absent'}"
+        )
+        content = proposal.read_text()
+        assert task in content
+        assert "long_engagement" in content
+
+
 class TestMuteMechanism:
     def test_mute_until_future_suppresses_threshold_push(self, tmp_path: Path) -> None:
         """When mute file has a future `until:`, threshold-push proposals

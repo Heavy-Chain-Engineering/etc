@@ -34,7 +34,10 @@ if echo "$COMMAND" | grep -qE '^\s*rm\s+(-[a-zA-Z]*r[a-zA-Z]*\s|--recursive)'; t
 fi
 
 # ── Destructive git operations ───────────────────────────────────────────
-if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force|git\s+push\s+-f\b'; then
+# --force([^-]|$) deliberately exempts --force-with-lease: it is the safe
+# remediation this very message recommends, and the old bare-substring
+# match blocked it too (audit init 8). Bare --force and -f still block.
+if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force([^-]|$)|git\s+push\s+-f\b'; then
   echo "BLOCKED: Force push can destroy remote history. Use --force-with-lease or ask the user." >&2
   exit 2
 fi

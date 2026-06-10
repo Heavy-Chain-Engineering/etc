@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -82,14 +81,28 @@ def test_installed_codex_harness_passes_synthetic_dogfood(tmp_path: Path) -> Non
 
 
 def _copy_harness_source(destination: Path) -> Path:
-    ignore = shutil.ignore_patterns(
-        ".git",
-        ".venv",
-        "__pycache__",
-        ".pytest_cache",
-        "dist",
+    """Materialize the harness source at ``destination`` from `git archive HEAD`.
+
+    Audit init 9: the old ``shutil.copytree(REPO_ROOT, ...)`` copied the LIVE
+    working tree — including ``.env`` secrets (the suite's only red test, on
+    the sandbox's .env read-deny) and all untracked state, so the dogfood
+    verified a tree matching no commit. ``git archive HEAD`` is deterministic
+    and secret-free by construction (gitignored + untracked files are never
+    in the archive).
+    """
+    destination.mkdir(parents=True, exist_ok=True)
+    archive = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "archive", "HEAD"],
+        capture_output=True,
+        check=True,
+        timeout=120,
     )
-    shutil.copytree(REPO_ROOT, destination, ignore=ignore)
+    subprocess.run(
+        ["tar", "-x", "-C", str(destination)],
+        input=archive.stdout,
+        check=True,
+        timeout=120,
+    )
     return destination
 
 

@@ -103,19 +103,21 @@ omit = [
 # scripts/ + hooks/helpers/ ONLY (per [tool.coverage.run] above) and the
 # floor matches measured baseline.
 #
-# Baseline as of 2026-05-16: 29% on scoped harness layer. Many scripts
-# (sdlc_timing, journey_id, journey_lineage_check, meta-reconcile,
-# cross_feature_collision_check, spec_coupling_check, check-vocabulary,
-# completion_report, design_md_compose) currently have 0% coverage — they
-# work but are not gated by automated tests. The floor here is a
-# regression detector, not an aspirational target. Raise the floor as
-# coverage genuinely improves; do NOT lower it to silence a failure.
+# Ratchet history: baseline 29% (2026-05-16) → measured 53% (2026-06-09,
+# full suite). The 2026-05-16 floor of 28 was never raised as coverage
+# improved, leaving a 25-point silent-regression window (every test for a
+# fully-covered gate script could vanish without this gate firing). Floor
+# now ratcheted to 50 — just under measured, leaving slack for legitimate
+# variance. RATCHET RULE: when measured coverage rises, raise this floor
+# to roughly (measured - 3); never lower it to silence a failure.
+# tests/ pins this number to standards/testing/testing-standards.md so the
+# doc and the gate cannot drift apart again.
 #
-# Improvement target: 50% on the scoped layer within Q3 2026. Highest
-# leverage: write tests for tasks.py (currently 21% on 868 stmts) and
-# value_hypothesis.py (52% on 202 stmts). Adding tests pushes the
-# number up; adjusting the threshold is the LAST resort.
-fail_under = 28
+# Next leverage: tasks.py (~29% on 868 stmts) and etc_runtime.py (~40%).
+# Note: several scripts read 0% only because they are tested via
+# subprocess and subprocess tracing is not wired (audit init 5 Next-tier
+# item: [tool.coverage.run] patch = ["subprocess"]).
+fail_under = 50
 show_missing = true
 skip_covered = false
 

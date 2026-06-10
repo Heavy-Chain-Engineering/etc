@@ -228,8 +228,8 @@ def test_should_emit_claude_output_when_client_is_claude(tmp_path: Path) -> None
     hooks_config = json.loads(
         (output_dir / "settings-hooks.json").read_text(encoding="utf-8")
     )
-    commands = [
-        handler["command"]
+    commands: list[str] = [
+        str(handler["command"])
         for handler in _all_hook_handlers(hooks_config)
         if handler["type"] == "command"
     ]
@@ -247,6 +247,35 @@ def test_should_emit_both_targets_when_client_is_all(tmp_path: Path) -> None:
 
     assert (output_dir / "claude" / "settings-hooks.json").exists()
     assert (output_dir / "codex" / ".codex" / "hooks.json").exists()
+
+
+def test_every_compiled_codex_python_script_must_parse(tmp_path: Path) -> None:
+    """Deterministic gate on the codex rewrite footgun (audit init 11).
+
+    The codex target rewrites every UTF-8 file — including executable
+    Python — through an ordered string-replacement table. A replacement
+    that lands inside code can corrupt a script silently. This test
+    ast.parses EVERY .py file in the codex output tree so any such
+    corruption fails loudly with the offending filename.
+    """
+    import ast
+
+    output_dir = tmp_path / "codex"
+    _run_compile(output_dir, "--client", "codex")
+
+    py_files = sorted(output_dir.rglob("*.py"))
+    assert py_files, "codex output tree contains no .py files — layout changed?"
+
+    failures: list[str] = []
+    for py in py_files:
+        try:
+            ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        except SyntaxError as exc:
+            failures.append(f"{py.relative_to(output_dir)}: {exc}")
+    assert not failures, (
+        "codex string-replacement corrupted executable Python — these "
+        "compiled scripts no longer parse:\n  " + "\n  ".join(failures)
+    )
 
 
 def _run_compile(output_dir: Path, *client_args: str) -> None:

@@ -150,8 +150,13 @@ if [ -n "$CURRENT_TASK" ] && [ -f "$TURN_EVENTS" ]; then
     REV_CMD="tail -r"
   fi
 
-  # We're iterating events most-recent-first.
-  $REV_CMD "$TURN_EVENTS" 2>/dev/null | while IFS= read -r line; do
+  # We're iterating events most-recent-first. Process substitution (NOT a
+  # pipe) is load-bearing: a pipe runs the while-loop in a subshell, so
+  # active_engagement_seconds accumulated there was discarded on loop exit
+  # and the parent always saw 0 — which made the 3-hour long-engagement
+  # proposal (built after the stuck-loop incident) structurally dead
+  # (audit init 2).
+  while IFS= read -r line; do
     [ -z "$line" ] && continue
     if command -v jq >/dev/null 2>&1; then
       event_task=$(echo "$line" | jq -r '.current_task // ""' 2>/dev/null)
@@ -185,7 +190,7 @@ if [ -n "$CURRENT_TASK" ] && [ -f "$TURN_EVENTS" ]; then
     prev_iso="$event_iso"
     prev_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$event_iso" "+%s" 2>/dev/null \
                  || date -d "$event_iso" "+%s" 2>/dev/null || echo 0)
-  done
+  done < <($REV_CMD "$TURN_EVENTS" 2>/dev/null)
 fi
 
 # ── Step 5: Compute sandbox-bypass count since session start ──────────────

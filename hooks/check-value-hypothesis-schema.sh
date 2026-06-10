@@ -19,12 +19,26 @@
 #   2 = block (schema-invalid)
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-CWD=$(echo "$INPUT" | jq -r '.cwd // "."')
 
-# Allow when no file path or path is not a value-hypothesis.yaml
+# Payload parsing goes through the Codex-aware normalizer, NOT raw jq:
+# raw `.tool_input.file_path` is empty under Codex apply_patch payloads,
+# which made this BLOCKING gate silently fail open for the exact
+# schema-drift it was built to stop (audit init 8).
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PAYLOAD_HELPER="${HOOK_DIR}/helpers/hook_payload.py"
+EDITED_FILES=$(printf '%s' "$INPUT" | python3 "$PAYLOAD_HELPER" files) || exit 0
+CWD=$(printf '%s' "$INPUT" | python3 "$PAYLOAD_HELPER" cwd) || CWD="."
+[[ -z "$CWD" ]] && CWD="."
+
+# Keep only value-hypothesis.yaml targets (a payload can carry several files)
+FILE_PATH=""
+while IFS= read -r f; do
+  [[ -z "$f" ]] && continue
+  [[ "$f" == *value-hypothesis.yaml ]] && FILE_PATH="$f" && break
+done <<< "$EDITED_FILES"
+
+# Allow when no value-hypothesis.yaml is among the edited files
 if [[ -z "$FILE_PATH" ]]; then exit 0; fi
-if [[ "$FILE_PATH" != *value-hypothesis.yaml ]]; then exit 0; fi
 
 # Resolve to absolute
 if [[ "$FILE_PATH" != /* ]]; then

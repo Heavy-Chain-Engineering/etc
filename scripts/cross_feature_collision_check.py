@@ -32,11 +32,29 @@ from pathlib import Path
 
 import yaml
 
+# Legacy sequential form: the feature id is the F<NNN> PREFIX (slug stripped).
+_LEGACY_ID_PATTERN = re.compile(r"^(F\d+)-")
+# Date-based form (current scheme): the directory NAME *is* the feature id —
+# there is no separate -<slug> suffix to strip. Mirror scripts/feature_id.py.
+_DATED_ID_PATTERN = re.compile(r"^F-\d{4}-\d{2}-\d{2}-.+$")
+
 
 def parse_feature_id(feature_dir: Path) -> str | None:
-    """Extract F<NNN> from a directory name like 'F016-foo-bar'."""
-    match = re.match(r"(F\d+)-", feature_dir.name)
-    return match.group(1) if match else None
+    """Extract the feature id from a directory name, accepting both grammars.
+
+    - Legacy sequential ``F016-foo-bar`` → ``"F016"`` (the prefix; slug stripped).
+    - Date-based ``F-2026-06-02-build-review-agent-gate`` → the FULL directory
+      name (the name itself is the id — no slug suffix to strip). This is the
+      form scripts/feature_id.py::allocate_temp now produces and the form the
+      git tag namespace ``etc/feature/<id>/spec`` is built on.
+
+    Returns ``None`` when the name matches neither grammar.
+    """
+    name = feature_dir.name
+    if _DATED_ID_PATTERN.match(name):
+        return name
+    legacy = _LEGACY_ID_PATTERN.match(name)
+    return legacy.group(1) if legacy else None
 
 
 def features_root_from(feature_dir: Path) -> Path:

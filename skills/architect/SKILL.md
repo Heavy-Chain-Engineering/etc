@@ -1406,13 +1406,17 @@ directory.
    template defined in that standard — do NOT duplicate the template
    inline here; use the standard's canonical form.
 
-   ADR file path construction (F006 Security item 3):
+   ADR file path construction (F006 Security item 3). The filename is
+   built from the feature_id VERBATIM — date-form ids
+   (`F-2026-06-09-foo`) and legacy ids (`F015`) both work; there is no
+   numeric re-formatting (the old `F{nnn}` format string crashed on
+   date-form ids):
 
    ```python
    from pathlib import Path
    adr_dir = Path("docs/adrs")
    adr_dir.mkdir(parents=True, exist_ok=True)
-   adr_path = adr_dir / f"F{nnn:03d}-{adr_slug}.md"
+   adr_path = adr_dir / f"{feature_id}-{adr_slug}.md"
    ```
 
    The `<adr-slug>` is sanitized via the same kebab-case helper as

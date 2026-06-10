@@ -641,53 +641,41 @@ Triggered only when Phase 2.75 classifies the PRD as rejected.
    After `rejected.md` is fully written (including the research-fill
    mirror in step 3), relocate the entire feature directory — including
    `rejected.md`, `gray-areas.md`, any partial `value-hypothesis.yaml`,
-   and the `research/` subtree — to the rejections location. Use
-   `git mv` so the rename is canonical in the index (a plain `mv`
-   followed by `git add` loses the rename through git's similarity
-   heuristic). Invoke via `subprocess.run` with an argv list, never a
-   shell string, so operator-controlled feature slugs cannot inject
-   shell metacharacters:
+   and the `research/` subtree — to the rejections location via the
+   dedicated helper (mirrors `active_to_shipped_mv.py`, the symmetric
+   shipped-side move):
 
-   ```python
-   from pathlib import Path
-   import subprocess, sys
-
-   rejections_root = Path(".etc_sdlc/rejections")
-   rejections_root.mkdir(parents=True, exist_ok=True)
-
-   target = rejections_root / f"F{nnn:03d}-{slug}"
-   result = subprocess.run(
-       ["git", "mv", str(feature_path), str(target)],
-       capture_output=True,
-       text=True,
-   )
-   if result.returncode != 0:
-       sys.stderr.write(
-           f"git mv failed: {feature_path} -> {target}\n"
-           f"git stderr: {result.stderr}"
-       )
-       sys.exit(1)
+   ```
+   python3 ~/.claude/scripts/reject_feature_mv.py --src <feature_path>
    ```
 
-   The `mkdir(parents=True, exist_ok=True)` call is race-safe and
-   creates the `.etc_sdlc/rejections/` parent the first time the
-   rejection flow ever fires. On `git mv` failure (target already
-   exists, git refuses for any reason), exit non-zero with a stderr
-   message that names the source path, the target path, and git's
-   stderr verbatim — no silent swallow. After this step the feature
-   directory lives at `.etc_sdlc/rejections/F<NNN>-<slug>/` and is no
-   longer under `.etc_sdlc/features/active/`.
+   The rejection target is `.etc_sdlc/rejections/<dir-name>` — the
+   directory NAME is the feature id in both grammars, so no id
+   re-formatting happens. The helper creates `.etc_sdlc/rejections/`
+   on first use, prefers `git mv` (so the rename is canonical in the
+   index), falls back to a filesystem move for gitignored feature dirs
+   (with a stderr note), and exits non-zero naming both paths if the
+   target already exists or git refuses — no silent swallow. (An
+   earlier inline snippet here built the target with a legacy
+   sequential-ID format string that crashed on date-form IDs; the
+   helper is the fix, and a contract test in
+   `tests/test_reject_feature_mv.py` pins that format string out of
+   every skill body.) After this step the feature directory lives
+   under `.etc_sdlc/rejections/` and is no longer under
+   `.etc_sdlc/features/active/`.
 
 5. Surface the rejection to the user using Pattern B (the visual
    marker), because the message is a status/error announcement, not a
-   question. Name the rejected file path and the next action:
+   question. Name the rejected file path AT ITS POST-MOVE LOCATION
+   (step 4 just moved it) and the next action:
 
    ```
 
    ---
 
    **▶ Action required:** PRD rejected. Answer the questions in
-   `.etc_sdlc/features/{slug}/rejected.md` and re-run `/spec {slug}`.
+   `.etc_sdlc/rejections/<feature_id>/rejected.md`, then re-run
+   `/spec` with your refined intent.
 
    ```
 
@@ -1669,12 +1657,14 @@ are explicitly N/A, not skipped).
 8. The Phase 5 output summary and the Post-Completion Guidance
    `AskUserQuestion` have been rendered to the user. Apply to all
    non-rejected paths.
-9. REJECTED PATH ONLY: `.etc_sdlc/features/{slug}/rejected.md` exists
+9. REJECTED PATH ONLY: `.etc_sdlc/rejections/<feature_id>/rejected.md`
+   exists (at the POST-move location — Rejection Flow step 4 moved the
+   directory out of `features/active/` via `reject_feature_mv.py`)
    with the layout defined in the Rejection Flow (`Reason`, threshold
    figures, unanswered questions, preserved research fills, next
    action). `spec.md` MUST NOT exist alongside `rejected.md` — the two
-   files are mutually exclusive and that exclusivity is how `/build`
-   Step 1a distinguishes a rejected feature from a build-ready one.
+   files are mutually exclusive, and the move out of `features/active/`
+   is what keeps rejected features off `/build`'s dispatch surface.
 
 If any applicable item is not satisfied, `/spec` is NOT done,
 regardless of how many phases reported internal success. Do not report
