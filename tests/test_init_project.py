@@ -1405,6 +1405,345 @@ class TestSkillMdContract:
         )
 
 
+# -- Task-009 workspace-mode prompt-contract tests (AC1, AC2) ----------------
+#
+# Workspace mode initializes a directory of N git repos: each repo gets a full
+# single-repo init+baseline, and the workspace gets ONE canonical seam map. As
+# with the rest of TestSkillMdContract, these greps cannot prove agent-runtime
+# behavior — but they turn "someone rewrites the workspace section and drops a
+# safety rail or the sync-seams call" from a silent regression into a caught
+# one. The covr failure (a two-repo system whose cross-repo contracts lived in
+# nobody's context) is exactly what the seam map exists to prevent.
+
+
+class TestWorkspaceModeContract:
+    """SKILL.md must encode the workspace-mode detection trichotomy, the
+    per-repo run loop, the canonical seam-map artifact, and the workspace
+    safety rails (Task-009 AC1 + AC2)."""
+
+    @pytest.fixture(scope="class")
+    def skill_md_text(self, compiled_skill_dir: Path) -> str:
+        return (compiled_skill_dir / "SKILL.md").read_text(encoding="utf-8")
+
+    @pytest.fixture(scope="class")
+    def workspace_section(self, skill_md_text: str) -> str:
+        """The top-level Workspace Mode section body (heading → next top-level
+        heading or EOF). All workspace-specific contract greps scope to here so
+        a stray mention elsewhere cannot satisfy the assertion."""
+        idx = skill_md_text.find("## Workspace Mode")
+        assert idx != -1, (
+            "SKILL.md is missing the top-level '## Workspace Mode' section "
+            "(Task-009) — multi-repo initialization is unreachable."
+        )
+        rest = skill_md_text[idx + len("## Workspace Mode") :]
+        next_heading = rest.find("\n## ")
+        if next_heading != -1:
+            rest = rest[:next_heading]
+        return rest
+
+    def test_should_carry_top_level_workspace_mode_section(
+        self, skill_md_text: str
+    ) -> None:
+        """AC1/AC2: a top-level '## Workspace Mode' section exists and is named
+        for multi-repo initialization so the capability is discoverable."""
+        idx = skill_md_text.find("## Workspace Mode")
+        assert idx != -1, (
+            "SKILL.md missing the '## Workspace Mode' top-level section "
+            "(Task-009)."
+        )
+        # The heading must signal multi-repo initialization, not be a bare
+        # 'Workspace Mode' that a reader could mistake for a flag.
+        heading_line = skill_md_text[idx : skill_md_text.find("\n", idx)].lower()
+        assert "multi-repo" in heading_line or "multi repo" in heading_line, (
+            "The Workspace Mode heading must name multi-repo initialization "
+            "(Task-009)."
+        )
+
+    def test_should_detect_workspace_shape_before_phase_1(
+        self, skill_md_text: str
+    ) -> None:
+        """AC1: a detection step at skill entry must run BEFORE Phase 1 so a
+        directory-of-repos is routed to workspace mode rather than being
+        treated as a single (non-)repo by Phase 1."""
+        idx_detect = skill_md_text.find("## Workspace Mode")
+        idx_phase_1 = skill_md_text.find("## Phase 1 -- Technical Scaffold")
+        assert idx_detect != -1 and idx_phase_1 != -1
+        assert idx_detect < idx_phase_1, (
+            "The Workspace Mode detection section must appear BEFORE Phase 1 in "
+            "the SKILL body so the invocation-directory shape is resolved at "
+            "entry, not after the single-repo flow has started (AC1)."
+        )
+
+    def test_should_detect_trichotomy_repo_vs_workspace_vs_greenfield(
+        self, workspace_section: str
+    ) -> None:
+        """AC1: the detection trichotomy must be fully spelled out — a git repo
+        runs the normal flow; a non-repo dir with ≥2 child repos offers
+        workspace mode; exactly 1 child repo degrades to single-repo with a
+        note; 0 repos is greenfield. All four arms are the contract."""
+        lowered = workspace_section.lower()
+
+        # Arm 1: the invocation dir is itself a git repo → normal single-repo flow.
+        assert "git repo" in lowered or "is a git repository" in lowered, (
+            "Detection must name the 'invocation dir IS a git repo → normal "
+            "flow' arm (AC1)."
+        )
+        # Arm 2: non-repo dir containing ≥2 child repos → offer workspace mode.
+        has_two_or_more = (
+            "≥2" in workspace_section
+            or ">=2" in workspace_section
+            or "two or more" in lowered
+            or "2 or more" in lowered
+            or "at least 2" in lowered
+            or "at least two" in lowered
+        )
+        assert has_two_or_more, (
+            "Detection must name the '≥2 immediate-child git repos → offer "
+            "workspace mode' arm (AC1)."
+        )
+        # Arm 3: exactly 1 child repo → degrade to single-repo with a note.
+        has_single_degrade = (
+            "exactly 1" in lowered
+            or "exactly one" in lowered
+            or "one repo" in lowered
+            or "one-repo" in lowered
+            or "single child" in lowered
+        )
+        assert has_single_degrade, (
+            "Detection must name the 'exactly 1 child repo → degrade to "
+            "single-repo with a note' arm (AC1)."
+        )
+        # The single-repo degrade must mention a NOTE (not silent).
+        assert "note" in lowered, (
+            "The one-repo degrade must be accompanied by a note, not a silent "
+            "fallthrough (AC1)."
+        )
+        # Arm 4: 0 repos → greenfield handling.
+        has_zero = (
+            "0 repos" in lowered
+            or "zero repos" in lowered
+            or "no repos" in lowered
+            or "0 child" in lowered
+        )
+        assert has_zero and "greenfield" in lowered, (
+            "Detection must name the '0 repos → greenfield' arm (AC1)."
+        )
+
+    def test_should_treat_monorepo_as_single_repo_not_workspace(
+        self, workspace_section: str
+    ) -> None:
+        """AC1: a multi-package single repo (monorepo) is NOT a workspace. The
+        discriminator is git-repo-boundary count, not package count — a
+        monorepo has one .git and must run the normal single-repo flow."""
+        lowered = workspace_section.lower()
+        assert "monorepo" in lowered, (
+            "Detection must explicitly distinguish a monorepo (multi-package "
+            "single repo) from a workspace (AC1)."
+        )
+        # The monorepo line must say it is NOT a workspace.
+        assert "not a workspace" in lowered or "not workspace" in lowered, (
+            "Detection must state a monorepo is NOT a workspace (AC1) — "
+            "otherwise a multi-package single repo wrongly fans out."
+        )
+
+    def test_should_offer_workspace_mode_via_pattern_a(
+        self, workspace_section: str
+    ) -> None:
+        """AC1: when ≥2 child repos are detected, workspace mode is OFFERED via
+        Pattern A (AskUserQuestion) — never auto-entered. The operator decides
+        whether to fan out across the whole directory."""
+        assert "AskUserQuestion" in workspace_section, (
+            "Workspace mode must be offered via Pattern A (AskUserQuestion), "
+            "not auto-entered (AC1)."
+        )
+
+    def test_should_enforce_workspace_safety_rails(
+        self, workspace_section: str
+    ) -> None:
+        """AC1: the three safety rails are verbatim contract — never crawl
+        upward, never follow symlinks out of the workspace, immediate children
+        only. A regression that drops any rail re-opens the directory-traversal
+        / symlink-escape surface the ADR-005 security note closed."""
+        lowered = workspace_section.lower()
+        assert "never crawl upward" in lowered, (
+            "Workspace mode must state it never crawls upward (AC1 safety rail)."
+        )
+        assert "never follow" in lowered and "symlink" in lowered, (
+            "Workspace mode must state it never follows symlinks out of the "
+            "workspace (AC1 safety rail)."
+        )
+        assert "immediate child" in lowered or "immediate-child" in lowered, (
+            "Workspace mode must enumerate immediate children only (AC1 safety "
+            "rail) — no recursive descent into nested repos."
+        )
+
+    def test_should_run_per_repo_init_and_baseline_loop_sequentially(
+        self, workspace_section: str
+    ) -> None:
+        """AC2: the run loop processes each child repo through the full
+        single-repo flow (Phases 1, 1.5, 2-4), and repos are processed
+        SEQUENTIALLY — one ratification session at a time, because human
+        attention (the matrix walk) is the bottleneck."""
+        lowered = workspace_section.lower()
+        # Each repo runs the full single-repo flow including the baseline phase.
+        assert "phase 1.5" in lowered or "baseline" in lowered, (
+            "The per-repo loop must run the architecture-baseline phase per "
+            "repo (AC2) — each repo's baseline must be complete standalone."
+        )
+        # Sequential processing (not parallel) — human attention is the
+        # bottleneck, one ratification session at a time.
+        assert "sequential" in lowered, (
+            "The per-repo loop must process repos sequentially (AC2) — one "
+            "ratification session at a time."
+        )
+        assert "one ratification session at a time" in lowered or (
+            "human attention" in lowered
+        ), (
+            "The sequential constraint must be justified by the "
+            "one-ratification-session-at-a-time / human-attention bottleneck "
+            "(AC2)."
+        )
+
+    def test_should_keep_each_repo_baseline_complete_standalone(
+        self, workspace_section: str
+    ) -> None:
+        """AC2: each repo's own baseline must remain complete standalone — a
+        solo-cloned repo keeps full context (the covr solo-clone blindness is
+        the failure this closes). The per-repo seam block is a regenerated
+        read-only mirror, not the canonical source."""
+        lowered = workspace_section.lower()
+        assert "standalone" in lowered or "self-contained" in lowered, (
+            "The workspace run must state each repo's baseline remains complete "
+            "standalone (AC2)."
+        )
+        assert "mirror" in lowered, (
+            "Per-repo seam blocks must be described as read-only mirrors of the "
+            "canonical workspace seam map (AC2)."
+        )
+
+    def test_should_write_one_canonical_seam_map_at_workspace_path(
+        self, workspace_section: str
+    ) -> None:
+        """AC2: exactly ONE canonical seam map lives at
+        <workspace>/.etc_workspace/seam-map.yaml — the single editable source
+        the per-repo mirrors derive from."""
+        assert ".etc_workspace/seam-map.yaml" in workspace_section, (
+            "The workspace run must name the canonical "
+            "<workspace>/.etc_workspace/seam-map.yaml path (AC2)."
+        )
+        lowered = workspace_section.lower()
+        assert "canonical" in lowered, (
+            "The seam map must be described as the single canonical artifact "
+            "(AC2) — there is exactly one per workspace."
+        )
+
+    def test_should_name_the_four_seam_kinds_and_owner_consumer_confidence(
+        self, workspace_section: str
+    ) -> None:
+        """AC2: the seam map records the four seam kinds (url-routing,
+        auth-session, data-schema, embed-loader), owner/consumer repos per seam,
+        and a workspace-level confidence score (ADR-005 schema)."""
+        for kind in (
+            "url-routing",
+            "auth-session",
+            "data-schema",
+            "embed-loader",
+        ):
+            assert kind in workspace_section, (
+                f"The seam map must record the '{kind}' seam kind (AC2)."
+            )
+        lowered = workspace_section.lower()
+        assert "owner" in lowered and "consumer" in lowered, (
+            "Each seam must carry owner/consumer repo assignment (AC2)."
+        )
+        assert "confidence" in lowered, (
+            "The seam map must carry a workspace-level confidence score (AC2)."
+        )
+
+    def test_should_reconcile_seams_via_pattern_a_b_owner_consumer(
+        self, workspace_section: str
+    ) -> None:
+        """AC2: after the per-repo loop, the per-repo seam findings are MERGED
+        into the canonical seam map via Pattern A/B reconciliation — owner /
+        consumer assignment per seam and a workspace confidence score."""
+        lowered = workspace_section.lower()
+        assert "merge" in lowered or "reconcil" in lowered, (
+            "The workspace run must merge/reconcile per-repo seam findings into "
+            "the canonical seam map (AC2)."
+        )
+        # The reconciliation is human-mediated via the interactive patterns.
+        assert "pattern a" in lowered or "pattern b" in lowered, (
+            "Seam reconciliation (owner/consumer assignment) must route through "
+            "Pattern A/B interactive input (AC2)."
+        )
+
+    def test_should_state_skill_writes_seam_map_via_write_tool_no_writer_subcommand(
+        self, workspace_section: str
+    ) -> None:
+        """AC2: baseline.py has NO seam-map writer subcommand (wave-2 added
+        sync-seams, which READS the map). So the skill writes the seam-map YAML
+        via the Write tool. The skill must state this boundary explicitly: the
+        seam map lives OUTSIDE any repo's .etc_sdlc, so the single-writer rule
+        (which covers architecture-baseline.yaml) does NOT cover this file."""
+        lowered = workspace_section.lower()
+        # The skill must name the Write-tool path for the seam map.
+        assert "write tool" in lowered or "write the seam-map" in lowered or (
+            "writes the seam-map" in lowered
+        ), (
+            "The workspace run must state the skill writes the seam-map YAML via "
+            "the Write tool, since baseline.py has no seam-map writer "
+            "subcommand (AC2)."
+        )
+        # The single-writer boundary must be stated explicitly.
+        assert "single-writer" in lowered or "single writer" in lowered, (
+            "The workspace run must explicitly state the single-writer-rule "
+            "boundary for the seam map (AC2)."
+        )
+        # The boundary: seam map lives OUTSIDE any repo's .etc_sdlc.
+        assert "outside" in lowered and ".etc_sdlc" in workspace_section, (
+            "The workspace run must state the seam map lives OUTSIDE any repo's "
+            ".etc_sdlc, so the single-writer rule does not cover it (AC2)."
+        )
+
+    def test_should_regenerate_mirrors_via_baseline_py_sync_seams(
+        self, workspace_section: str
+    ) -> None:
+        """AC2: after writing the canonical seam map, the skill runs
+        `baseline.py sync-seams <workspace_root>` to regenerate every repo's
+        read-only mirror. The ~/.claude/scripts/ prefix is required (Codex
+        path-rewrite depends on it verbatim)."""
+        assert "~/.claude/scripts/baseline.py sync-seams" in workspace_section, (
+            "The workspace run must call `baseline.py sync-seams "
+            "<workspace_root>` with the ~/.claude/scripts/ prefix to regenerate "
+            "per-repo mirrors (AC2, Codex path-rewrite)."
+        )
+        lowered = workspace_section.lower()
+        assert "mirror" in lowered, (
+            "sync-seams must be described as regenerating the per-repo "
+            "read-only mirrors (AC2)."
+        )
+
+    def test_should_order_write_then_sync_seams(
+        self, workspace_section: str
+    ) -> None:
+        """AC2: the seam map is WRITTEN (Write tool) BEFORE sync-seams runs —
+        sync-seams reads the map and regenerates mirrors, so a sync before the
+        write would mirror a stale or absent map."""
+        idx_write = -1
+        for needle in (".etc_workspace/seam-map.yaml",):
+            idx_write = workspace_section.find(needle)
+            if idx_write != -1:
+                break
+        idx_sync = workspace_section.find("sync-seams")
+        assert idx_write != -1 and idx_sync != -1
+        # The canonical-path first mention should precede the sync-seams call,
+        # establishing write-then-sync ordering in the prose.
+        assert idx_write < idx_sync, (
+            "The canonical seam-map write must be described BEFORE the "
+            "sync-seams call (AC2) — sync-seams reads the map to build mirrors."
+        )
+
+
 # -- install.sh integration: skill trees install correctly ------------------
 #
 # BR-011 requires compile-sdlc.py to copy skill subdirectories. The same

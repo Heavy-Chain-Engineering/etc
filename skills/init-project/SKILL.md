@@ -301,6 +301,156 @@ Parse the command for `--phase=<name>`:
 
 Unknown `--phase` values are a fatal error -- report the valid values and stop.
 
+## Workspace Mode -- multi-repo initialization
+
+Some teams clone several repos side by side under one parent directory — a
+two-repo product whose frontend and backend ship from different repos, a
+platform plus its SDKs, a constellation of services. The cross-repo contracts
+(who owns which URL routes, where the session is injected, whose schema the
+shared database follows, which repo loads whose embed bundle) live in *nobody's*
+single-repo context. That blindness is a verified client failure: a two-repo
+system "worked locally, broke in dev" precisely because routing/session/schema
+contracts lived in no one repo's baseline. Workspace mode fixes it: each repo
+gets a full, complete-standalone init+baseline, AND the workspace gets ONE
+canonical cross-repo seam map.
+
+### Detection at skill entry (BEFORE Phase 1)
+
+Before running any phase, inspect the **shape of the invocation directory**.
+This detection runs at entry so a directory-of-repos is routed to workspace mode
+rather than being mistaken for a single (non-)repo by Phase 1. Enumerate the
+invocation directory's **immediate children only** and branch on this trichotomy
+(four arms):
+
+| Invocation directory shape | Route |
+|---|---|
+| The invocation dir **is itself a git repo** (a `.git` at its root) | **Normal single-repo flow** — Phases 1, 1.5, 2-4 as documented below. A multi-package single repo (a **monorepo**: many packages, one `.git`) is **NOT a workspace** — it has one git-repo boundary, so it runs the normal single-repo flow. The discriminator is git-repo-boundary count, never package count. |
+| A **non-repo directory containing ≥2 immediate-child git repos** | **Offer workspace mode** via Pattern A (`AskUserQuestion`). On accept, run the Workspace Run loop below. On decline, fall back to treating the directory as a single (greenfield) target. |
+| A **non-repo directory containing exactly 1 child git repo** | **Degrade to single-repo flow** inside that one child, and emit a **note** that workspace mode was not entered (one repo is not a workspace; the seam map needs at least two repos to map a seam between). Never silently. |
+| A **non-repo directory containing 0 child git repos** | **Normal greenfield handling** — there is nothing to fan out over; run the single-repo flow at the invocation directory. |
+
+The offer (≥2 child repos) uses Pattern A so workspace mode is never
+auto-entered — the operator decides whether to fan out across the whole
+directory:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "This directory contains <N> git repos and is not itself a repo. Initialize all <N> as a workspace (per-repo baseline + one cross-repo seam map)?",
+    header: "Workspace mode",
+    multiSelect: false,
+    options: [
+      {
+        label: "Workspace mode (Recommended)",
+        description: "Init + architecture-baseline each repo, then build ONE <workspace>/.etc_workspace/seam-map.yaml mapping the cross-repo contracts (URL routing, session/auth, shared schema, embed loaders). Solo-cloned repos keep full context."
+      },
+      {
+        label: "Single repo only",
+        description: "Treat this directory as one greenfield target and run the normal flow here. No cross-repo seam map."
+      }
+    ]
+  }]
+)
+```
+
+### Safety rails (verbatim — never relax)
+
+Workspace enumeration is deliberately shallow and escape-proof
+(ADR-005 security note; the `.hook-markers` symlink-defense precedent):
+
+- **Never crawl upward.** Only the operator-named invocation directory is the
+  workspace root. Do not walk to its parent looking for more repos.
+- **Never follow symlinks out of the workspace.** A child entry that is a
+  symlink pointing outside the workspace root is skipped, not resolved and
+  initialized.
+- **Immediate children only.** Enumerate the direct children of the invocation
+  directory and check each for a `.git`. Do not descend recursively into nested
+  directories hunting for `.git` boundaries — a repo nested two levels down is
+  not a workspace member.
+
+### Workspace Run -- per-repo loop, then one canonical seam map
+
+When workspace mode is accepted, do this:
+
+**1. Per-repo init+baseline loop (SEQUENTIAL).** For each immediate-child git
+repo, in turn, run the **full single-repo flow** — Phase 1 (technical scaffold),
+Phase 1.5 (architecture baseline: DISCOVER → VERIFY → RATIFY → ENFORCE), and
+Phases 2-4 — exactly as documented below, with that repo as the repo root.
+Repos are processed **sequentially**, one at a time — **one ratification session
+at a time**, because **human attention** (the Phase 1.5 RATIFY matrix walk) is
+the bottleneck; parallel ratification walks would thrash the operator. After a
+repo finishes, its own `.etc_sdlc/architecture-baseline.yaml` is **complete
+standalone**: a teammate who later clones *just that repo* gets its full baseline
+with a read-only seam **mirror** — no workspace dependency, no solo-clone
+blindness. The DISCOVER step's `seams` surveyor (per repo) produces that repo's
+seam findings; keep each repo's seam findings in context for the merge below.
+
+**2. Merge the per-repo seam findings into ONE canonical seam map.** After every
+repo's single-repo flow has completed, **reconcile** the per-repo seam findings
+into the single canonical artifact at:
+
+```
+<workspace>/.etc_workspace/seam-map.yaml
+```
+
+This is the one canonical cross-repo seam map for the whole workspace (the
+single editable source; per-repo `seams:` blocks are regenerated mirrors of it).
+Reconciliation is human-mediated via the interactive patterns (Pattern A for the
+enumerable owner/consumer assignment, Pattern B for free-form contract/evidence
+notes): for each detected seam, assign the **owner** repo (who defines the
+contract) and the **consumer** repo(s) (who depend on it), and compute the
+workspace-level **confidence** score. A seam with no resolvable owner caps
+workspace confidence at LOW (ADR-005). The seam map records, per the ADR-005
+schema:
+
+```yaml
+schema_version: 1
+repos:
+  - {name: <repo>, path: <abs-or-workspace-relative path>}
+seams:
+  - id: WS-001
+    kind: url-routing        # closed enum: url-routing | auth-session | data-schema | embed-loader
+    owner_repo: <repo that defines the contract>
+    consumer_repos: [<repos that depend on it>]
+    contract: "<the cross-repo contract, in one line>"
+    evidence: "<file-level evidence; env-var NAMES only, never values>"
+confidence: low              # workspace-level: low | medium | high
+```
+
+The four seam **kinds** are the closed enum `url-routing | auth-session |
+data-schema | embed-loader` — exactly the covr contracts (stub-per-route URL
+ownership, window-global session injection, shared-DB schema, embed-bundle
+loader).
+
+**3. Write the seam map, then regenerate the mirrors.**
+
+> **Single-writer-rule boundary (state this explicitly).** `baseline.py` is the
+> single writer of the per-repo baseline format (`architecture-baseline.yaml`),
+> and it exposes **no seam-map writer subcommand** — wave 2 added `sync-seams`,
+> which **READS** `.etc_workspace/seam-map.yaml` and regenerates the per-repo
+> mirrors from it, but there is no `init-seam-map` / `write-seam-map` command. So
+> the skill **writes the seam-map YAML via the Write tool**. This is allowed
+> because the seam map lives **OUTSIDE** any repo's `.etc_sdlc` (it is under
+> `<workspace>/.etc_workspace/`): the single-writer rule covers each repo's
+> `architecture-baseline.yaml`, NOT the workspace seam file. Write the canonical
+> seam map first, THEN run `sync-seams` — `sync-seams` reads the map to build the
+> mirrors, so a sync before the write would mirror a stale or absent map.
+
+After writing the canonical seam map, regenerate every repo's read-only mirror:
+
+```
+python3 ~/.claude/scripts/baseline.py sync-seams <workspace_root>
+```
+
+`sync-seams` validates the seam map (exit 1 on a malformed map or an
+out-of-enum `kind` — a bad map never silently mirrors) and rewrites each repo's
+baseline `seams:` block as a read-only **mirror** filtered to the seams touching
+that repo, with a hand-edits-will-be-overwritten header. A non-zero exit is an
+infrastructure failure — STOP and report it; do not hand-edit the mirrors.
+
+After the loop and the sync, the workspace has: N complete-standalone per-repo
+baselines, ONE canonical seam map, and N regenerated read-only mirrors.
+
 ## Phase 1 -- Technical Scaffold (delegate to project-bootstrapper)
 
 **Goal:** install tooling, detect greenfield vs brownfield mode, produce the
