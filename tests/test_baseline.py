@@ -39,6 +39,7 @@ compose load + validate + atomic_dump.
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import subprocess
 import sys
@@ -229,6 +230,24 @@ class TestValidateSchema:
         good["ratified_at"] = "2026-06-11T00:00:00Z"
 
         bl.validate_schema(good)
+
+    def test_should_accept_optional_baseline_exempt_block(self, bl: ModuleType) -> None:
+        # wave-0 note: the `baseline-exempt` hatch is pinned as a top-level
+        # optional field {reason: non-empty str, recorded_at: ISO8601}.
+        good = _valid_baseline()
+        good["baseline_exempt"] = {
+            "reason": "monorepo edge declared out of scope",
+            "recorded_at": "2026-06-11T00:00:00Z",
+        }
+
+        bl.validate_schema(good)
+
+    def test_should_raise_when_baseline_exempt_reason_is_empty(self, bl: ModuleType) -> None:
+        bad = _valid_baseline()
+        bad["baseline_exempt"] = {"reason": "", "recorded_at": "2026-06-11T00:00:00Z"}
+
+        with pytest.raises(ValueError, match="baseline_exempt"):
+            bl.validate_schema(bad)
 
     def test_should_raise_when_schema_version_is_not_an_integer(
         self, bl: ModuleType, tmp_path: Path
@@ -588,3 +607,620 @@ class TestAtomicDump:
         assert path.read_text(encoding="utf-8") == original
         leftovers = [p.name for p in tmp_path.iterdir() if p.name != path.name]
         assert leftovers == [], f"temp debris left behind: {leftovers}"
+
+
+# ── task-002 AC-1: init (build an unratified baseline from engine output) ───
+
+
+def _discover_payload() -> dict:
+    """A merged DISCOVER+VERIFY engine output (the `init --from` input).
+
+    Mirrors the surveyor fan-out contract (design.md API Contracts §4): the
+    conductor merges per-artifact / per-concern / per-repo `findings` into one
+    JSON object whose keys map to baseline fields. `init` turns this into an
+    unratified baseline.
+    """
+    return {
+        "confidence": {
+            "score": "medium",
+            "inputs": {
+                "competing_pattern_concerns": 2,
+                "claims": {
+                    "verified": 2,
+                    "stale": 1,
+                    "aspirational": 0,
+                    "contradicted": 0,
+                },
+                "unresolved_seams": 1,
+                "stalled_migration_signals": 0,
+            },
+        },
+        "inventory": [
+            {
+                "path": "docs/folder-structure.md",
+                "type": "convention-doc",
+                "last_modified": "2025-11-04",
+            }
+        ],
+        "claims": [
+            {
+                "id": "CL-001",
+                "source": "docs/folder-structure.md",
+                "claim": "Data-access libs live at libs/<scope>/data-access",
+                "classification": "VERIFIED",
+                "evidence": "libs/people/data-access exists",
+                "resolution": None,
+            },
+            {
+                "id": "CL-002",
+                "source": "docs/folder-structure.md",
+                "claim": "All UI is server-rendered",
+                "classification": "STALE",
+                "evidence": "libs/insights ships a SPA",
+                "resolution": None,
+            },
+        ],
+        "exemplars": [
+            {
+                "name": "people",
+                "paths": ["libs/people"],
+                "applies_to": "new full-stack admin features",
+                "blessed_by": None,
+            }
+        ],
+        "do_not_copy": [
+            {
+                "path": "libs/insights-legacy-ui",
+                "reason": "superseded generation",
+            }
+        ],
+        "seams": [
+            {
+                "id": "SM-001",
+                "signal": "env-var-loaded remote frontend (REACT_*_APP)",
+                "external_owner": "<boundary-unknown>",
+                "resolution": "boundary-unknown",
+            }
+        ],
+    }
+
+
+def _write_discover_json(tmp_path: Path, payload: dict) -> Path:
+    """Write a merged engine-output JSON file and return its path."""
+    discover_path = tmp_path / "discover.json"
+    discover_path.write_text(json.dumps(payload), encoding="utf-8")
+    return discover_path
+
+
+class TestInit:
+    """`init <repo_root> --from <discover-json>` builds an unratified baseline."""
+
+    def test_should_create_unratified_baseline_from_engine_output(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        discover = _write_discover_json(tmp_path, _discover_payload())
+
+        baseline_path = bl.init_baseline(repo_root, discover)
+
+        written = bl.load(baseline_path)
+        assert written["status"] == "unratified"
+        assert written["ratified_by"] is None
+        assert written["ratified_at"] is None
+        assert written["schema_version"] == bl.SCHEMA_VERSION
+
+    def test_should_populate_all_engine_sections_from_merged_output(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        discover = _write_discover_json(tmp_path, _discover_payload())
+
+        baseline_path = bl.init_baseline(repo_root, discover)
+
+        written = bl.load(baseline_path)
+        assert written["confidence"]["score"] == "medium"
+        assert [c["id"] for c in written["claims"]] == ["CL-001", "CL-002"]
+        assert written["inventory"][0]["path"] == "docs/folder-structure.md"
+        assert written["exemplars"][0]["name"] == "people"
+        assert written["seams"][0]["id"] == "SM-001"
+
+    def test_should_write_baseline_at_canonical_relative_path(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        discover = _write_discover_json(tmp_path, _discover_payload())
+
+        baseline_path = bl.init_baseline(repo_root, discover)
+
+        assert baseline_path == repo_root / bl.BASELINE_RELATIVE_PATH
+
+    def test_should_start_rules_empty_at_init(self, bl: ModuleType, tmp_path: Path) -> None:
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        discover = _write_discover_json(tmp_path, _discover_payload())
+
+        baseline_path = bl.init_baseline(repo_root, discover)
+
+        assert bl.load(baseline_path)["rules"] == []
+
+    def test_should_accept_empty_inventory_as_valid(self, bl: ModuleType, tmp_path: Path) -> None:
+        # AC-1: "empty inventory is valid" (the no-docs fixture / greenfield).
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        payload = _discover_payload()
+        payload["inventory"] = []
+        payload["claims"] = []
+        discover = _write_discover_json(tmp_path, payload)
+
+        baseline_path = bl.init_baseline(repo_root, discover)
+
+        written = bl.load(baseline_path)
+        assert written["inventory"] == []
+        assert written["status"] == "unratified"
+
+    def test_should_sanitize_freeform_claim_text_at_capture(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # Discovered content is untrusted: control chars stripped at the
+        # capture site (Security Considerations).
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        payload = _discover_payload()
+        payload["claims"][0]["claim"] = "dirty\x00claim\x1ftext"
+        discover = _write_discover_json(tmp_path, payload)
+
+        baseline_path = bl.init_baseline(repo_root, discover)
+
+        assert bl.load(baseline_path)["claims"][0]["claim"] == "dirtyclaimtext"
+
+    def test_should_raise_when_engine_output_yields_invalid_baseline(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        payload = _discover_payload()
+        payload["confidence"]["score"] = "stratospheric"
+        discover = _write_discover_json(tmp_path, payload)
+
+        with pytest.raises(ValueError, match="confidence"):
+            bl.init_baseline(repo_root, discover)
+
+
+class TestInitSubcommand:
+    """`baseline.py init` end-to-end: prints the baseline path, exit codes."""
+
+    def test_should_print_baseline_path_and_exit_zero_from_unrelated_cwd(
+        self, tmp_path: Path
+    ) -> None:
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        discover = _write_discover_json(tmp_path, _discover_payload())
+        alien_cwd = tmp_path / "elsewhere"
+        alien_cwd.mkdir()
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "init",
+                str(repo_root),
+                "--from",
+                str(discover),
+            ],
+            cwd=alien_cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"expected exit 0; got {result.returncode}; stderr={result.stderr!r}"
+        )
+        expected = str(repo_root / Path(".etc_sdlc") / "architecture-baseline.yaml")
+        assert result.stdout.strip() == expected
+
+    def test_should_exit_one_when_discover_json_missing(self, tmp_path: Path) -> None:
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "init",
+                str(repo_root),
+                "--from",
+                str(tmp_path / "nope.json"),
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1
+
+
+# ── task-002 AC-2: ratify (one-way unratified -> ratified transition) ────────
+
+
+def _ready_to_ratify(tmp_path: Path, *, all_verified: bool = True) -> Path:
+    """Write an unratified baseline at the canonical path; return that path.
+
+    With ``all_verified`` the single claim is VERIFIED (ratify should succeed);
+    otherwise it carries a non-VERIFIED claim with no resolution (ratify should
+    block with a CL-NNN line).
+    """
+    baseline = _valid_baseline()
+    if not all_verified:
+        baseline["claims"].append(
+            {
+                "id": "CL-009",
+                "source": "docs/folder-structure.md",
+                "claim": "All UI is server-rendered",
+                "classification": "STALE",
+                "evidence": "libs/insights ships a SPA",
+                "resolution": None,
+            }
+        )
+    return _write_baseline(tmp_path, baseline)
+
+
+class TestRatify:
+    """One-way unratified -> ratified transition with the resolution gate."""
+
+    def test_should_transition_to_ratified_when_all_claims_resolved(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _ready_to_ratify(tmp_path, all_verified=True)
+
+        bl.ratify(path, ratified_by="jason")
+
+        written = bl.load(path)
+        assert written["status"] == "ratified"
+
+    def test_should_set_attestation_fields_on_ratification(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _ready_to_ratify(tmp_path, all_verified=True)
+
+        bl.ratify(path, ratified_by="jason")
+
+        written = bl.load(path)
+        assert written["ratified_by"] == "jason"
+        assert written["ratified_at"] is not None
+
+    def test_should_sanitize_ratified_by_name_at_capture(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _ready_to_ratify(tmp_path, all_verified=True)
+
+        bl.ratify(path, ratified_by="ja\x00son\x7f")
+
+        assert bl.load(path)["ratified_by"] == "jason"
+
+    def test_should_raise_when_non_verified_claim_lacks_resolution(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _ready_to_ratify(tmp_path, all_verified=False)
+
+        with pytest.raises(bl.RatificationBlockedError) as excinfo:
+            bl.ratify(path, ratified_by="jason")
+
+        assert "CL-009" in str(excinfo.value)
+
+    def test_should_succeed_when_non_verified_claim_has_resolution(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        baseline = _valid_baseline()
+        baseline["claims"].append(
+            {
+                "id": "CL-009",
+                "source": "docs/folder-structure.md",
+                "claim": "All UI is server-rendered",
+                "classification": "STALE",
+                "evidence": "libs/insights ships a SPA",
+                "resolution": {"action": "supersede", "rationale": "SPA is current"},
+            }
+        )
+        path = _write_baseline(tmp_path, baseline)
+
+        bl.ratify(path, ratified_by="jason")
+
+        assert bl.load(path)["status"] == "ratified"
+
+    def test_should_reject_re_ratifying_an_already_ratified_baseline(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _ready_to_ratify(tmp_path, all_verified=True)
+        bl.ratify(path, ratified_by="jason")
+
+        # One-way state machine: ratified -> ratified is not a legal source.
+        with pytest.raises(ValueError, match="transition"):
+            bl.ratify(path, ratified_by="someone-else")
+
+    def test_should_not_write_when_ratification_blocked(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _ready_to_ratify(tmp_path, all_verified=False)
+        before = path.read_text(encoding="utf-8")
+
+        with pytest.raises(bl.RatificationBlockedError):
+            bl.ratify(path, ratified_by="jason")
+
+        assert path.read_text(encoding="utf-8") == before
+
+
+class TestRatifySubcommand:
+    """`baseline.py ratify <path> --by <name>` exit-code + stderr contract."""
+
+    def test_should_exit_zero_and_ratify_from_unrelated_cwd(self, tmp_path: Path) -> None:
+        path = _ready_to_ratify(tmp_path / "repo", all_verified=True)
+        alien_cwd = tmp_path / "elsewhere"
+        alien_cwd.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "ratify", str(path), "--by", "jason"],
+            cwd=alien_cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"expected exit 0; got {result.returncode}; stderr={result.stderr!r}"
+        )
+        assert yaml.safe_load(path.read_text(encoding="utf-8"))["status"] == "ratified"
+
+    def test_should_exit_two_and_list_cl_lines_when_claims_unresolved(self, tmp_path: Path) -> None:
+        path = _ready_to_ratify(tmp_path / "repo", all_verified=False)
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "ratify", str(path), "--by", "jason"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 2, (
+            f"expected exit 2 on unresolved claims; got {result.returncode}; "
+            f"stderr={result.stderr!r}"
+        )
+        # one 'CL-NNN: <reason>' per line on stderr
+        cl_lines = [ln for ln in result.stderr.splitlines() if ln.startswith("CL-009:")]
+        assert len(cl_lines) == 1, f"expected one CL-009 line; got {result.stderr!r}"
+
+    def test_should_exit_one_when_baseline_file_missing(self, tmp_path: Path) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "ratify",
+                str(tmp_path / "nope.yaml"),
+                "--by",
+                "jason",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1
+
+
+class TestNoDeRatifyCapability:
+    """Negative-capability: the one-way transition has no escape hatch.
+
+    Security Considerations: "there is deliberately no de-ratify command
+    (negative-capability test)." This pins the absence so a future edit that
+    adds one fails loudly.
+    """
+
+    def test_should_not_expose_a_de_ratify_subcommand(self, tmp_path: Path) -> None:
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "de-ratify", str(tmp_path)],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode != 0
+        assert "invalid choice" in result.stderr or "de-ratify" not in result.stdout
+
+    def test_should_not_define_any_de_ratify_helper(self, bl: ModuleType) -> None:
+        forbidden = ("de_ratify", "deratify", "unratify", "un_ratify", "revoke_ratification")
+        present = [name for name in forbidden if hasattr(bl, name)]
+        assert present == [], f"de-ratify capability leaked: {present}"
+
+    def test_should_only_permit_the_one_way_transition(self, bl: ModuleType) -> None:
+        # The state machine mirrors value_hypothesis._LEGAL_TRANSITIONS: a
+        # single legal edge, no reverse, no self-loop.
+        assert bl.LEGAL_TRANSITIONS == frozenset({("unratified", "ratified")})
+
+
+# ── task-002 AC-3: append-rule (atomic accrual on a ratified baseline) ───────
+
+
+class TestAppendRule:
+    """`append-rule` accrues an R-NNN rule without reopening ratification."""
+
+    def _ratified(self, bl: ModuleType, tmp_path: Path) -> Path:
+        path = _ready_to_ratify(tmp_path, all_verified=True)
+        bl.ratify(path, ratified_by="jason")
+        return path
+
+    def test_should_append_rule_with_sequential_id(self, bl: ModuleType, tmp_path: Path) -> None:
+        path = self._ratified(bl, tmp_path)
+
+        rule_id = bl.append_rule(
+            path,
+            statement="DTOs live in libs/contracts",
+            who="jason",
+            trigger="ratification session",
+        )
+
+        assert rule_id == "R-001"
+        assert bl.load(path)["rules"][0]["id"] == "R-001"
+
+    def test_should_increment_rule_id_across_appends(self, bl: ModuleType, tmp_path: Path) -> None:
+        path = self._ratified(bl, tmp_path)
+        bl.append_rule(path, statement="first", who="jason", trigger="t1")
+
+        second = bl.append_rule(path, statement="second", who="jason", trigger="t2")
+
+        assert second == "R-002"
+        assert [r["id"] for r in bl.load(path)["rules"]] == ["R-001", "R-002"]
+
+    def test_should_record_provenance_who_when_trigger(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = self._ratified(bl, tmp_path)
+
+        bl.append_rule(path, statement="rule", who="jason", trigger="ratification session")
+
+        prov = bl.load(path)["rules"][0]["provenance"]
+        assert prov["who"] == "jason"
+        assert prov["trigger"] == "ratification session"
+        assert prov["when"] is not None
+
+    def test_should_default_mechanizable_false_and_enforced_by_human_judgment(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = self._ratified(bl, tmp_path)
+
+        bl.append_rule(path, statement="rule", who="jason", trigger="t")
+
+        rule = bl.load(path)["rules"][0]
+        assert rule["mechanizable"] is False
+        assert rule["enforced_by"] == "human-judgment"
+
+    def test_should_mark_mechanizable_when_requested(self, bl: ModuleType, tmp_path: Path) -> None:
+        path = self._ratified(bl, tmp_path)
+
+        bl.append_rule(path, statement="rule", who="jason", trigger="t", mechanizable=True)
+
+        assert bl.load(path)["rules"][0]["mechanizable"] is True
+
+    def test_should_sanitize_rule_statement_at_capture(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = self._ratified(bl, tmp_path)
+
+        bl.append_rule(path, statement="di\x00rty\x1f", who="jason", trigger="t")
+
+        assert bl.load(path)["rules"][0]["statement"] == "dirty"
+
+    def test_should_not_reopen_ratification_when_appending(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # AC-3: works on a ratified baseline without reopening ratification.
+        path = self._ratified(bl, tmp_path)
+
+        bl.append_rule(path, statement="rule", who="jason", trigger="t")
+
+        written = bl.load(path)
+        assert written["status"] == "ratified"
+        assert written["ratified_by"] == "jason"
+
+    def test_should_append_on_an_unratified_baseline_too(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # Rules accrete in both states; ratification is orthogonal to accrual.
+        path = _ready_to_ratify(tmp_path, all_verified=True)
+
+        bl.append_rule(path, statement="rule", who="jason", trigger="t")
+
+        written = bl.load(path)
+        assert written["status"] == "unratified"
+        assert written["rules"][0]["id"] == "R-001"
+
+
+class TestAppendRuleSubcommand:
+    """`baseline.py append-rule … ` prints R-NNN and exits 0; atomic."""
+
+    def test_should_print_rule_id_and_exit_zero_from_unrelated_cwd(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _ready_to_ratify(tmp_path / "repo", all_verified=True)
+        bl.ratify(path, ratified_by="jason")
+        alien_cwd = tmp_path / "elsewhere"
+        alien_cwd.mkdir()
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "append-rule",
+                str(path),
+                "--statement",
+                "DTOs live in libs/contracts",
+                "--who",
+                "jason",
+                "--trigger",
+                "ratification session",
+            ],
+            cwd=alien_cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"expected exit 0; got {result.returncode}; stderr={result.stderr!r}"
+        )
+        assert result.stdout.strip() == "R-001"
+
+    def test_should_set_mechanizable_flag_via_cli(self, tmp_path: Path) -> None:
+        path = _ready_to_ratify(tmp_path / "repo", all_verified=True)
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "append-rule",
+                str(path),
+                "--statement",
+                "DTOs live in libs/contracts",
+                "--who",
+                "jason",
+                "--trigger",
+                "t",
+                "--mechanizable",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        rule = yaml.safe_load(path.read_text(encoding="utf-8"))["rules"][0]
+        assert rule["mechanizable"] is True
+
+    def test_should_exit_one_when_baseline_file_missing(self, tmp_path: Path) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "append-rule",
+                str(tmp_path / "nope.yaml"),
+                "--statement",
+                "x",
+                "--who",
+                "jason",
+                "--trigger",
+                "t",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1

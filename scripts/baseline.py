@@ -28,16 +28,20 @@ returns None, logs a WARNING) per contract-completeness ADR-002. All writes
 are atomic (tempfile + ``os.replace``); free-form strings are sanitized at
 the capture site (strip ``[\\x00-\\x1f\\x7f]``, length-cap).
 
-Public surface (the contract later waves — init / ratify / append-rule /
-render-doc / sync-seams — compose):
+Public surface (later waves — render-doc / sync-seams — compose these):
     SCHEMA_VERSION, REQUIRED_FIELDS
     LEGAL_STATUSES, LEGAL_CLASSIFICATIONS, LEGAL_CONFIDENCE_SCORES
+    LEGAL_TRANSITIONS (one-way unratified -> ratified; no inverse exists)
     NAME_MAX_LEN, FREEFORM_MAX_LEN, BASELINE_RELATIVE_PATH
+    RatificationBlockedError
     load(path) -> dict | None
     validate_schema(d) -> None
     status_token(repo_root) -> str
     sanitize_freeform(value, *, max_len) -> str
     atomic_dump(path, data) -> None
+    init_baseline(repo_root, discover_json) -> Path
+    ratify(path, *, ratified_by) -> None
+    append_rule(path, *, statement, who, trigger, mechanizable=False) -> str
 
 CLI exit codes (house style per GA-A06): 0 = success, 1 = could-not-evaluate
 (usage/IO/missing/malformed-for-status), 2 = domain failure (schema
@@ -48,10 +52,12 @@ callers branch on the TOKEN, never the code.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -77,8 +83,11 @@ REQUIRED_FIELDS: tuple[str, ...] = (
 
 # Optional top-level fields: present in RATIFY output, absent in a fresh
 # unratified baseline. Listed so the reject-unknown check does not flag them.
+# ``baseline_exempt`` is the operator escape hatch (the GA-A04 ``unratified``
+# hard-block release valve): a repo declared out of baseline scope. Its
+# presence is consumed by the gate; this module only validates its shape.
 _OPTIONAL_FIELDS: frozenset[str] = frozenset(
-    {"ratified_by", "ratified_at", "exemplars", "do_not_copy"}
+    {"ratified_by", "ratified_at", "exemplars", "do_not_copy", "baseline_exempt"}
 )
 
 _KNOWN_FIELDS: frozenset[str] = frozenset(REQUIRED_FIELDS) | _OPTIONAL_FIELDS
@@ -90,6 +99,18 @@ LEGAL_CLASSIFICATIONS: frozenset[str] = frozenset(
     {"VERIFIED", "STALE", "ASPIRATIONAL", "CONTRADICTED"}
 )
 LEGAL_CONFIDENCE_SCORES: frozenset[str] = frozenset({"low", "medium", "high"})
+
+# The one-way ratification state machine. Mirrors the
+# value_hypothesis._LEGAL_TRANSITIONS precedent (a frozenset of legal edges):
+# the single legal edge with no reverse and no self-loop is what makes
+# de-ratification structurally impossible — there is deliberately no inverse
+# function (negative-capability test in tests/test_baseline.py).
+LEGAL_TRANSITIONS: frozenset[tuple[str, str]] = frozenset({("unratified", "ratified")})
+
+# Rule defaults (design.md Data Model + layered-review ADR-004 graduation
+# metadata). A freshly appended rule is human-judgment-enforced and not yet a
+# mechanization candidate; /rule-sweep flips ``mechanizable`` as rules graduate.
+_DEFAULT_ENFORCED_BY: str = "human-judgment"
 
 # Sanitization caps (Security Considerations / design Data Model): names are
 # capped tighter than general free-form prose.
@@ -104,6 +125,21 @@ _CONTROL_CHAR_TRANSLATION: dict[int, None] = {code: None for code in (*range(0x0
 # computed (never stored); `unratified`/`ratified` mirror the stored enum.
 _STATUS_MISSING: str = "missing"
 _STATUS_MALFORMED: str = "malformed"
+
+
+class RatificationBlockedError(Exception):
+    """Raised when ``ratify`` cannot proceed: a non-VERIFIED claim is unresolved.
+
+    This is an expected domain failure (the matrix-walk forcing function found
+    an empty cell), not an infrastructure error — callers surface its
+    ``blocking_claims`` as one ``CL-NNN: <reason>`` line each and exit 2. The
+    message embeds the same lines so a bare ``str(exc)`` is already useful.
+    """
+
+    def __init__(self, blocking_claims: list[tuple[str, str]]) -> None:
+        self.blocking_claims = blocking_claims
+        body = "; ".join(f"{claim_id}: {reason}" for claim_id, reason in blocking_claims)
+        super().__init__(f"ratification blocked by unresolved claim(s): {body}")
 
 
 def sanitize_freeform(value: str, *, max_len: int) -> str:
@@ -217,6 +253,7 @@ def validate_schema(d: object) -> None:
     _validate_ratified_attestation(d)
     _validate_confidence(d["confidence"])
     _validate_claims(d["claims"])
+    _validate_baseline_exempt(d.get("baseline_exempt"))
 
 
 def _validate_status_enum(status: Any) -> None:
@@ -285,6 +322,28 @@ def _validate_claims(claims: Any) -> None:
                 f"{sorted(LEGAL_CLASSIFICATIONS)}"
             )
             raise ValueError(msg)
+
+
+def _validate_baseline_exempt(exempt: Any) -> None:
+    """Enforce the optional ``baseline_exempt`` block's shape when present.
+
+    The hatch is ``{reason: <non-empty str>, recorded_at: <ISO-8601 str>}``
+    (wave-0 pin). Absent is fine; present-but-malformed (non-mapping, empty
+    reason) is a schema violation. ``status_token`` deliberately does NOT
+    reinterpret an exempt baseline — it still returns the stored status; the
+    gate consumer decides what exempt means.
+    """
+    if exempt is None:
+        return
+    if not isinstance(exempt, dict):
+        msg = (
+            f"architecture-baseline baseline_exempt must be a mapping; got {type(exempt).__name__}"
+        )
+        raise ValueError(msg)
+    reason = exempt.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        msg = "architecture-baseline baseline_exempt.reason must be a non-empty string"
+        raise ValueError(msg)
 
 
 def status_token(repo_root: Path) -> str:
@@ -375,6 +434,228 @@ def _unlink_quietly(path: Path) -> None:
         pass
 
 
+# ── Lifecycle: init / ratify / append-rule ──────────────────────────────
+#
+# These compose the wave-0 primitives (load + validate_schema + atomic_dump +
+# sanitize_freeform) into the three baseline state transitions. They are the
+# in-process contract; the CLI subcommands below are thin wrappers that map
+# them to the house exit-code semantics.
+
+
+# DISCOVER+VERIFY engine sections the merged output may carry. Each maps 1:1
+# to a baseline field; absent sections default to empty (an empty inventory is
+# a valid baseline — the no-docs / greenfield fixture).
+_ENGINE_LIST_SECTIONS: tuple[str, ...] = (
+    "inventory",
+    "claims",
+    "exemplars",
+    "do_not_copy",
+    "seams",
+)
+
+
+def init_baseline(repo_root: Path, discover_json: Path) -> Path:
+    """Build an unratified baseline from merged DISCOVER+VERIFY engine output.
+
+    Reads ``discover_json`` (the conductor's merged surveyor ``findings``),
+    assembles the canonical unratified baseline, sanitizes free-form claim text
+    at the capture site, validates the schema, and atomically writes it to
+    ``<repo_root>/.etc_sdlc/architecture-baseline.yaml``.
+
+    Args:
+        repo_root: The target repository root.
+        discover_json: Path to the merged engine-output JSON.
+
+    Returns:
+        The path the baseline was written to.
+
+    Raises:
+        ValueError: If ``discover_json`` is missing/unreadable, is not a JSON
+            mapping, or yields a baseline that violates the schema.
+    """
+    payload = _read_discover_json(discover_json)
+    baseline = _assemble_unratified_baseline(payload)
+    validate_schema(baseline)
+
+    baseline_path = repo_root / BASELINE_RELATIVE_PATH
+    atomic_dump(baseline_path, baseline)
+    return baseline_path
+
+
+def _read_discover_json(discover_json: Path) -> dict[str, Any]:
+    """Read and shape-check the merged engine-output JSON file."""
+    if not discover_json.exists():
+        msg = f"discover-json file not found: {discover_json}"
+        raise ValueError(msg)
+    try:
+        parsed = json.loads(discover_json.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        msg = f"malformed JSON in {discover_json}: {exc}"
+        raise ValueError(msg) from exc
+    if not isinstance(parsed, dict):
+        msg = f"discover-json at {discover_json} must be a JSON object; got {type(parsed).__name__}"
+        raise ValueError(msg)
+    return parsed
+
+
+def _assemble_unratified_baseline(payload: dict[str, Any]) -> dict[str, Any]:
+    """Map merged engine output onto the canonical unratified baseline shape."""
+    baseline: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "status": "unratified",
+        "ratified_by": None,
+        "ratified_at": None,
+        "confidence": payload.get("confidence", {"score": "low", "inputs": {}}),
+    }
+    for section in _ENGINE_LIST_SECTIONS:
+        baseline[section] = list(payload.get(section) or [])
+    # Rules accrue post-init via append-rule; never seeded from discovery.
+    baseline["rules"] = []
+    _sanitize_claim_text(baseline["claims"])
+    return baseline
+
+
+def _sanitize_claim_text(claims: list[Any]) -> None:
+    """Strip control chars / cap length on each claim's free-form ``claim``.
+
+    Discovered claim text is untrusted input (Security Considerations); clean
+    it at the capture site so only sanitized text ever reaches agent context.
+    """
+    for claim in claims:
+        if isinstance(claim, dict) and isinstance(claim.get("claim"), str):
+            claim["claim"] = sanitize_freeform(claim["claim"], max_len=FREEFORM_MAX_LEN)
+
+
+def ratify(path: Path, *, ratified_by: str) -> None:
+    """Perform the one-way unratified -> ratified transition on a baseline.
+
+    Enforces the matrix-walk forcing function: every non-VERIFIED claim must
+    carry a non-null ``resolution`` before ratification succeeds. On success
+    the attestation fields are set (name sanitized, UTC ISO-8601 timestamp) and
+    the file is atomically rewritten. This function's contract is pure
+    transition + attestation; rendering ARCHITECTURE.md is wired in by the
+    wave-2 render-doc task, not here.
+
+    Args:
+        path: Path to the baseline YAML.
+        ratified_by: Operator attestation name (sanitized, 64-char cap).
+
+    Raises:
+        ValueError: If the file is missing/malformed, or the current status is
+            not a legal source for the unratified -> ratified edge (e.g. an
+            already-ratified baseline).
+        RatificationBlockedError: If any non-VERIFIED claim lacks a resolution.
+    """
+    baseline = _load_existing(path)
+
+    current = baseline["status"]
+    if (current, "ratified") not in LEGAL_TRANSITIONS:
+        msg = (
+            f"illegal ratification transition {current!r} -> 'ratified'; "
+            "only unratified -> ratified is permitted (one-way)"
+        )
+        raise ValueError(msg)
+
+    blocking = _unresolved_non_verified_claims(baseline["claims"])
+    if blocking:
+        raise RatificationBlockedError(blocking)
+
+    baseline["status"] = "ratified"
+    baseline["ratified_by"] = sanitize_freeform(ratified_by, max_len=NAME_MAX_LEN)
+    baseline["ratified_at"] = _utc_now_iso()
+    atomic_dump(path, baseline)
+
+
+def _unresolved_non_verified_claims(claims: list[Any]) -> list[tuple[str, str]]:
+    """Return ``(claim_id, reason)`` for each non-VERIFIED claim with no resolution.
+
+    A VERIFIED claim never needs a resolution (it entered tier-0 silently); any
+    other classification must be reason-dismissed at the matrix walk, recorded
+    as a non-null ``resolution``. The reason text is the gate message body.
+    """
+    blocking: list[tuple[str, str]] = []
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        if claim.get("classification") == "VERIFIED":
+            continue
+        if claim.get("resolution") is None:
+            claim_id = str(claim.get("id", "CL-???"))
+            reason = f"{claim.get('classification', 'non-VERIFIED')} claim has no resolution"
+            blocking.append((claim_id, reason))
+    return blocking
+
+
+def append_rule(
+    path: Path,
+    *,
+    statement: str,
+    who: str,
+    trigger: str,
+    mechanizable: bool = False,
+) -> str:
+    """Atomically append an R-NNN rule; return its id.
+
+    Rules accrue independently of ratification — this works on a ratified
+    baseline without reopening it, and on an unratified one too (status is
+    never touched here). The new rule carries provenance ``{who, when,
+    trigger}``, the ``mechanizable`` graduation flag, and ``enforced_by``
+    defaulting to ``human-judgment``. All free-form fields are sanitized at
+    capture.
+
+    Args:
+        path: Path to the baseline YAML.
+        statement: The rule statement (sanitized, free-form cap).
+        who: Provenance author (sanitized, name cap).
+        trigger: Provenance trigger (sanitized, free-form cap).
+        mechanizable: Whether the rule is a baseline-verify graduation candidate.
+
+    Returns:
+        The newly assigned rule id, ``R-NNN``.
+
+    Raises:
+        ValueError: If the file is missing or malformed.
+    """
+    baseline = _load_existing(path)
+    rules = baseline.setdefault("rules", [])
+
+    rule_id = f"R-{len(rules) + 1:03d}"
+    rules.append(
+        {
+            "id": rule_id,
+            "statement": sanitize_freeform(statement, max_len=FREEFORM_MAX_LEN),
+            "provenance": {
+                "who": sanitize_freeform(who, max_len=NAME_MAX_LEN),
+                "when": _utc_now_iso(),
+                "trigger": sanitize_freeform(trigger, max_len=FREEFORM_MAX_LEN),
+            },
+            "mechanizable": mechanizable,
+            "enforced_by": _DEFAULT_ENFORCED_BY,
+        }
+    )
+    atomic_dump(path, baseline)
+    return rule_id
+
+
+def _load_existing(path: Path) -> dict[str, Any]:
+    """Load a baseline that must already exist and parse cleanly.
+
+    Wraps ``load`` to reject the warn-and-skip ``None`` (future schema_version)
+    as a hard error — a mutator cannot safely rewrite a file it cannot fully
+    interpret.
+    """
+    baseline = load(path)
+    if baseline is None:
+        msg = f"refusing to mutate {path}: unsupported future schema_version"
+        raise ValueError(msg)
+    return baseline
+
+
+def _utc_now_iso() -> str:
+    """Return the current UTC time as a second-precision ISO-8601 string."""
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
 # ── Command-line interface ──────────────────────────────────────────────
 #
 # Skills (/init-project, /build, /rule-sweep) invoke this module from
@@ -418,6 +699,71 @@ def _cli_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cli_init(args: argparse.Namespace) -> int:
+    """``init <repo_root> --from <json>`` — print the written baseline path.
+
+    Exit 0 with the baseline path on stdout; exit 1 (could-not-evaluate) on a
+    missing/malformed engine output or a baseline that fails the schema (the
+    init path treats a schema failure as bad input, not a domain-2 condition —
+    the operator's discovery merge produced something unusable).
+    """
+    try:
+        baseline_path = init_baseline(Path(args.repo_root), Path(args.from_json))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(str(baseline_path))
+    return 0
+
+
+def _cli_ratify(args: argparse.Namespace) -> int:
+    """``ratify <baseline_path> --by <name>`` — one-way transition.
+
+    Exit 0 on success; 2 (domain failure) when a non-VERIFIED claim lacks a
+    resolution, listing one ``CL-NNN: <reason>`` per line on stderr; 1 when the
+    file is missing/malformed or the transition is otherwise illegal.
+    """
+    path = Path(args.baseline_path)
+    if not path.exists():
+        print(f"architecture-baseline file not found: {path}", file=sys.stderr)
+        return 1
+    try:
+        ratify(path, ratified_by=args.by)
+    except RatificationBlockedError as exc:
+        for claim_id, reason in exc.blocking_claims:
+            print(f"{claim_id}: {reason}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return 0
+
+
+def _cli_append_rule(args: argparse.Namespace) -> int:
+    """``append-rule <baseline_path> --statement … --who … --trigger …``.
+
+    Exit 0 with the new ``R-NNN`` on stdout; 1 when the file is missing or
+    malformed. Works on ratified baselines (accrual never reopens ratification).
+    """
+    path = Path(args.baseline_path)
+    if not path.exists():
+        print(f"architecture-baseline file not found: {path}", file=sys.stderr)
+        return 1
+    try:
+        rule_id = append_rule(
+            path,
+            statement=args.statement,
+            who=args.who,
+            trigger=args.trigger,
+            mechanizable=args.mechanizable,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(rule_id)
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="baseline.py",
@@ -439,6 +785,46 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_status.add_argument("repo_root", help="Repository root directory.")
     p_status.set_defaults(func=_cli_status)
+
+    p_init = sub.add_parser(
+        "init",
+        help="Create an unratified baseline from merged engine output.",
+    )
+    p_init.add_argument("repo_root", help="Target repository root directory.")
+    p_init.add_argument(
+        "--from",
+        dest="from_json",
+        required=True,
+        help="Path to the merged DISCOVER+VERIFY engine-output JSON.",
+    )
+    p_init.set_defaults(func=_cli_init)
+
+    p_ratify = sub.add_parser(
+        "ratify",
+        help="Perform the one-way unratified -> ratified transition.",
+    )
+    p_ratify.add_argument("baseline_path", help="Path to architecture-baseline.yaml.")
+    p_ratify.add_argument(
+        "--by",
+        required=True,
+        help="Operator attestation name (recorded as ratified_by).",
+    )
+    p_ratify.set_defaults(func=_cli_ratify)
+
+    p_append = sub.add_parser(
+        "append-rule",
+        help="Atomically append an R-NNN rule (does not reopen ratification).",
+    )
+    p_append.add_argument("baseline_path", help="Path to architecture-baseline.yaml.")
+    p_append.add_argument("--statement", required=True, help="The rule statement.")
+    p_append.add_argument("--who", required=True, help="Provenance author.")
+    p_append.add_argument("--trigger", required=True, help="Provenance trigger.")
+    p_append.add_argument(
+        "--mechanizable",
+        action="store_true",
+        help="Mark the rule as a baseline-verify graduation candidate.",
+    )
+    p_append.set_defaults(func=_cli_append_rule)
 
     return parser
 

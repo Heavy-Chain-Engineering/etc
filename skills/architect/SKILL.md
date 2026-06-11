@@ -398,6 +398,88 @@ ADRs to `docs/adrs/F<NNN>-<slug>.md`, and updates to
 `<feature_path>/state.yaml` and `<feature_path>/value-hypothesis.yaml`,
 plus `<feature_path>/research/architect-codebase.md`.
 
+**Architecture-baseline status probe (brownfield warning).** Right after the
+feature directory inheritance is confirmed — and before any research runs —
+probe the repo's architecture-baseline status, exactly as `/spec` Phase 2
+Step 0.5 does. Designing against an unverified architectural ground truth can
+encode stale or aspirational boundaries. Set `REPO_ROOT` to the repository
+root and run the wave-0 status probe:
+
+```
+TOKEN=$(python3 ~/.claude/scripts/baseline.py status "$REPO_ROOT")
+```
+
+The probe emits exactly one token to stdout — `missing`, `unratified`,
+`ratified`, or `malformed`. **Branch on the TOKEN, never on the exit code**
+(the CLI exits 0 whenever the status is evaluable). The token set is the
+closed contract from `standards/process/architecture-baseline.md` and ADR-002:
+
+- **`ratified`** — verified and human-ratified. Pass silently; proceed.
+- **`missing`** — the repo never ran the baseline phase (every legacy /
+  brownfield repo lands here at first). Proceed, but emit the warning below.
+- **`unratified`** — a recorded-intent state (ratification started and
+  abandoned), the state `/build` HARD-STOPS on per ADR-002; `/architect`
+  only WARNs. Emit the warning.
+- **`malformed`** — a corrupt record; treat exactly like `unratified` (never
+  treated as ratified) and recommend re-running the baseline phase.
+
+**On `missing`, `unratified`, or `malformed`**, render the warning as a
+Pattern B status block (NOT a question) — loud, verbatim, and naming the
+backfill command:
+
+```
+
+---
+
+**⚠ UNRATIFIED architecture baseline.** This repo's architecture baseline is
+`<TOKEN>`: its architectural ground truth (golden paths, do-not-copy
+modules, boundary rules) is UNVERIFIED. Designs authored against an
+unverified baseline can encode stale or aspirational architecture. Thinking
+is free, so /architect does NOT block — but you should know. Backfill the
+baseline with: `/init-project --phase=baseline`.
+
+```
+
+Then reuse the **existing contract-completeness WARN+recorded-override
+machinery** (BR-006; do NOT fork a parallel mechanism) to gate proceeding.
+Invoke Pattern A:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "The architecture baseline is <TOKEN> (unverified). Proceed with /architect anyway?",
+    header: "Architecture baseline",
+    multiSelect: false,
+    options: [
+      {
+        label: "No, backfill the baseline first (Recommended)",
+        description: "Stop /architect and run /init-project --phase=baseline to discover, verify, and ratify the architecture baseline, then re-run /architect against verified ground truth."
+      },
+      {
+        label: "Yes, proceed — I accept the unverified baseline",
+        description: "Record a baseline override in state.yaml.spec_phase.contract_completeness.overrides[] with contract_class: baseline, ref: repo, and a non-empty reason, surfaced downstream into verification.md / release-notes. Proceed to research."
+      }
+    ]
+  }]
+)
+```
+
+**Override path (reuse, never fork).** On "Yes, proceed", prompt via
+Pattern B for a one-line override reason (MUST be **non-empty** — re-ask if
+empty), **sanitize** it at the capture site (strip `[\x00-\x1f\x7f]`, cap at
+512 chars), and record an `overrides[]` entry into the **existing**
+`state.yaml.spec_phase.contract_completeness.overrides[]` list that `/spec`
+already owns: `contract_class: baseline`, `ref: repo`, `reason: <reason>`,
+`recorded_at: <ISO8601>`. The `overrides[]` schema already accepts arbitrary
+`contract_class` strings; `baseline` extends that enum in prose — same list,
+same merge-preserve write, same downstream surfacing into `verification.md`
+/ `release-notes`. **Silent dismissal is prohibited**: every baseline
+override carries a non-empty reason and is surfaced downstream. This is a
+WARN, not a hard-block — a brownfield repo with no baseline yet is a
+legitimate reason to proceed. Forward-only: a `missing` baseline never
+blocks /architect and nothing on disk is mutated unless the author proceeds
+and records an override.
+
 **Dispatch these research tasks in parallel:**
 
 1. **Codebase Exploration** — Read the existing codebase to understand

@@ -203,6 +203,19 @@ gates:
     timeout: 10
     on_failure: block
 
+  baseline-schema:
+    description: >
+      Validates that any baseline.yaml written or edited conforms to the
+      canonical schema. Closes the write-time gate so a malformed baseline
+      rule file cannot ship silently. Only triggers when the edited path
+      ends in `baseline.yaml`; the script self-skips otherwise.
+    event: PostToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-baseline-schema.sh
+    timeout: 10
+    on_failure: block
+
   # ── During Work: Tracking ───────────────────────────────────────────
 
   dirty-marker:
@@ -605,6 +618,18 @@ gates:
     matcher: startup
     type: command
     script: check-profiles-fresh.sh
+    timeout: 10
+
+  baseline-fresh:
+    description: >
+      Baseline staleness check. Warns (never blocks) at session start when
+      the project's baseline.yaml is missing or stale, so agents do not run
+      a whole session against an out-of-date baseline rule set. Advisory
+      only — no on_failure, mirroring profiles-fresh.
+    event: SessionStart
+    matcher: startup
+    type: command
+    script: check-baseline-fresh.sh
     timeout: 10
 
 # ─── Agents ────────────────────────────────────────────────────────────────

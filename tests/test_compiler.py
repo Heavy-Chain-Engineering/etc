@@ -519,6 +519,7 @@ INDIRECTLY_INVOKED_HOOKS = frozenset(
     {
         "verify-green.sh",  # invoked by mark-dirty/check-completion-discipline/inject-standards/runtime-verify
         "runtime-verify.sh",  # invoked by /build Step 6c + behavioral-runtime-dod standard
+        "baseline-verify.sh",  # conductor-invoked by /build Step 6c-baseline (sibling of runtime-verify)
     }
 )
 
