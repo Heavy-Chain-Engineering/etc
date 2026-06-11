@@ -241,7 +241,10 @@ def _create_valid_codex_project(tmp_path: Path) -> Path:
 def _copy_source_inputs(project: Path) -> None:
     shutil.copy2(REPO_ROOT / "compile-sdlc.py", project / "compile-sdlc.py")
     shutil.copy2(REPO_ROOT / "install.sh", project / "install.sh")
-    for directory in ("spec", "hooks", "skills", "standards", "scripts"):
+    # agents/ included: the compiler's declared-vs-disk parity gate (audit
+    # init 3) fails a repo whose declared agents are missing on disk — a
+    # partial fixture tree now fails the compile, faithfully.
+    for directory in ("spec", "hooks", "skills", "standards", "scripts", "agents"):
         shutil.copytree(
             REPO_ROOT / directory,
             project / directory,

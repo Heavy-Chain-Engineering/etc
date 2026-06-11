@@ -15,14 +15,30 @@
 version: "1.0"
 
 # ─── Defaults ────────────────────────────────────────────────────────────
-# Applied to all gates unless overridden at the gate level.
+# HONESTY CONTRACT (audit init 3) — which keys the compiler actually reads:
+#
+#   model            — READ (compile-sdlc.py: prompt/agent gates inherit it).
+#                      Editing it changes compiled behavior.
+#   on_failure       — DOCUMENTATION ONLY. The compiler does not emit it to
+#                      settings-hooks.json; Claude Code honors each script's
+#                      own exit code directly. Per-gate on_failure lines
+#                      document the gate's intended posture for readers —
+#                      editing them changes NOTHING at runtime.
+#   on_loop,         — DOCUMENTATION ONLY (same as on_failure). They record
+#   max_retries        the intended escalation model; no mechanism reads them.
+#   changeset_budget — DOCUMENTATION ONLY here. The OPERATIVE copy is
+#                      scripts/tasks.py::COMPLEXITY_THRESHOLDS (the scorer);
+#                      keep the two aligned — each side carries a
+#                      cross-reference comment.
+#
+# If you need one of the documentation-only knobs to become real, build the
+# mechanism first; do not edit the value and assume enforcement changed.
 defaults:
   model: haiku                            # Default: fast/cheap for mechanical checks. Override per gate where reasoning matters.
   on_failure: block            # block = give agent feedback to retry
   on_loop: escalate            # escalate = fail loud, kill agent, tell human
   max_retries: 2               # After N retries on same gate, escalate
-  coverage_threshold: 98       # Minimum test coverage percentage
-  changeset_budget:
+  changeset_budget:            # operative copy: scripts/tasks.py COMPLEXITY_THRESHOLDS
     target_loc: 300            # Ideal lines of code per task
     warn_loc: 500              # Warn if task exceeds this
     max_loc: 1000              # Block if task exceeds this
@@ -767,7 +783,19 @@ agents:
       network. All delivery is the orchestrator's privilege.
     source: agents/janitor.md
 
-# ─── Skills ────────────────────────────────────────────────────────────────
+# ─── Unregistered agents (allowlist) ───────────────────────────────────────
+# Agents that exist on disk under agents/ but are deliberately NOT compiled
+# into the harness yet. The compiler's declared-vs-disk parity gate
+# (compile-sdlc.py check_disk_parity) FAILS on any undeclared agent that is
+# not listed here, so this key is the explicit, reasoned escape hatch — an
+# undeclared agent can no longer slip onto disk and be silently dropped.
+# Each entry's value is a one-line reason. Move an agent UP into agents: to
+# ship it, or delete its file to drop it; do not leave it dangling.
+unregistered_agents:
+  gemini-analyzer: "pending operator in-or-out decision (audit init 3)"
+  multi-tenant-auditor: "pending operator in-or-out decision (audit init 3)"
+
+# ─── Skills ────────────────────────────���─────────────────────────────────
 # Skills compile to .md files in dist/skills/.
 # The /implement skill is the primary user-facing entry point.
 
@@ -974,79 +1002,133 @@ skills:
     source: skills/janitor/SKILL.md
     model: opus
 
-# ─── Standards ─────────────────────────────────────────────────────────────
+  # ── Core pipeline skills ───────────────────────────────────────────────
+  # These eight skills exist on disk and ship today, but the registry had
+  # drifted to omit them (audit init 3). Declared here to make the single
+  # source of truth honest. Descriptions taken from each SKILL.md frontmatter.
+
+  spec:
+    name: "spec"
+    description: >
+      Socratic specification loop that turns a vague idea into an
+      implementation-ready PRD through questioning, codebase research, web
+      research, and iterative refinement. Output passes the Definition of
+      Ready and is consumed by /architect and /build.
+    usage: "/spec <one-line description of the feature>"
+    source: skills/spec/SKILL.md
+
+  architect:
+    name: "architect"
+    description: >
+      Socratic architecture-design loop that turns a finalized spec.md into
+      an implementation-ready design.md plus 1-N ADRs through questioning,
+      codebase research, gray-area resolution, and iterative section
+      drafting. Runs after /spec, before /build.
+    usage: "/architect [<feature_path>]"
+    source: skills/architect/SKILL.md
+
+  build:
+    name: "build"
+    description: >
+      Full pipeline conductor — validate, decompose recursively, plan waves,
+      dispatch each wave via Agent-tool subagent calls, verify. The single
+      entry point for building any feature from spec to working code. Owns the
+      full lifecycle so nothing is skipped (unlike /implement or /decompose).
+    usage: "/build [<feature_path>]"
+    source: skills/build/SKILL.md
+
+  decompose:
+    name: "decompose"
+    description: >
+      Recursively decompose complex tasks into implementable subtasks. Reads a
+      PRD or task, scores complexity, and breaks down anything too large for a
+      single agent session — continuing until every leaf task fits one session.
+      Generates the task YAML files that /build and /implement dispatch.
+    usage: "/decompose <path-to-prd-or-task>"
+    source: skills/decompose/SKILL.md
+
+  tasks:
+    name: "tasks"
+    description: >
+      Native task tracker. View and manage task status, find the next ready
+      task, and show the dependency tree across features and the global task
+      directory. Operates directly on .etc_sdlc/ task YAML via the tasks.py
+      CLI — the shared contract for /build, /decompose, and /implement.
+    usage: "/tasks [<subcommand>]"
+    source: skills/tasks/SKILL.md
+
+  checkpoint:
+    name: "checkpoint"
+    description: >
+      Save the current session state to disk before compaction or session end
+      so work can be safely compacted or resumed later. Writes a reasoned
+      checkpoint (Decisions / Discovered / Pending) richer than the best-effort
+      PreCompact-hook checkpoint. Run before /compact or when ending a session.
+    usage: "/checkpoint"
+    source: skills/checkpoint/SKILL.md
+
+  postmortem:
+    name: "postmortem"
+    description: >
+      Trace an escaped bug to its root cause, identify which harness gate
+      should have caught it, and append a structured prevention rule to the
+      antipatterns learning loop so the same class of bug never escapes again.
+      Typically invoked after /hotfix; also runs standalone on any escaped bug.
+    usage: "/postmortem"
+    source: skills/postmortem/SKILL.md
+
+  init-project:
+    name: "init-project"
+    description: >
+      Bootstrap any repository — greenfield or brownfield — into a state where
+      the ETC harness can operate on it. Orchestrates technical scaffolding
+      (via project-bootstrapper), interactive DOMAIN.md creation, a tiered docs
+      skeleton, and starter role manifests, in strict order.
+    usage: "/init-project"
+    source: skills/init-project/SKILL.md
+
+# ─── Standards ───���───────────────────────────────────────────────────────
 # Engineering standards passed through to dist/standards/.
 # These are read by agents and referenced in hook prompts.
 
 standards:
   source_dir: standards/
-  categories:
-    process:
-      - sdlc-phases.md
-      - tdd-workflow.md
-      - code-review-process.md
-      - definition-of-done.md
-      - behavioral-runtime-dod.md
-      - domain-fidelity.md
-      - prototype-as-intent.md
-      - lessons-terminate-in-gates.md
-      - invariants.md
-      # agent-manifest-profile-awareness.md is the F022 header convention
-      # extended to body level (self-resolution + body-conformance) by
-      # F-2026-06-01-profile-driven-agent-bodies. The standard rides the
-      # standards/ copytree (compile_standards) into dist/standards/process/;
-      # the resolve_agent_profile.py + manifest_body_conformance.py scripts it
-      # references ride the scripts/ copy (compile_scripts copies every file in
-      # scripts/) into dist/scripts/ — no per-script yaml entry exists or is
-      # needed (see memory: feedback-install-carries-new-artifact-shapes).
-      - agent-manifest-profile-awareness.md
-      # build-review-gate.md (F-2026-06-02) is the citable standard for the
-      # /build Step 7 review gate (firing policy GA-001, the ADR-001 emission
-      # contract, severity-gated blocking ADR-003). It rides the standards/
-      # copytree (compile_standards) into dist/standards/process/. Its helper,
-      # scripts/review_gate.py, rides the broad scripts/ copy: compile_scripts
-      # does `for script in scripts_src.iterdir(): if script.is_file()` and
-      # copies EVERY file in scripts/ into dist/scripts/ — no per-script yaml
-      # entry exists or is needed (NOT the narrowed-glob failure mode; see
-      # memory: feedback-install-carries-new-artifact-shapes).
-      - build-review-gate.md
-      # design-token-conformance.md (#69) is the citable standard for the
-      # Layer-3 design-token conformance gate (the AI-ready 3-layer design
-      # system: DESIGN.md narrative -> design-tokens.json -> this gate). v1 is
-      # colors-only + advisory. It rides the standards/ copytree
-      # (compile_standards) into dist/standards/process/. Its helper,
-      # scripts/design_token_gate.py, rides the broad scripts/ copy
-      # (compile_scripts copies EVERY file in scripts/ into dist/scripts/) — no
-      # per-script yaml entry exists or is needed (mirrors build-review-gate.md
-      # + review_gate.py; NOT the narrowed-glob failure mode; see memory:
-      # feedback-install-carries-new-artifact-shapes).
-      - design-token-conformance.md
-    code:
-      - clean-code.md
-      - error-handling.md
-      - typing-standards.md
-      - python-conventions.md
-      - import-discipline.md
-      - ruff-reference.toml
-      - ruff-audit.md
-    testing:
-      - testing-standards.md
-      - test-naming.md
-      - llm-evaluation.md
-      - test-isolation.md
-      - fixture-fidelity.md
-    architecture:
-      - abstraction-rules.md
-      - adr-process.md
-      - layer-boundaries.md
-      - review-depth.md
-    security:
-      - data-handling.md
-      - owasp-checklist.md
-    quality:
-      - metrics.md
-
-# ─── SDLC Phases ───────────────────────────────────────────────────────────
+  # SHIPS WHOLESALE: compile_standards copytrees the ENTIRE standards/
+  # tree into dist/standards/ — there is no per-file registry. An earlier
+  # `categories:` list here was DECORATIVE (the compiler never read it)
+  # and had silently rotted to ~12 of 31 process standards, which made
+  # the registry look authoritative while meaning nothing (audit init 3).
+  # To add a standard: drop the file under standards/<category>/ — it
+  # ships. Provenance notes for gate-coupled standards, preserved from
+  # the old list:
+  # agent-manifest-profile-awareness.md is the F022 header convention
+  # extended to body level (self-resolution + body-conformance) by
+  # F-2026-06-01-profile-driven-agent-bodies. The standard rides the
+  # standards/ copytree (compile_standards) into dist/standards/process/;
+  # the resolve_agent_profile.py + manifest_body_conformance.py scripts it
+  # references ride the scripts/ copy (compile_scripts copies every file in
+  # scripts/) into dist/scripts/ — no per-script yaml entry exists or is
+  # needed (see memory: feedback-install-carries-new-artifact-shapes).
+  # build-review-gate.md (F-2026-06-02) is the citable standard for the
+  # /build Step 7 review gate (firing policy GA-001, the ADR-001 emission
+  # contract, severity-gated blocking ADR-003). It rides the standards/
+  # copytree (compile_standards) into dist/standards/process/. Its helper,
+  # scripts/review_gate.py, rides the broad scripts/ copy: compile_scripts
+  # does `for script in scripts_src.iterdir(): if script.is_file()` and
+  # copies EVERY file in scripts/ into dist/scripts/ — no per-script yaml
+  # entry exists or is needed (NOT the narrowed-glob failure mode; see
+  # memory: feedback-install-carries-new-artifact-shapes).
+  # design-token-conformance.md (#69) is the citable standard for the
+  # Layer-3 design-token conformance gate (the AI-ready 3-layer design
+  # system: DESIGN.md narrative -> design-tokens.json -> this gate). v1 is
+  # colors-only + advisory. It rides the standards/ copytree
+  # (compile_standards) into dist/standards/process/. Its helper,
+  # scripts/design_token_gate.py, rides the broad scripts/ copy
+  # (compile_scripts copies EVERY file in scripts/ into dist/scripts/) — no
+  # per-script yaml entry exists or is needed (mirrors build-review-gate.md
+  # + review_gate.py; NOT the narrowed-glob failure mode; see memory:
+  # feedback-install-carries-new-artifact-shapes).
+# ─── SDLC Phases ────────���────────────────────────────────────────────────
 # Phase definitions compile to tracker templates in dist/sdlc/.
 # Each phase has a Definition of Done that gates transition to the next.
 #

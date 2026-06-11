@@ -358,170 +358,75 @@ def compile_skills(dist_dir: Path, repo_root: Path) -> None:
                 shutil.copytree(skill_path, dst, dirs_exist_ok=True)
 
 
-def generate_implement_skill(skill_def: dict, skills_dir: Path, spec: dict) -> None:
-    """Generate the /implement skill — the primary user-facing entry point."""
-    defaults = spec.get("defaults", {})
-    coverage = defaults.get("coverage_threshold", 98)
-
-    content = f"""---
-name: implement
-description: {skill_def.get('description', 'Spec-based implementation workflow').strip()}
----
-
-# /implement — Spec-Based Implementation
-
-You are the orchestrator for a disciplined engineering team. Your job is to take
-a specification or PRD, validate it, decompose it into tasks, dispatch those tasks
-to subagents, and deliver verified, tested, production-ready code.
-
-You NEVER write code yourself. You delegate to specialized agents.
-
-## Usage
-
-```
-/implement <path-to-spec-or-prd>
-/implement spec/prd-authentication.md
-```
-
-## Workflow
-
-### Step 1: Validate the Specification
-
-Read the spec file provided by the user. Evaluate whether it meets the Definition
-of Ready:
-
-- [ ] Has specific, measurable acceptance criteria
-- [ ] Names concrete entities, endpoints, modules, or components
-- [ ] Defines scope boundaries (what's IN and what's NOT)
-- [ ] Does not require unstated domain knowledge
-- [ ] Is detailed enough for a developer to implement without guessing
-
-**If the spec does NOT meet Definition of Ready:** STOP IMMEDIATELY. Tell the user
-exactly what's missing. Do not proceed until the spec is adequate.
-
-```
-"This spec needs work before I can implement it. Missing:
-- [specific gap 1]
-- [specific gap 2]
-Please refine the spec and try again."
-```
-
-### Step 2: Decompose into Tasks
-
-Parse the validated spec into a task graph. For each task, create a YAML file
-in `.etc_sdlc/tasks/` with this structure:
-
-```yaml
-task_id: "NNN"
-title: "Clear, actionable task title"
-assigned_agent: backend-developer  # or frontend-developer, devops-engineer, etc.
-status: pending
-requires_reading:
-  - path/to/relevant/spec.md
-  - path/to/existing/code.py
-files_in_scope:
-  - src/module/file.py
-  - tests/test_module_file.py
-acceptance_criteria:
-  - "Specific, measurable criterion 1"
-  - "Specific, measurable criterion 2"
-dependencies: []  # task IDs that must complete first
-context: |
-  Additional context from the PRD relevant to this task.
-```
-
-**Rules for decomposition:**
-- Each task must be implementable by a single agent in a single session
-- Tasks with overlapping `files_in_scope` MUST be serialized (not parallel)
-- Every task must have at least one acceptance criterion
-- Test files must be included in `files_in_scope`
-- `requires_reading` must include the spec and any existing code being modified
-
-Create the `.etc_sdlc/tasks/` directory if it doesn't exist.
-
-### Step 3: Dispatch to Subagents
-
-For each task, respecting dependency order:
-
-1. Update the task file: `status: in_progress`
-2. Spawn a subagent with the appropriate `assigned_agent` type
-3. The subagent receives:
-   - The task file as its primary instruction
-   - Engineering standards via the SubagentStart hook
-   - Project invariants and context
-4. The subagent's work is gated by:
-   - `check-required-reading.sh` — must read requires_reading files first
-   - `check-test-exists.sh` — must write tests before implementation
-   - `check-invariants.sh` — must not violate project invariants
-5. On subagent completion, update task file: `status: completed`
-
-**Parallelization rule:** Before dispatching parallel tasks, verify their
-`files_in_scope` lists do not overlap. If any two tasks share a file, they
-MUST run sequentially. File-set isolation, not branch isolation.
-
-**Escalation:** If a subagent fails and cannot self-correct (the hook escalates
-with `continue: false`), mark the task `status: escalated` and report the
-failure to the user. Do not retry indefinitely.
-
-### Step 4: Verify and Report
-
-After all tasks complete:
-
-1. Run the full CI pipeline (tests, types, lint, invariants)
-2. Verify all acceptance criteria from the original spec
-3. Report to the user:
-
-```
-## Implementation Complete
-
-**Spec:** [spec file path]
-**Tasks:** N completed, M total
-
-### What Was Built
-- [summary of each task's deliverable]
-
-### Test Coverage
-- Coverage: NN% (threshold: {coverage}%)
-
-### Verification
-- [ ] All tests pass
-- [ ] Type checking clean
-- [ ] Lint clean
-- [ ] Invariants hold
-
-### Deferred Items
-- [anything that was out of scope or requires follow-up]
-```
-
-## Constraints
-
-- You NEVER write code — you delegate to specialized agents
-- You NEVER skip the spec validation step — reject inadequate specs immediately
-- You NEVER dispatch parallel tasks with overlapping file scopes
-- You ALWAYS create task files before dispatching work
-- You ALWAYS report results to the user, including failures
-- If anything fails loudly (hook escalation), surface it to the user immediately
-"""
-
-    skill_dir = skills_dir / "implement"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+def _disk_skill_names(repo_root: Path) -> set[str]:
+    """Names of on-disk skill dirs (those holding a SKILL.md)."""
+    skills_src = repo_root / "skills"
+    if not skills_src.is_dir():
+        return set()
+    return {
+        d.name
+        for d in skills_src.iterdir()
+        if d.is_dir() and (d / "SKILL.md").exists()
+    }
 
 
-def generate_generic_skill(skill_def: dict[str, Any], skill_name: str, skills_dir: Path) -> None:
-    """Generate a generic skill .md file."""
-    content = f"""---
-name: {skill_name}
-description: {skill_def.get('description', '').strip()}
----
+def _disk_agent_names(repo_root: Path) -> set[str]:
+    """Stems of on-disk agent .md files."""
+    agents_src = repo_root / "agents"
+    if not agents_src.is_dir():
+        return set()
+    return {p.stem for p in agents_src.glob("*.md")}
 
-# /{skill_name}
 
-{skill_def.get('description', '').strip()}
-"""
-    skill_dir = skills_dir / skill_name
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+def _declared_agent_stems(spec: dict) -> set[str]:
+    """Agent stems the spec declares (derived from each agent's source path)."""
+    stems: set[str] = set()
+    for agent_name, agent_def in spec.get("agents", {}).items():
+        source = agent_def.get("source")
+        stems.add(Path(source).stem if source else agent_name)
+    return stems
+
+
+def check_disk_parity(spec: dict, repo_root: Path) -> list[str]:
+    """Return parity violations between the spec registry and on-disk surface.
+
+    Enforces three rules so the spec stays the honest single source of truth:
+      (a) every on-disk skill dir must be declared in `skills:`;
+      (b) every on-disk agent .md must be declared in `agents:` or parked in
+          the `unregistered_agents:` allowlist;
+      (c) anything declared (skill or agent) must exist on disk.
+    """
+    declared_skills = set(spec.get("skills", {}).keys())
+    disk_skills = _disk_skill_names(repo_root)
+    allowed_agents = set(spec.get("unregistered_agents", {}).keys())
+    declared_agents = _declared_agent_stems(spec)
+    disk_agents = _disk_agent_names(repo_root)
+
+    violations: list[str] = []
+    for name in sorted(disk_skills - declared_skills):
+        violations.append(f"undeclared skill on disk: skills/{name}/ (add it to skills:)")
+    for name in sorted(declared_skills - disk_skills):
+        violations.append(f"declared skill missing on disk: skills/{name}/ (declared but no dir)")
+    for name in sorted(disk_agents - declared_agents - allowed_agents):
+        violations.append(
+            f"undeclared agent on disk: agents/{name}.md "
+            f"(add it to agents: or list it under unregistered_agents:)"
+        )
+    for name in sorted(declared_agents - disk_agents):
+        violations.append(
+            f"declared agent missing on disk: agents/{name}.md (declared but no file)"
+        )
+    return violations
+
+
+def enforce_disk_parity(spec: dict, repo_root: Path) -> None:
+    """Fail the compile (exit 1) if the registry and disk have drifted."""
+    violations = check_disk_parity(spec, repo_root)
+    if violations:
+        print("ERROR: declared-vs-disk parity check failed:", file=sys.stderr)
+        for violation in violations:
+            print(f"  - {violation}", file=sys.stderr)
+        sys.exit(1)
 
 
 def compile_standards(spec: dict, dist_dir: Path, repo_root: Path) -> None:
@@ -1345,6 +1250,9 @@ def compile_claude_target(spec: dict, dist_dir: Path, repo_root: Path) -> None:
     print()
     print(f"  Spec version: {spec['version']}")
 
+    print("  Checking declared-vs-disk parity...")
+    enforce_disk_parity(spec, repo_root)
+
     print("  Compiling gates → settings-hooks.json + hook scripts...")
     hooks_config = compile_gates(spec, dist_dir, repo_root)
     with open(dist_dir / "settings-hooks.json", "w", encoding="utf-8") as f:
@@ -1424,6 +1332,9 @@ def compile_codex_target(spec: dict, dist_dir: Path, repo_root: Path) -> None:
     print(f"Output directory: {dist_dir}")
     print()
     print(f"  Spec version: {spec['version']}")
+
+    print("  Checking declared-vs-disk parity...")
+    enforce_disk_parity(spec, repo_root)
 
     print("  Compiling Codex gates → .codex/hooks.json + classification...")
     hooks_config, classifications = compile_codex_gates(spec, dist_dir, repo_root)
