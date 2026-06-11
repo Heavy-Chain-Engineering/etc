@@ -1224,3 +1224,510 @@ class TestAppendRuleSubcommand:
         )
 
         assert result.returncode == 1
+
+
+# ── task-003 AC-1: render-doc (the ARCHITECTURE.md human twin) ───────────────
+
+
+GENERATED_HEADER_SUBSTRING = (
+    "generated from .etc_sdlc/architecture-baseline.yaml "
+    "— edit via /init-project --phase=baseline"
+)
+
+
+def _ratified_with_full_render_surface() -> dict:
+    """A ratified baseline carrying every section the renderer projects.
+
+    Exercises exemplars, do_not_copy, rules, the seams boundary map, and the
+    confidence inputs — the AC-1 surface the human twin must render.
+    """
+    baseline = _valid_baseline()
+    baseline["status"] = "ratified"
+    baseline["ratified_by"] = "jason"
+    baseline["ratified_at"] = "2026-06-11T00:00:00Z"
+    baseline["exemplars"] = [
+        {
+            "name": "people",
+            "paths": ["libs/people"],
+            "applies_to": "new full-stack admin features",
+            "blessed_by": "jason",
+        }
+    ]
+    baseline["do_not_copy"] = [
+        {
+            "path": "libs/insights-legacy-ui",
+            "reason": "superseded generation; migration target is libs/insights",
+        }
+    ]
+    baseline["rules"] = [
+        {
+            "id": "R-001",
+            "statement": "DTOs live in libs/contracts; runtime logic never does",
+            "provenance": {"who": "jason", "when": "2026-06-11", "trigger": "ratification session"},
+            "mechanizable": True,
+            "enforced_by": "native",
+        }
+    ]
+    baseline["seams"] = [
+        {
+            "id": "SM-001",
+            "signal": "env-var-loaded remote frontend (REACT_*_APP)",
+            "external_owner": "marketplace-web",
+            "resolution": "sibling-path",
+        }
+    ]
+    return baseline
+
+
+class TestRenderDoc:
+    """`render-doc <baseline_path>` writes the ARCHITECTURE.md human twin."""
+
+    def test_should_write_architecture_md_at_repo_root(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        doc_path = bl.render_doc(path)
+
+        assert doc_path == tmp_path / "ARCHITECTURE.md"
+        assert doc_path.exists()
+
+    def test_should_carry_the_generated_from_header(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        doc_path = bl.render_doc(path)
+
+        assert GENERATED_HEADER_SUBSTRING in doc_path.read_text(encoding="utf-8")
+
+    def test_should_render_exemplars_section(self, bl: ModuleType, tmp_path: Path) -> None:
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        text = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert "people" in text
+        assert "libs/people" in text
+        assert "new full-stack admin features" in text
+
+    def test_should_render_do_not_copy_section(self, bl: ModuleType, tmp_path: Path) -> None:
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        text = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert "libs/insights-legacy-ui" in text
+        assert "superseded generation" in text
+
+    def test_should_render_rules_section(self, bl: ModuleType, tmp_path: Path) -> None:
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        text = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert "R-001" in text
+        assert "DTOs live in libs/contracts" in text
+
+    def test_should_render_boundary_map_from_seams(self, bl: ModuleType, tmp_path: Path) -> None:
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        text = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert "SM-001" in text
+        assert "marketplace-web" in text
+
+    def test_should_render_boundary_map_from_workspace_mirror_shape(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # A `seams:` block written by sync-seams carries the workspace shape
+        # (kind/owner_repo/contract), not the init shape (signal/external_owner).
+        # The boundary map must render it meaningfully, not as a blank row.
+        baseline = _valid_baseline()
+        baseline["status"] = "ratified"
+        baseline["ratified_by"] = "jason"
+        baseline["ratified_at"] = "2026-06-11T00:00:00Z"
+        baseline["seams"] = [
+            {
+                "id": "SM-007",
+                "kind": "url-routing",
+                "owner_repo": "web",
+                "consumer_repos": ["api"],
+                "contract": "GET /widgets",
+                "evidence": "web/router.ts:9",
+            }
+        ]
+        path = _write_baseline(tmp_path, baseline)
+
+        text = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert "SM-007" in text
+        assert "web" in text  # owner_repo surfaces, not a blank
+        assert "GET /widgets" in text
+
+    def test_should_render_confidence_score_and_inputs(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        text = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert "low" in text  # confidence.score
+        assert "competing_pattern_concerns" in text  # an input key
+
+    def test_should_render_empty_sections_without_crashing(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # The no-docs / greenfield fixture: empty exemplars/rules/seams must
+        # render a stable placeholder, never raise.
+        baseline = _valid_baseline()
+        baseline["status"] = "ratified"
+        baseline["ratified_by"] = "jason"
+        baseline["ratified_at"] = "2026-06-11T00:00:00Z"
+        path = _write_baseline(tmp_path, baseline)
+
+        doc_path = bl.render_doc(path)
+
+        assert doc_path.exists()
+        assert GENERATED_HEADER_SUBSTRING in doc_path.read_text(encoding="utf-8")
+
+    def test_should_be_deterministic_across_re_renders(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # Re-renders must diff cleanly (stable ordering) so re-ratification is
+        # a no-op when nothing changed.
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        first = bl.render_doc(path).read_text(encoding="utf-8")
+        second = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert first == second
+
+    def test_should_regenerate_after_re_ratification(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # AC-1: "regenerated on re-ratification". A fresh ratify renders the
+        # twin reflecting the baseline at that moment.
+        path = _ready_to_ratify(tmp_path, all_verified=True)
+
+        bl.ratify(path, ratified_by="jason")
+
+        doc_path = tmp_path / "ARCHITECTURE.md"
+        assert doc_path.exists(), "ratify must render the human twin"
+        assert GENERATED_HEADER_SUBSTRING in doc_path.read_text(encoding="utf-8")
+
+
+class TestRenderDocTemplate:
+    """The renderer is driven by the on-disk ARCHITECTURE.md.template skeleton.
+
+    The template owns section ORDER and the fixed prose; the renderer fills the
+    {{...}} placeholders. The template is load-bearing (not decorative) when
+    present, and the renderer degrades to a self-contained built-in skeleton
+    when it is absent (design.md: the doc stays self-contained even when the
+    install dir is unavailable).
+    """
+
+    def test_should_ship_the_template_file(self, bl: ModuleType) -> None:
+        assert bl.ARCHITECTURE_TEMPLATE_PATH.exists(), (
+            f"render skeleton missing at {bl.ARCHITECTURE_TEMPLATE_PATH}"
+        )
+
+    def test_should_use_template_section_order_and_prose(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # A distinctive sentence that lives ONLY in the template prose must
+        # appear in rendered output — proof the template drives the render.
+        template_text = bl.ARCHITECTURE_TEMPLATE_PATH.read_text(encoding="utf-8")
+        marker = "golden registry"  # appears in the template's exemplars blurb
+        assert marker in template_text, "test precondition: marker must be in the template"
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        rendered = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert marker in rendered
+
+    def test_should_substitute_every_placeholder(self, bl: ModuleType, tmp_path: Path) -> None:
+        # No raw {{PLACEHOLDER}} may survive into the rendered doc.
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        rendered = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert "{{" not in rendered and "}}" not in rendered, (
+            "unsubstituted placeholder leaked into ARCHITECTURE.md"
+        )
+
+    def test_should_fall_back_to_builtin_skeleton_when_template_missing(
+        self, bl: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Self-contained guarantee: a missing template must NOT crash the
+        # renderer; it falls back to the built-in skeleton and still stamps the
+        # header + all sections.
+        monkeypatch.setattr(bl, "ARCHITECTURE_TEMPLATE_PATH", tmp_path / "no-such.template")
+        path = _write_baseline(tmp_path, _ratified_with_full_render_surface())
+
+        rendered = bl.render_doc(path).read_text(encoding="utf-8")
+
+        assert GENERATED_HEADER_SUBSTRING in rendered
+        assert "## Exemplars" in rendered
+        assert "## Boundary Map" in rendered
+        assert "R-001" in rendered
+
+
+class TestRenderDocSubcommand:
+    """`baseline.py render-doc <path>` prints the ARCHITECTURE.md path; exit 0/1."""
+
+    def test_should_print_doc_path_and_exit_zero_from_unrelated_cwd(self, tmp_path: Path) -> None:
+        repo_root = tmp_path / "repo"
+        path = _write_baseline(repo_root, _ratified_with_full_render_surface())
+        alien_cwd = tmp_path / "elsewhere"
+        alien_cwd.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "render-doc", str(path)],
+            cwd=alien_cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"expected exit 0; got {result.returncode}; stderr={result.stderr!r}"
+        )
+        assert result.stdout.strip() == str(repo_root / "ARCHITECTURE.md")
+
+    def test_should_exit_one_when_baseline_render_target_missing(self, tmp_path: Path) -> None:
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "render-doc", str(tmp_path / "nope.yaml")],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1
+
+
+# ── task-003 AC-2: sync-seams (workspace read-only per-repo mirrors) ─────────
+
+
+def _seam_map_payload() -> dict:
+    """A canonical workspace seam-map (design Data Model artifact 2 / ADR-005).
+
+    Two repos (web, api) and two seams: SM-001 touches both (web owns, api
+    consumes); SM-002 touches only api (api owns, no consumers). The renderer
+    must filter each repo's mirror to the seams touching that repo.
+    """
+    return {
+        "schema_version": 1,
+        "repos": [
+            {"name": "web", "path": "./web"},
+            {"name": "api", "path": "./api"},
+        ],
+        "seams": [
+            {
+                "id": "SM-001",
+                "kind": "url-routing",
+                "owner_repo": "web",
+                "consumer_repos": ["api"],
+                "contract": "GET /foo served by web, called by api",
+                "evidence": "web/router.ts:12",
+                "confidence": "medium",
+            },
+            {
+                "id": "SM-002",
+                "kind": "data-schema",
+                "owner_repo": "api",
+                "consumer_repos": [],
+                "contract": "shared widgets table schema",
+                "evidence": "api/schema.sql:3",
+                "confidence": "low",
+            },
+        ],
+        "confidence": {"score": "low"},
+    }
+
+
+def _write_seam_map(workspace_root: Path, payload: dict) -> Path:
+    """Write the canonical seam-map under <workspace>/.etc_workspace/."""
+    path = workspace_root / ".etc_workspace" / "seam-map.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def _build_workspace(tmp_path: Path) -> Path:
+    """Lay out a two-repo workspace: seam-map + a baseline per named repo."""
+    workspace = tmp_path / "workspace"
+    _write_seam_map(workspace, _seam_map_payload())
+    for repo_name in ("web", "api"):
+        repo_root = workspace / repo_name
+        _write_baseline(repo_root, _valid_baseline())
+    return workspace
+
+
+class TestSyncSeams:
+    """`sync-seams <workspace_root>` regenerates read-only per-repo mirrors."""
+
+    def test_should_filter_each_repo_mirror_to_touching_seams(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        workspace = _build_workspace(tmp_path)
+
+        bl.sync_seams(workspace)
+
+        web_seams = bl.load(workspace / "web" / bl.BASELINE_RELATIVE_PATH)["seams"]
+        api_seams = bl.load(workspace / "api" / bl.BASELINE_RELATIVE_PATH)["seams"]
+        assert [s["id"] for s in web_seams] == ["SM-001"]  # web touches only SM-001
+        assert sorted(s["id"] for s in api_seams) == ["SM-001", "SM-002"]  # api touches both
+
+    def test_should_write_a_hand_edits_overwritten_header(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        workspace = _build_workspace(tmp_path)
+
+        bl.sync_seams(workspace)
+
+        web_seams = bl.load(workspace / "web" / bl.BASELINE_RELATIVE_PATH)["seams"]
+        # The mirror carries a header marker noting hand-edits are overwritten.
+        assert any("overwritten" in str(s.get("_mirror_note", "")).lower() for s in web_seams), (
+            f"expected an overwrite-warning marker in the mirror; got {web_seams}"
+        )
+
+    def test_should_overwrite_a_hand_edit_to_the_mirror(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        # AC-2 core: prove a hand-edit to a read-only mirror is overwritten.
+        workspace = _build_workspace(tmp_path)
+        web_baseline_path = workspace / "web" / bl.BASELINE_RELATIVE_PATH
+        tampered = bl.load(web_baseline_path)
+        tampered["seams"] = [{"id": "HAND-EDIT", "signal": "a human typed this"}]
+        bl.atomic_dump(web_baseline_path, tampered)
+
+        bl.sync_seams(workspace)
+
+        web_seams = bl.load(web_baseline_path)["seams"]
+        assert [s["id"] for s in web_seams] == ["SM-001"], "hand-edit must be overwritten"
+        assert "HAND-EDIT" not in {s["id"] for s in web_seams}
+
+    def test_should_carry_seam_contract_and_owner_into_the_mirror(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        workspace = _build_workspace(tmp_path)
+
+        bl.sync_seams(workspace)
+
+        web_seams = bl.load(workspace / "web" / bl.BASELINE_RELATIVE_PATH)["seams"]
+        sm001 = next(s for s in web_seams if s["id"] == "SM-001")
+        # The mirror preserves the load-bearing seam fields for solo-clone context.
+        assert sm001["kind"] == "url-routing"
+        assert sm001["owner_repo"] == "web"
+
+    def test_should_return_the_rewritten_baseline_paths(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        workspace = _build_workspace(tmp_path)
+
+        rewritten = bl.sync_seams(workspace)
+
+        assert set(rewritten) == {
+            workspace / "web" / bl.BASELINE_RELATIVE_PATH,
+            workspace / "api" / bl.BASELINE_RELATIVE_PATH,
+        }
+
+    def test_should_skip_repos_without_a_baseline(self, bl: ModuleType, tmp_path: Path) -> None:
+        # A repo named in the seam-map but lacking a baseline is not created —
+        # sync only mirrors into existing baselines (forward-only, no auto-init).
+        workspace = tmp_path / "workspace"
+        _write_seam_map(workspace, _seam_map_payload())
+        _write_baseline(workspace / "web", _valid_baseline())
+        # 'api' repo has no baseline on disk.
+
+        rewritten = bl.sync_seams(workspace)
+
+        assert workspace / "web" / bl.BASELINE_RELATIVE_PATH in rewritten
+        assert not (workspace / "api" / bl.BASELINE_RELATIVE_PATH).exists()
+
+    def test_should_be_deterministic_across_re_syncs(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        workspace = _build_workspace(tmp_path)
+        web_baseline_path = workspace / "web" / bl.BASELINE_RELATIVE_PATH
+
+        bl.sync_seams(workspace)
+        first = web_baseline_path.read_text(encoding="utf-8")
+        bl.sync_seams(workspace)
+        second = web_baseline_path.read_text(encoding="utf-8")
+
+        assert first == second
+
+    def test_should_raise_when_seam_map_missing(self, bl: ModuleType, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+
+        with pytest.raises(ValueError, match="seam-map"):
+            bl.sync_seams(workspace)
+
+    def test_should_raise_when_seam_kind_is_not_legal(
+        self, bl: ModuleType, tmp_path: Path
+    ) -> None:
+        workspace = tmp_path / "workspace"
+        payload = _seam_map_payload()
+        payload["seams"][0]["kind"] = "telepathy"
+        _write_seam_map(workspace, payload)
+        _write_baseline(workspace / "web", _valid_baseline())
+
+        with pytest.raises(ValueError, match="kind"):
+            bl.sync_seams(workspace)
+
+
+class TestSyncSeamsSubcommand:
+    """`baseline.py sync-seams <workspace_root>` exit-code + stdout contract."""
+
+    def test_should_print_rewritten_paths_and_exit_zero_from_unrelated_cwd(
+        self, tmp_path: Path
+    ) -> None:
+        workspace = _build_workspace(tmp_path)
+        alien_cwd = tmp_path / "elsewhere"
+        alien_cwd.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "sync-seams", str(workspace)],
+            cwd=alien_cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"expected exit 0; got {result.returncode}; stderr={result.stderr!r}"
+        )
+        printed = set(result.stdout.split())
+        assert str(workspace / "web" / Path(".etc_sdlc") / "architecture-baseline.yaml") in printed
+
+    def test_should_exit_one_when_seam_map_missing(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "sync-seams", str(workspace)],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1
+
+    def test_should_exit_one_when_seam_kind_malformed(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        payload = _seam_map_payload()
+        payload["seams"][0]["kind"] = "telepathy"
+        _write_seam_map(workspace, payload)
+        _write_baseline(workspace / "web", _valid_baseline())
+
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "sync-seams", str(workspace)],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1

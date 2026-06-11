@@ -71,6 +71,43 @@ SCHEMA_VERSION: int = 1
 # repo. Skills resolve <repo_root> / this; the CLI is the only YAML reader.
 BASELINE_RELATIVE_PATH: Path = Path(".etc_sdlc") / "architecture-baseline.yaml"
 
+# The human twin (ARCHITECTURE.md) is rendered at the repo root — two parents
+# up from the baseline (<repo>/.etc_sdlc/architecture-baseline.yaml). Tier-0
+# placement so agents and humans find it without spelunking. ADR-001.
+ARCHITECTURE_DOC_NAME: str = "ARCHITECTURE.md"
+
+# The provenance header stamped at the top of every rendered ARCHITECTURE.md.
+# Pinned verbatim (AC-1) so drift between the twins is structurally discouraged:
+# a reader who sees this line knows the file is generated, not hand-authored.
+GENERATED_DOC_HEADER: str = (
+    "generated from .etc_sdlc/architecture-baseline.yaml — edit via /init-project --phase=baseline"
+)
+
+# The render skeleton: the template owns section ORDER + fixed prose; the
+# renderer substitutes the {{...}} placeholders. baseline.py lives at
+# <repo>/scripts/baseline.py, so the template sits two parents up. When the
+# template is unavailable (e.g. an install dir that did not ship it), the
+# renderer falls back to a self-contained built-in skeleton — the doc must
+# never depend on the install dir being present at render time.
+ARCHITECTURE_TEMPLATE_PATH: Path = (
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "init-project"
+    / "templates"
+    / "ARCHITECTURE.md.template"
+)
+
+# The workspace seam map (workspace mode only — the single editable source).
+# Per-repo baseline `seams:` blocks are read-only mirrors regenerated from it.
+SEAM_MAP_RELATIVE_PATH: Path = Path(".etc_workspace") / "seam-map.yaml"
+
+# Closed enum for a workspace seam's `kind` (design Data Model artifact 2 /
+# ADR-005). A seam-map with a kind outside this set is malformed → sync-seams
+# exits 1, never silently mirrors an uninterpretable contract.
+LEGAL_SEAM_KINDS: frozenset[str] = frozenset(
+    {"url-routing", "auth-session", "data-schema", "embed-loader"}
+)
+
 REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
     "status",
@@ -531,10 +568,11 @@ def ratify(path: Path, *, ratified_by: str) -> None:
 
     Enforces the matrix-walk forcing function: every non-VERIFIED claim must
     carry a non-null ``resolution`` before ratification succeeds. On success
-    the attestation fields are set (name sanitized, UTC ISO-8601 timestamp) and
-    the file is atomically rewritten. This function's contract is pure
-    transition + attestation; rendering ARCHITECTURE.md is wired in by the
-    wave-2 render-doc task, not here.
+    the attestation fields are set (name sanitized, UTC ISO-8601 timestamp),
+    the file is atomically rewritten, and the human twin (``ARCHITECTURE.md``)
+    is rendered from the now-ratified baseline — the design.md contract "ratify
+    performs the one-way transition and the human doc is rendered". Re-ratifying
+    therefore regenerates the doc.
 
     Args:
         path: Path to the baseline YAML.
@@ -564,6 +602,7 @@ def ratify(path: Path, *, ratified_by: str) -> None:
     baseline["ratified_by"] = sanitize_freeform(ratified_by, max_len=NAME_MAX_LEN)
     baseline["ratified_at"] = _utc_now_iso()
     atomic_dump(path, baseline)
+    _render_doc_from_baseline(path, baseline)
 
 
 def _unresolved_non_verified_claims(claims: list[Any]) -> list[tuple[str, str]]:
@@ -654,6 +693,416 @@ def _load_existing(path: Path) -> dict[str, Any]:
 def _utc_now_iso() -> str:
     """Return the current UTC time as a second-precision ISO-8601 string."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+# ── render-doc: the ARCHITECTURE.md human twin ──────────────────────────
+#
+# The renderer projects a ratified (or unratified) baseline into the tier-0
+# human doc at the repo root. Output is DETERMINISTIC — every section walks the
+# stored list order (which the CLI itself wrote), and empty sections render a
+# stable placeholder — so re-renders diff cleanly and re-ratification is a no-op
+# when nothing changed (design.md: "keep renderer output deterministic"). The
+# machine file is the single source of truth; this doc is regenerated, never
+# hand-edited (ADR-001). The template at
+# skills/init-project/templates/ARCHITECTURE.md.template is the documented
+# skeleton; the renderer owns content so the doc is self-contained even when the
+# install dir is unavailable at render time.
+
+_EMPTY_SECTION_PLACEHOLDER: str = "_None recorded._"
+
+# Sentinels bounding the template's maintainer-guidance comment. The renderer
+# removes the whole span (delimiters included) so contract prose — and the
+# literal double-brace it mentions — never leaks into the rendered doc.
+_TEMPLATE_STRIP_START: str = "<!-- RENDER:STRIP-START"
+_TEMPLATE_STRIP_END: str = "RENDER:STRIP-END -->"
+
+
+def render_doc(baseline_path: Path) -> Path:
+    """Render the human twin ``ARCHITECTURE.md`` from a baseline file.
+
+    Reads and validates the baseline at ``baseline_path``, projects its
+    exemplars / do-not-copy / rules / boundary map / confidence into a
+    deterministic Markdown document, and atomically writes it to
+    ``<repo_root>/ARCHITECTURE.md`` (two parents up from the baseline, i.e. the
+    repo root). The document carries the ``GENERATED_DOC_HEADER`` provenance line
+    so its generated nature is structurally obvious.
+
+    Args:
+        baseline_path: Path to ``.etc_sdlc/architecture-baseline.yaml``.
+
+    Returns:
+        The path the ``ARCHITECTURE.md`` was written to.
+
+    Raises:
+        ValueError: If the baseline is missing/malformed or an unsupported
+            future schema_version (cannot render what we cannot interpret).
+    """
+    baseline = _load_existing(baseline_path)
+    doc_path = _architecture_doc_path(baseline_path)
+    _render_doc_from_baseline(baseline_path, baseline)
+    return doc_path
+
+
+def _architecture_doc_path(baseline_path: Path) -> Path:
+    """Resolve the repo-root ARCHITECTURE.md path from the baseline file path.
+
+    The baseline lives at ``<repo>/.etc_sdlc/architecture-baseline.yaml``; the
+    human twin sits at ``<repo>/ARCHITECTURE.md`` — two parents up.
+    """
+    repo_root = baseline_path.parent.parent
+    return repo_root / ARCHITECTURE_DOC_NAME
+
+
+def _render_doc_from_baseline(baseline_path: Path, baseline: dict[str, Any]) -> None:
+    """Render and atomically write ARCHITECTURE.md for an in-hand baseline.
+
+    Shared by ``ratify`` (post-transition) and ``render_doc`` (standalone) so
+    the rendering contract has exactly one implementation.
+    """
+    doc_path = _architecture_doc_path(baseline_path)
+    body = _compose_architecture_md(baseline)
+    _atomic_write_text(doc_path, body)
+
+
+def _compose_architecture_md(baseline: dict[str, Any]) -> str:
+    """Assemble the full ARCHITECTURE.md body from a baseline dict (pure).
+
+    Fills the on-disk template skeleton (which owns section ORDER + fixed prose)
+    with rendered fragments. Falls back to a self-contained built-in skeleton
+    when the template is unavailable so the doc never depends on the install dir
+    being present at render time.
+    """
+    fragments = _section_fragments(baseline)
+    template = _load_template_text()
+    if template is None:
+        return _builtin_skeleton(fragments)
+    return _fill_template(template, fragments)
+
+
+def _load_template_text() -> str | None:
+    """Read the render-skeleton template; return None if it is unavailable."""
+    try:
+        return ARCHITECTURE_TEMPLATE_PATH.read_text(encoding="utf-8")
+    except OSError:
+        logger.warning(
+            "ARCHITECTURE.md template not found at %s; using built-in skeleton",
+            ARCHITECTURE_TEMPLATE_PATH,
+        )
+        return None
+
+
+def _section_fragments(baseline: dict[str, Any]) -> dict[str, str]:
+    """Build the placeholder -> rendered-fragment substitution map (pure)."""
+    confidence = baseline.get("confidence") or {}
+    return {
+        "STATUS": str(baseline.get("status", "unknown")),
+        "RATIFIED_BY": str(baseline.get("ratified_by") or "(unratified)"),
+        "RATIFIED_AT": str(baseline.get("ratified_at") or "(unratified)"),
+        "CONFIDENCE_SCORE": _confidence_score(confidence),
+        "EXEMPLARS": _render_exemplars_body(baseline.get("exemplars") or []),
+        "DO_NOT_COPY": _render_do_not_copy_body(baseline.get("do_not_copy") or []),
+        "RULES": _render_rules_body(baseline.get("rules") or []),
+        "BOUNDARY_MAP": _render_boundary_map_body(baseline.get("seams") or []),
+        "CONFIDENCE_INPUTS": _render_confidence_inputs_body(confidence),
+    }
+
+
+def _fill_template(template: str, fragments: dict[str, str]) -> str:
+    """Substitute every ``{{KEY}}`` in the template with its fragment.
+
+    First removes the maintainer-guidance block (everything between the
+    ``RENDER:STRIP-START`` / ``RENDER:STRIP-END`` sentinels) so no contract
+    prose — or the literal ``{{...}}`` it mentions — leaks into the rendered
+    doc. The verbatim generated-from header comment lives OUTSIDE the sentinels
+    and is preserved.
+    """
+    rendered = _strip_guidance_block(template)
+    for key, value in fragments.items():
+        rendered = rendered.replace("{{" + key + "}}", value)
+    return rendered
+
+
+def _strip_guidance_block(template: str) -> str:
+    """Remove the sentinel-delimited maintainer-guidance comment from a template.
+
+    Deterministic: drops the entire ``<!-- RENDER:STRIP-START ... RENDER:STRIP-END -->``
+    comment (delimiters included) and the blank line the removal would leave
+    behind. The verbatim generated-from header comment is a separate comment
+    outside the sentinels and is preserved.
+    """
+    start = template.find(_TEMPLATE_STRIP_START)
+    end = template.find(_TEMPLATE_STRIP_END)
+    if start == -1 or end == -1:
+        return template
+    after = template[end + len(_TEMPLATE_STRIP_END) :]
+    return template[:start] + after.lstrip("\n")
+
+
+def _builtin_skeleton(fragments: dict[str, str]) -> str:
+    """Self-contained fallback skeleton (template-unavailable path).
+
+    Mirrors the template's section order and the verbatim generated-from header
+    so a render without the template still produces a complete, correctly-headed
+    document.
+    """
+    sections = [
+        f"<!-- {GENERATED_DOC_HEADER} -->\n# Architecture Baseline\n\n"
+        f"**Status:** {fragments['STATUS']} — ratified by {fragments['RATIFIED_BY']} "
+        f"on {fragments['RATIFIED_AT']}\n**Confidence:** {fragments['CONFIDENCE_SCORE']}",
+        f"## Exemplars\n\n{fragments['EXEMPLARS']}",
+        f"## Do Not Copy\n\n{fragments['DO_NOT_COPY']}",
+        f"## Rules\n\n{fragments['RULES']}",
+        f"## Boundary Map\n\n{fragments['BOUNDARY_MAP']}",
+        f"## Confidence\n\nScore: **{fragments['CONFIDENCE_SCORE']}**.\n\n"
+        f"{fragments['CONFIDENCE_INPUTS']}",
+    ]
+    return "\n\n".join(sections) + "\n"
+
+
+def _render_exemplars_body(exemplars: list[Any]) -> str:
+    """Golden registry body: name, paths, applies-to, blessed-by — stored order."""
+    if not exemplars:
+        return _EMPTY_SECTION_PLACEHOLDER
+    lines: list[str] = []
+    for exemplar in exemplars:
+        name = exemplar.get("name", "(unnamed)")
+        paths = ", ".join(str(p) for p in exemplar.get("paths") or [])
+        applies_to = exemplar.get("applies_to", "")
+        blessed_by = exemplar.get("blessed_by") or "(unrecorded)"
+        lines.append(f"- **{name}** (`{paths}`) — {applies_to} _[blessed by {blessed_by}]_")
+    return "\n".join(lines)
+
+
+def _render_do_not_copy_body(entries: list[Any]) -> str:
+    """Anti-pattern registry body: path + reason, stored order."""
+    if not entries:
+        return _EMPTY_SECTION_PLACEHOLDER
+    lines: list[str] = []
+    for entry in entries:
+        path = entry.get("path", "(unspecified)")
+        reason = entry.get("reason", "")
+        lines.append(f"- `{path}` — {reason}")
+    return "\n".join(lines)
+
+
+def _render_rules_body(rules: list[Any]) -> str:
+    """Normative rules body: id + statement + enforcement, stored order."""
+    if not rules:
+        return _EMPTY_SECTION_PLACEHOLDER
+    lines: list[str] = []
+    for rule in rules:
+        rule_id = rule.get("id", "R-???")
+        statement = rule.get("statement", "")
+        enforced_by = rule.get("enforced_by", "human-judgment")
+        lines.append(f"- **{rule_id}** — {statement} _[enforced by {enforced_by}]_")
+    return "\n".join(lines)
+
+
+def _render_boundary_map_body(seams: list[Any]) -> str:
+    """Boundary map body from the per-repo seam block.
+
+    Tolerant of BOTH seam shapes a baseline's ``seams:`` block may carry: the
+    ``init`` shape (``signal`` / ``external_owner`` / ``resolution``, design
+    Data Model artifact 1) and the ``sync-seams`` workspace-mirror shape
+    (``kind`` / ``owner_repo`` / ``contract`` / ``consumer_repos``, artifact 2).
+    Each row surfaces an id, a description, and an owner regardless of writer.
+    """
+    if not seams:
+        return _EMPTY_SECTION_PLACEHOLDER
+    return "\n".join(_render_seam_row(seam) for seam in seams)
+
+
+def _render_seam_row(seam: dict[str, Any]) -> str:
+    """Render one boundary-map row, normalizing across both seam shapes."""
+    seam_id = seam.get("id", "SM-???")
+    description = seam.get("signal") or seam.get("contract") or seam.get("kind") or ""
+    owner = seam.get("external_owner") or seam.get("owner_repo") or "(boundary-unknown)"
+    qualifier = seam.get("resolution") or seam.get("kind") or ""
+    return f"- **{seam_id}** — {description} → owner: {owner} _[{qualifier}]_"
+
+
+def _render_confidence_inputs_body(confidence: dict[str, Any]) -> str:
+    """Confidence inputs body: the documented inputs (auditable, never bare)."""
+    inputs = confidence.get("inputs") if isinstance(confidence, dict) else None
+    if not isinstance(inputs, dict) or not inputs:
+        return _EMPTY_SECTION_PLACEHOLDER
+    lines = ["Inputs:", ""]
+    for key in sorted(inputs):
+        lines.append(f"- {key}: {inputs[key]}")
+    return "\n".join(lines)
+
+
+def _confidence_score(confidence: Any) -> str:
+    """Extract the confidence score token, defaulting to ``unknown``."""
+    if isinstance(confidence, dict):
+        return str(confidence.get("score", "unknown"))
+    return "unknown"
+
+
+def _atomic_write_text(path: Path, body: str) -> None:
+    """Atomically write ``body`` to ``path`` (tmp + fsync + os.replace).
+
+    The text-mode twin of ``atomic_dump`` — the rendered doc is plain Markdown,
+    not YAML, so it needs its own write path with the same atomicity guarantees
+    (no partial doc ever observed, no temp debris on success).
+    """
+    target_dir = path.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(target_dir))
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(body)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(str(tmp_path), str(path))
+    except OSError:
+        _unlink_quietly(tmp_path)
+        raise
+
+
+# ── sync-seams: read-only per-repo seam mirrors ─────────────────────────
+#
+# Workspace mode (ADR-005) keeps ONE editable seam map at
+# <workspace>/.etc_workspace/seam-map.yaml and regenerates a read-only `seams:`
+# mirror inside each repo's baseline, filtered to the seams that repo
+# participates in (as owner or consumer). A repo cloned alone therefore keeps
+# its full seam context — the covr solo-clone blindness fixed. Hand-edits to a
+# mirror are overwritten on the next sync; each mirror record carries a note
+# saying so. There is no separate validate-seam path: sync-seams validates the
+# seam-map itself (exit 1 on malformed) so a bad map never silently mirrors.
+
+# The marker stamped on every mirror record: the mirror is generated, so a
+# human edit will not survive the next sync. Mirrored alongside the seam data
+# (not a file-level comment) because the baseline is YAML the CLI owns — the
+# note rides with the record that a reader is looking at.
+_MIRROR_OVERWRITE_NOTE: str = (
+    "read-only mirror regenerated by `baseline.py sync-seams`; "
+    "hand-edits will be overwritten — edit the workspace seam-map instead"
+)
+
+
+def sync_seams(workspace_root: Path) -> list[Path]:
+    """Regenerate each repo's read-only seam mirror from the workspace seam-map.
+
+    Loads and validates ``<workspace>/.etc_workspace/seam-map.yaml`` (malformed
+    → ``ValueError``, never a silent partial sync), then for every repo named in
+    the map that has an existing baseline on disk, overwrites that baseline's
+    ``seams:`` block with the seams touching that repo (owner or consumer),
+    each carrying the hand-edits-overwritten note. Repos without a baseline are
+    skipped (forward-only; sync never auto-creates a baseline).
+
+    Args:
+        workspace_root: The workspace root containing ``.etc_workspace/``.
+
+    Returns:
+        The list of baseline paths whose mirrors were rewritten.
+
+    Raises:
+        ValueError: If the seam-map is missing, unparseable, or violates the
+            seam-map schema (e.g. an out-of-enum ``kind``).
+    """
+    seam_map = _load_seam_map(workspace_root)
+    seams = seam_map.get("seams") or []
+
+    rewritten: list[Path] = []
+    for repo in seam_map.get("repos") or []:
+        repo_name = repo.get("name")
+        baseline_path = workspace_root / str(repo_name) / BASELINE_RELATIVE_PATH
+        if not baseline_path.exists():
+            continue
+        _rewrite_repo_mirror(baseline_path, repo_name, seams)
+        rewritten.append(baseline_path)
+    return rewritten
+
+
+def _load_seam_map(workspace_root: Path) -> dict[str, Any]:
+    """Read and validate the workspace seam-map; raise on any problem."""
+    seam_path = workspace_root / SEAM_MAP_RELATIVE_PATH
+    if not seam_path.exists():
+        msg = f"workspace seam-map not found: {seam_path}"
+        raise ValueError(msg)
+
+    try:
+        parsed = yaml.safe_load(seam_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        msg = f"malformed YAML in seam-map {seam_path}: {exc}"
+        raise ValueError(msg) from exc
+
+    _validate_seam_map(parsed, seam_path)
+    # _validate_seam_map raises unless parsed is a mapping; the isinstance here
+    # narrows Any -> dict for the type checker (mirrors load()'s inline guard).
+    if not isinstance(parsed, dict):  # pragma: no cover - guarded above
+        msg = f"seam-map at {seam_path} must be a YAML mapping"
+        raise ValueError(msg)
+    return parsed
+
+
+def _validate_seam_map(parsed: object, seam_path: Path) -> None:
+    """Enforce the seam-map schema (design Data Model artifact 2 / ADR-005)."""
+    if not isinstance(parsed, dict):
+        msg = f"seam-map at {seam_path} must be a YAML mapping; got {type(parsed).__name__}"
+        raise ValueError(msg)
+    if not isinstance(parsed.get("repos"), list):
+        msg = f"seam-map at {seam_path} must carry a 'repos' list"
+        raise ValueError(msg)
+    seams = parsed.get("seams")
+    if not isinstance(seams, list):
+        msg = f"seam-map at {seam_path} must carry a 'seams' list"
+        raise ValueError(msg)
+    for seam in seams:
+        _validate_seam_record(seam, seam_path)
+
+
+def _validate_seam_record(seam: object, seam_path: Path) -> None:
+    """Enforce a single seam's shape: mapping with an in-enum ``kind``."""
+    if not isinstance(seam, dict):
+        msg = f"seam-map at {seam_path} has a non-mapping seam: {seam!r}"
+        raise ValueError(msg)
+    kind = seam.get("kind")
+    if kind not in LEGAL_SEAM_KINDS:
+        seam_id = seam.get("id", "<unknown>")
+        msg = (
+            f"seam-map seam {seam_id} kind {kind!r} is not legal; "
+            f"expected one of: {sorted(LEGAL_SEAM_KINDS)}"
+        )
+        raise ValueError(msg)
+
+
+def _rewrite_repo_mirror(baseline_path: Path, repo_name: object, seams: list[Any]) -> None:
+    """Overwrite one baseline's ``seams:`` block with this repo's filtered mirror."""
+    baseline = _load_existing(baseline_path)
+    baseline["seams"] = [
+        _mirror_record(seam) for seam in seams if _seam_touches_repo(seam, repo_name)
+    ]
+    atomic_dump(baseline_path, baseline)
+
+
+def _seam_touches_repo(seam: dict[str, Any], repo_name: object) -> bool:
+    """True if ``repo_name`` is the seam's owner or one of its consumers."""
+    if seam.get("owner_repo") == repo_name:
+        return True
+    consumers = seam.get("consumer_repos") or []
+    return repo_name in consumers
+
+
+def _mirror_record(seam: dict[str, Any]) -> dict[str, Any]:
+    """Project a workspace seam into a read-only per-repo mirror record.
+
+    Preserves the load-bearing fields a solo-cloned repo needs (kind, owner,
+    consumers, contract, evidence) plus the overwrite note. Deterministic field
+    order so re-syncs diff cleanly.
+    """
+    return {
+        "id": seam.get("id"),
+        "kind": seam.get("kind"),
+        "owner_repo": seam.get("owner_repo"),
+        "consumer_repos": list(seam.get("consumer_repos") or []),
+        "contract": seam.get("contract"),
+        "evidence": seam.get("evidence"),
+        "_mirror_note": _MIRROR_OVERWRITE_NOTE,
+    }
 
 
 # ── Command-line interface ──────────────────────────────────────────────
@@ -764,6 +1213,43 @@ def _cli_append_rule(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cli_render_doc(args: argparse.Namespace) -> int:
+    """``render-doc <baseline_path>`` — print the ARCHITECTURE.md path.
+
+    Exit 0 with the written doc path on stdout; 1 when the baseline is missing
+    or malformed (could-not-evaluate). Re-rendering an already-rendered doc is
+    a deterministic no-op at the byte level.
+    """
+    path = Path(args.baseline_path)
+    if not path.exists():
+        print(f"architecture-baseline file not found: {path}", file=sys.stderr)
+        return 1
+    try:
+        doc_path = render_doc(path)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(str(doc_path))
+    return 0
+
+
+def _cli_sync_seams(args: argparse.Namespace) -> int:
+    """``sync-seams <workspace_root>`` — regenerate read-only per-repo mirrors.
+
+    Exit 0 with one rewritten baseline path per line on stdout; 1 when the
+    seam-map is missing or malformed (could-not-evaluate — never a silent
+    partial sync).
+    """
+    try:
+        rewritten = sync_seams(Path(args.workspace_root))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    for path in rewritten:
+        print(str(path))
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="baseline.py",
@@ -825,6 +1311,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Mark the rule as a baseline-verify graduation candidate.",
     )
     p_append.set_defaults(func=_cli_append_rule)
+
+    p_render = sub.add_parser(
+        "render-doc",
+        help="Re-render the human twin ARCHITECTURE.md from the machine baseline.",
+    )
+    p_render.add_argument("baseline_path", help="Path to architecture-baseline.yaml.")
+    p_render.set_defaults(func=_cli_render_doc)
+
+    p_sync = sub.add_parser(
+        "sync-seams",
+        help="Regenerate each repo's read-only seams mirror from the workspace seam-map.",
+    )
+    p_sync.add_argument(
+        "workspace_root",
+        help="Workspace root directory (contains .etc_workspace).",
+    )
+    p_sync.set_defaults(func=_cli_sync_seams)
 
     return parser
 

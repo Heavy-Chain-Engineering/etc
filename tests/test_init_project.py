@@ -66,12 +66,16 @@ INSTALL_STEPS_PENDING_REASON = (
     "task 005 install_steps.py)"
 )
 
-# The full template set deployed by compile-sdlc.py: SKILL.md + 14 templates.
+# The full template set deployed by compile-sdlc.py: SKILL.md + 15 templates.
+# ARCHITECTURE.md.template is the human-twin render skeleton for the
+# architecture-baseline phase (Phase 1.5); it lands alongside the three
+# placeholder templates as a Category-1 (substituted-on-render) artifact.
 EXPECTED_FILES: tuple[str, ...] = (
     "SKILL.md",
     "templates/DOMAIN.md.template",
     "templates/PROJECT.md.template",
     "templates/CLAUDE.md.template",
+    "templates/ARCHITECTURE.md.template",
     "templates/tier-1/prds.README.md",
     "templates/tier-1/plans.README.md",
     "templates/tier-1/sources.README.md",
@@ -170,13 +174,15 @@ def test_should_deploy_template_when_compile_runs(
     )
 
 
-def test_should_deploy_exactly_fifteen_files_when_compile_runs(
+def test_should_deploy_exactly_the_expected_file_set_when_compile_runs(
     compiled_skill_dir: Path,
 ) -> None:
-    """The init-project skill ships exactly 1 SKILL.md + 14 templates.
+    """The init-project skill ships exactly 1 SKILL.md + 15 templates.
 
     Covers AC7 completeness: guards against silent drift where a new template
-    is added to skills/ but no one updates EXPECTED_FILES or the PRD.
+    is added to skills/ but no one updates EXPECTED_FILES or the PRD. The set
+    is data-driven from EXPECTED_FILES, so adding a template means updating one
+    tuple — the guard then re-locks the count.
     """
     # Arrange & Act
     deployed = sorted(
@@ -845,6 +851,267 @@ class TestSkillMdContract:
             "SKILL.md must explicitly forbid using Read + Write for "
             "verbatim templates. Without the prohibition, agents default "
             "to Read + Write because those tools are more salient."
+        )
+
+    def test_should_slot_baseline_phase_between_phase_1_and_phase_2(
+        self, skill_md_text: str
+    ) -> None:
+        """AC1: the architecture-baseline phase heading must appear, named
+        'Phase 1.5: Architecture Baseline', positioned in the body AFTER the
+        Phase 1 heading and BEFORE the Phase 2 heading.
+
+        Numbering the phase 1.5 keeps the existing Phase 2-4 headings stable
+        (the slot-between framing). A wave-3 sibling fills RATIFY/ENFORCE;
+        this task only proves the slot is present and ordered.
+        """
+        idx_baseline = skill_md_text.find("## Phase 1.5 -- Architecture Baseline")
+        idx_phase_1 = skill_md_text.find("## Phase 1 -- Technical Scaffold")
+        idx_phase_2 = skill_md_text.find("## Phase 2 -- Domain Scaffold")
+        assert idx_baseline != -1, (
+            "SKILL.md missing the 'Phase 1.5 -- Architecture Baseline' heading "
+            "(AC1) — the baseline phase slot was not added."
+        )
+        assert idx_phase_1 != -1 and idx_phase_2 != -1
+        assert idx_phase_1 < idx_baseline < idx_phase_2, (
+            "Phase 1.5 -- Architecture Baseline must slot BETWEEN Phase 1 and "
+            "Phase 2 in the SKILL body (AC1)."
+        )
+
+    def test_should_document_phase_baseline_flag(
+        self, skill_md_text: str
+    ) -> None:
+        """AC1: --phase=baseline runs the architecture-baseline phase standalone.
+
+        The flag must appear in the Usage block AND the Flag Parsing section so
+        an agent both advertises and honors the standalone backfill path.
+        """
+        assert "--phase=baseline" in skill_md_text, (
+            "SKILL.md does not document the --phase=baseline flag (AC1) — the "
+            "standalone backfill path is unreachable."
+        )
+        # Must be wired in Flag Parsing, not only the Usage banner.
+        idx_flag_parsing = skill_md_text.find("## Flag Parsing")
+        assert idx_flag_parsing != -1
+        flag_parsing_section = skill_md_text[idx_flag_parsing : idx_flag_parsing + 1500]
+        assert "--phase=baseline" in flag_parsing_section, (
+            "Flag Parsing section does not handle --phase=baseline (AC1)."
+        )
+
+    def test_should_block_baseline_phase_when_phase_1_artifacts_absent(
+        self, skill_md_text: str
+    ) -> None:
+        """AC1: standalone --phase=baseline must carry a precondition block.
+
+        When Phase 1 artifacts (the .meta/ tree) are absent, the baseline phase
+        must surface a clear precondition message rather than silently running
+        a discovery pass against an un-surveyed repo. The message text is the
+        contract a regression would drop.
+        """
+        idx_baseline = skill_md_text.find("## Phase 1.5 -- Architecture Baseline")
+        assert idx_baseline != -1
+        baseline_section = skill_md_text[idx_baseline:]
+        # Cut the section at the next top-level phase heading so we grep only
+        # the baseline phase body.
+        next_heading = baseline_section.find("## Phase 2 -- Domain Scaffold")
+        if next_heading != -1:
+            baseline_section = baseline_section[:next_heading]
+        lowered = baseline_section.lower()
+        assert "precondition" in lowered, (
+            "Phase 1.5 does not document a precondition block for standalone "
+            "--phase=baseline (AC1)."
+        )
+        # The precondition must name the missing Phase 1 artifact (.meta/) so
+        # the agent knows exactly what to check.
+        assert ".meta" in baseline_section, (
+            "Phase 1.5 precondition does not name the .meta/ tree as the "
+            "Phase 1 artifact it depends on (AC1)."
+        )
+
+    def test_should_dispatch_baseline_surveyor_in_parallel_batches(
+        self, skill_md_text: str
+    ) -> None:
+        """AC2: DISCOVER/VERIFY dispatches baseline-surveyor agents in parallel
+        batches capped at 5 (project-bootstrapper precedent).
+
+        The phase must name the Agent tool, the baseline-surveyor subagent_type,
+        and the ≤5-per-batch ceiling so the fan-out is unambiguous.
+        """
+        idx_baseline = skill_md_text.find("## Phase 1.5 -- Architecture Baseline")
+        assert idx_baseline != -1
+        baseline_section = skill_md_text[idx_baseline:]
+        next_heading = baseline_section.find("## Phase 2 -- Domain Scaffold")
+        if next_heading != -1:
+            baseline_section = baseline_section[:next_heading]
+
+        assert 'subagent_type: "baseline-surveyor"' in baseline_section, (
+            "Phase 1.5 does not name the baseline-surveyor subagent_type "
+            "(AC2) — the fan-out is unroutable."
+        )
+        # The four assignment types must all be named.
+        for assignment in ("inventory", "claims", "patterns", "seams"):
+            assert assignment in baseline_section, (
+                f"Phase 1.5 does not name the '{assignment}' surveyor "
+                f"assignment (AC2)."
+            )
+        # The ≤5-per-batch ceiling (project-bootstrapper precedent).
+        has_batch_cap = (
+            "5 per batch" in baseline_section
+            or "≤5" in baseline_section
+            or "<=5" in baseline_section
+            or "at most 5" in baseline_section
+        )
+        assert has_batch_cap, (
+            "Phase 1.5 does not document the ≤5-per-batch dispatch ceiling "
+            "(AC2, project-bootstrapper precedent)."
+        )
+
+    def test_should_call_baseline_py_init_with_merged_findings(
+        self, skill_md_text: str
+    ) -> None:
+        """AC2: the conductor merges surveyor findings and calls baseline.py init.
+
+        The exact CLI invocation prefix must appear so the Codex path-rewrite
+        works and the agent does not parse YAML itself.
+        """
+        idx_baseline = skill_md_text.find("## Phase 1.5 -- Architecture Baseline")
+        assert idx_baseline != -1
+        baseline_section = skill_md_text[idx_baseline:]
+        next_heading = baseline_section.find("## Phase 2 -- Domain Scaffold")
+        if next_heading != -1:
+            baseline_section = baseline_section[:next_heading]
+
+        assert "~/.claude/scripts/baseline.py init" in baseline_section, (
+            "Phase 1.5 does not call `baseline.py init` with the "
+            "~/.claude/scripts/ prefix (AC2) — the merge step is unwired and "
+            "Codex path-rewrite breaks."
+        )
+        assert "--from" in baseline_section, (
+            "Phase 1.5 baseline.py init call does not pass --from <merged-json> "
+            "(AC2)."
+        )
+
+    def test_should_treat_empty_inventory_as_valid_baseline(
+        self, skill_md_text: str
+    ) -> None:
+        """AC2: an empty inventory proceeds as a valid baseline (no-docs repo)."""
+        idx_baseline = skill_md_text.find("## Phase 1.5 -- Architecture Baseline")
+        assert idx_baseline != -1
+        baseline_section = skill_md_text[idx_baseline:]
+        next_heading = baseline_section.find("## Phase 2 -- Domain Scaffold")
+        if next_heading != -1:
+            baseline_section = baseline_section[:next_heading]
+        lowered = baseline_section.lower()
+        assert "empty inventory" in lowered, (
+            "Phase 1.5 does not state that an empty inventory is a valid "
+            "baseline (AC2, the no-docs fixture)."
+        )
+
+    def test_should_seed_trivial_ratified_baseline_in_greenfield_mode(
+        self, skill_md_text: str
+    ) -> None:
+        """AC2: greenfield mode seeds a trivial ratified baseline from the
+        scaffold with NO verification pass.
+
+        A freshly scaffolded greenfield repo has no pre-existing claims to
+        verify — the scaffold IS the architecture — so the fan-out is skipped
+        and a trivial baseline is seeded directly.
+        """
+        idx_baseline = skill_md_text.find("## Phase 1.5 -- Architecture Baseline")
+        assert idx_baseline != -1
+        baseline_section = skill_md_text[idx_baseline:]
+        next_heading = baseline_section.find("## Phase 2 -- Domain Scaffold")
+        if next_heading != -1:
+            baseline_section = baseline_section[:next_heading]
+        lowered = baseline_section.lower()
+        assert "greenfield" in lowered, (
+            "Phase 1.5 does not document the greenfield branch (AC2)."
+        )
+        # Greenfield must explicitly skip the verification/discovery pass.
+        skips_verification = (
+            "no verification pass" in lowered
+            or "without a verification pass" in lowered
+            or "skip the verification" in lowered
+            or "skips the verification" in lowered
+        )
+        assert skips_verification, (
+            "Phase 1.5 greenfield branch does not state that it skips the "
+            "verification pass (AC2)."
+        )
+
+    def test_should_verify_existing_tier_0_artifacts_through_claim_ledger(
+        self, skill_md_text: str
+    ) -> None:
+        """AC3: self-check — on re-init, existing DOMAIN.md/PROJECT.md/.meta
+        artifacts' load-bearing claims enter the claim ledger through the SAME
+        verification pass as third-party docs (never silently retained).
+
+        This is the ADR-003 self-application: etc's own prior tier-0 output is
+        not trusted on faith just because etc generated it.
+        """
+        idx_baseline = skill_md_text.find("## Phase 1.5 -- Architecture Baseline")
+        assert idx_baseline != -1
+        baseline_section = skill_md_text[idx_baseline:]
+        next_heading = baseline_section.find("## Phase 2 -- Domain Scaffold")
+        if next_heading != -1:
+            baseline_section = baseline_section[:next_heading]
+        lowered = baseline_section.lower()
+
+        # Must name the self-check / re-init path.
+        has_self_check = "self-check" in lowered or "re-init" in lowered
+        assert has_self_check, (
+            "Phase 1.5 does not document the re-init self-check (AC3)."
+        )
+        # Must name etc's own tier-0 artifacts as subject to verification.
+        assert "DOMAIN.md" in baseline_section, (
+            "Phase 1.5 self-check does not name DOMAIN.md as a claim source "
+            "(AC3) — etc's own docs must be verified, not retained on faith."
+        )
+        # Must state the never-silently-retained contract.
+        retains_nothing_silently = (
+            "never silently retained" in lowered
+            or "not silently retained" in lowered
+            or "same verification pass" in lowered
+        )
+        assert retains_nothing_silently, (
+            "Phase 1.5 self-check does not state that existing tier-0 claims "
+            "go through the same verification pass and are never silently "
+            "retained (AC3)."
+        )
+
+    def test_should_stub_ratify_and_enforce_for_next_wave(
+        self, skill_md_text: str
+    ) -> None:
+        """Phase 1.5 carries RATIFY and ENFORCE sub-headings as one-line
+        forward-pointer stubs that the wave-3 sibling replaces in place.
+
+        Structuring the stubs now (rather than leaving the headings absent)
+        gives the wave-3 task a stable insertion point and signals to readers
+        that the phase is intentionally incomplete, not broken.
+        """
+        idx_baseline = skill_md_text.find("## Phase 1.5 -- Architecture Baseline")
+        assert idx_baseline != -1
+        baseline_section = skill_md_text[idx_baseline:]
+        next_heading = baseline_section.find("## Phase 2 -- Domain Scaffold")
+        if next_heading != -1:
+            baseline_section = baseline_section[:next_heading]
+
+        assert "### DISCOVER" in baseline_section, (
+            "Phase 1.5 missing the DISCOVER sub-step heading."
+        )
+        assert "### VERIFY" in baseline_section, (
+            "Phase 1.5 missing the VERIFY sub-step heading."
+        )
+        assert "### RATIFY" in baseline_section, (
+            "Phase 1.5 missing the RATIFY stub heading (wave-3 insertion point)."
+        )
+        assert "### ENFORCE" in baseline_section, (
+            "Phase 1.5 missing the ENFORCE stub heading (wave-3 insertion point)."
+        )
+        # The forward-pointer must be present so the stubs read as deliberate.
+        lowered = baseline_section.lower()
+        assert "next wave" in lowered, (
+            "Phase 1.5 RATIFY/ENFORCE stubs missing the 'next wave' forward "
+            "pointer — wave-3 has no marked insertion point."
         )
 
     def test_should_document_visual_marker_for_open_questions(

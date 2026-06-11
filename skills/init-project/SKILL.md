@@ -7,8 +7,12 @@ description: Bootstrap any repository into a state where the ETC harness can ope
 
 You are the project initializer. Your job is to turn any repository -- greenfield
 or brownfield -- into a state where the ETC harness can operate on it. You do
-this by orchestrating four phases in strict order: technical scaffold, domain
-scaffold, documentation skeleton, and role manifests.
+this by orchestrating phases in strict order: technical scaffold (Phase 1),
+architecture baseline (Phase 1.5 -- discover and verify the existing
+architecture), domain scaffold (Phase 2), documentation skeleton (Phase 3),
+and role manifests (Phase 4). Phase 1.5 slots between the technical and domain
+scaffolds: it surveys what the codebase actually IS before you write the
+business-context docs that describe what it should be.
 
 You are interactive. You ask questions and wait for answers. You NEVER silently
 overwrite a file the user already created. You NEVER re-implement logic that
@@ -62,6 +66,11 @@ are absolute:
    summarizing the agent's returned result, (e) extracting
    candidate entity nouns from `.meta/**/description.md` for Phase 2.
 
+Phase 1.5 (architecture baseline) dispatches the `baseline-surveyor`
+subagent in parallel batches — see that phase's own Subagent Dispatch
+rules. The merge and the `baseline.py init` call run in your context; the
+discovery and verification work does NOT.
+
 Phases 2, 3, and 4 run in your own context. They are interactive (Phase 2)
 or template-copy (Phases 3, 4) — no subagent dispatch. Do not dispatch
 subagents for those phases.
@@ -95,8 +104,9 @@ fails because a template is missing, STOP and report the gap.
 ## Usage
 
 ```
-/init-project                        -- run all four phases in order
+/init-project                        -- run all phases in order
 /init-project --phase=tech           -- run only Phase 1 (delegate to project-bootstrapper)
+/init-project --phase=baseline       -- run only Phase 1.5 (architecture baseline: discover/verify)
 /init-project --phase=domain         -- run only Phase 2 (DOMAIN.md / PROJECT.md / CLAUDE.md)
 /init-project --phase=skeleton       -- run only Phase 3 (docs/ directories and READMEs)
 /init-project --phase=roles          -- run only Phase 4 (starter role manifests)
@@ -275,8 +285,13 @@ skim past it. Either use `AskUserQuestion` or the visual marker above.
 
 Parse the command for `--phase=<name>`:
 
-- No `--phase`: run Phases 1, 2, 3, 4 in order.
+- No `--phase`: run Phases 1, 1.5, 2, 3, 4 in order.
 - `--phase=tech`: run Phase 1 only.
+- `--phase=baseline`: run Phase 1.5 only (the architecture-baseline backfill
+  path). Preflight: the Phase 1 `.meta/` tree must exist. If it is absent,
+  emit the precondition block (see Phase 1.5) and STOP — a discovery pass over
+  an un-surveyed repo would burn the parallel fan-out on a tree the
+  scaffolder never described.
 - `--phase=domain`: run Phase 2 only. Preflight: Phase 1 artifacts should exist,
   but if `.meta/` is missing you proceed anyway and record that brownfield
   vocabulary is unavailable (per AC#6 in the spec).
@@ -378,6 +393,191 @@ entities for Phase 2. If `.meta/` is empty or unreadable, set
 `brownfield_vocabulary = []` and note the gap.
 
 Append Phase 1 outcomes to `phases_run[]` (or `phases_skipped[]`).
+
+## Phase 1.5 -- Architecture Baseline (discover + verify the existing architecture)
+
+**Goal:** survey what the codebase actually IS — its normative artifacts, the
+claims those artifacts make, its competing patterns, and its cross-repo seams —
+verify every load-bearing claim against the tree, and write an *unratified*
+machine baseline at `.etc_sdlc/architecture-baseline.yaml`. This phase never
+honors a doc on faith: a discovered convention doc is a *claim to be checked*,
+not a fact to be trusted (ADR-003). RATIFY (the human matrix-walk that blesses
+the result) and ENFORCE (checker generation) are authored in the next wave of
+this feature build — see the stubs at the end of this phase.
+
+**Why this slots between Phase 1 and Phase 2:** Phase 1 produces the `.meta/`
+tree (what files exist); Phase 2 writes the business-context docs (what the
+system is *for*). The baseline sits between them so the domain docs are written
+with an evidence-based picture of the real architecture in hand, not an
+aspirational one.
+
+**Mode at entry.** Read the mode `project-bootstrapper` reported in Phase 1
+(greenfield vs brownfield):
+
+- **Greenfield** (the scaffolder just created the structure; there is no
+  pre-existing architecture to discover): skip the DISCOVER/VERIFY fan-out
+  entirely. The scaffold IS the architecture, so there is nothing to verify.
+  Seed a trivial **ratified** baseline directly from the scaffold layout with
+  **no verification pass** — call
+  `python3 ~/.claude/scripts/baseline.py init <repo_root> --from <merged-json>`
+  with a minimal merged-json (empty `inventory`, empty `claims`, the scaffold's
+  top-level package dirs as the only exemplar candidates), then record it as
+  ratified per the scaffold. Append Phase 1.5 to `phases_run[]` and proceed to
+  Phase 2. Do NOT dispatch surveyors in greenfield mode.
+- **Brownfield** (an existing tree the scaffolder surveyed): run DISCOVER and
+  VERIFY below.
+
+### Preconditions (standalone `--phase=baseline`)
+
+When invoked standalone, this phase depends on Phase 1's output. Before any
+dispatch, check the precondition:
+
+- The Phase 1 `.meta/` tree must exist (`.meta/description.md` at repo root).
+  It is the surveyed file map the fan-out reasons over and the source of the
+  candidate vocabulary.
+
+If the `.meta/` tree is absent, do NOT proceed. Emit this precondition block
+and STOP:
+
+```
+
+---
+
+**Precondition not met — Phase 1 artifacts absent.**
+
+Phase 1.5 (architecture baseline) needs the Phase 1 `.meta/` description tree,
+but `.meta/description.md` was not found at the repo root. Run technical
+scaffolding first:
+
+  /init-project --phase=tech
+
+then re-run `/init-project --phase=baseline`.
+
+```
+
+(When the full pipeline runs end-to-end, Phase 1 has just produced `.meta/`, so
+this precondition is already satisfied and the block never fires.)
+
+### DISCOVER -- enumerate candidate normative artifacts (parallel fan-out)
+
+DISCOVER answers "what artifacts could carry normative intent, and what
+competing patterns and seams exist?" It dispatches read-only `baseline-surveyor`
+agents and merges their structured findings. See **Subagent Dispatch (Phase 1.5)**
+below for the absolute dispatch rules.
+
+The DISCOVER assignments are:
+
+- one `inventory` assignment — globs the tree for convention docs, ADRs, lint
+  configs, generators, reference implementations, and agent-docs (secrets
+  excluded), returning a typed inventory with last-modified dates;
+- one `patterns:<concern>` assignment per competing-pattern concern worth
+  measuring (e.g. `patterns:dto-placement`, `patterns:state-management`) —
+  enumerate the distinct implementations and their instance counts;
+- one `seams` assignment — detects cross-repo boundary signals (url-routing,
+  auth-session, data-schema, embed-loader), recording env-var NAMES only.
+
+**Empty inventory is valid.** If the `inventory` surveyor returns
+`findings: []` (a no-docs repo — no convention docs, no ADRs, no lint config),
+that is a legitimate result, not a failure. Proceed to VERIFY with zero claim
+sources and let `baseline.py init` write a valid baseline with an empty
+inventory and empty claim ledger. Do not synthesize claims to fill the void.
+
+### VERIFY -- check every load-bearing claim against the tree (parallel fan-out)
+
+VERIFY answers "is each claim these artifacts make actually TRUE of the tree?"
+For every artifact the `inventory` step surfaced that carries load-bearing
+claims (convention docs, ADRs, agent-docs), dispatch one
+`claims:<artifact>` surveyor. Each extracts the load-bearing claims from its
+ONE artifact, greps the tree for confirming evidence and counterexamples, and
+classifies each claim into the closed enum `VERIFIED | STALE | ASPIRATIONAL |
+CONTRADICTED` with file-level evidence. Only `VERIFIED` claims will later enter
+agent context silently; every other classification is surfaced to the human at
+ratification. The surveyor classifies; it never honors a doc on faith (ADR-003).
+
+**Self-check — etc's own prior tier-0 artifacts are verified, not retained
+(re-init).** On a re-init of a repo that etc has bootstrapped before, existing
+`DOMAIN.md`, `PROJECT.md`, and `.meta/` description files are NOT trusted just
+because etc generated them. Their load-bearing claims (system boundaries, the
+"What It Is Not" scope statements, Product Core entities, the `.meta/` purpose
+lines) enter the claim ledger through the **same verification pass** as any
+third-party doc: dispatch `claims:DOMAIN.md`, `claims:PROJECT.md`, and (for the
+root and any subsystem) `claims:.meta/description.md` surveyors alongside the
+third-party artifacts. A claim etc wrote a year ago can be just as STALE as a
+vendor's README — and etc's own generated DOMAIN.md has shipped a factually
+wrong system-boundary claim before (ADR-003). Existing tier-0 claims are
+**never silently retained**; they are re-verified every re-init.
+
+### Merge and write the unratified baseline
+
+After every dispatched surveyor in every batch has returned:
+
+1. Merge all `findings` blocks in your context (the conductor role): combine the
+   inventory entries, concatenate the per-artifact claim ledgers (renumber `id`s
+   to a single `CL-NNN` sequence), collect the pattern concerns and exemplar
+   candidates, and collect the seams. Preserve every `bounds_applied:` note a
+   surveyor reported — a sampled survey must stay disclosed through the merge.
+2. Write the merged result to a temporary JSON file (the engine-output shape the
+   CLI expects: top-level `inventory`, `claims`, `exemplars`, `do_not_copy`,
+   `seams`, `confidence`).
+3. Call the CLI — it is the ONLY writer of the baseline format; do NOT write or
+   parse the YAML yourself:
+
+```
+python3 ~/.claude/scripts/baseline.py init <repo_root> --from <merged-json>
+```
+
+   It assembles, sanitizes free-form claim text, validates the schema, and
+   atomically writes `.etc_sdlc/architecture-baseline.yaml` with `status:
+   unratified`. It prints the written path on stdout. A non-zero exit is an
+   infrastructure failure — STOP and report it; do not hand-edit the YAML.
+
+Append Phase 1.5 to `phases_run[]`. Record the baseline path and the
+classification tallies (verified / stale / aspirational / contradicted counts)
+for the completion report.
+
+### Subagent Dispatch (Phase 1.5) -- Non-Negotiable
+
+The same absolute dispatch discipline as Phase 1, applied to the surveyor
+fan-out:
+
+1. **You MUST dispatch discovery and verification via the Agent tool with
+   `subagent_type: "baseline-surveyor"`.** One Agent invocation per assignment
+   (one `inventory`, one `seams`, one `patterns:<concern>` per concern, one
+   `claims:<artifact>` per claim-bearing artifact). You MUST NOT survey or
+   verify in your own context — that work belongs to the read-only surveyor.
+2. **Dispatch in parallel batches of at most 5 (≤5 per batch).** This mirrors
+   the project-bootstrapper precedent (parallelism ceiling). Issue up to five
+   Agent invocations, wait for that batch to return, then dispatch the next
+   batch. Do not exceed five concurrent surveyors.
+3. **You MUST NOT call another skill to do the fan-out.** No skill-calls-skill;
+   dispatch the agent directly.
+4. **The surveyors are read-only.** They never write, never mutate the tree,
+   never read secrets. You are the conductor: you merge their structured
+   findings and you alone call `baseline.py init`.
+5. **Merge only after every dispatched surveyor in every batch returns.** A
+   partial merge would write a baseline missing whole artifacts' claims.
+
+Each Agent invocation has this shape:
+
+```
+Agent(
+  subagent_type: "baseline-surveyor",
+  description: "Baseline survey: <assignment>",
+  prompt: "[conductor] assignment=<inventory|claims:<artifact>|patterns:<concern>|seams> repo_root=<abs repo root> bounds=<optional>. Return exactly the findings YAML block for this assignment per your definition — no prose. If you cannot complete it, return findings: [] with a single survey_error: line."
+)
+```
+
+### RATIFY
+
+The interactive matrix-walk that blesses non-VERIFIED claims and competing
+patterns, then performs the one-way `unratified -> ratified` transition via
+`baseline.py ratify`, is authored in the next wave of this feature build.
+
+### ENFORCE
+
+Checker generation (emitting baseline rules into the project's fitness-function
+tooling or per-profile `baseline-verify.sh`) is authored in the next wave of
+this feature build.
 
 ## Phase 2 -- Domain Scaffold (DOMAIN.md / PROJECT.md / CLAUDE.md)
 

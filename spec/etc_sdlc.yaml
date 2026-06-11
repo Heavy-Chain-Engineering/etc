@@ -779,6 +779,11 @@ agents:
     description: "Analyzes existing code, generates .meta/ descriptions."
     source: agents/project-bootstrapper.md
 
+  baseline-surveyor:
+    name: "Baseline Surveyor"
+    description: "Read-only discovery/verify worker for the architecture-baseline phase; inventory, claim verification, pattern measurement, seam detection in parallel batches."
+    source: agents/baseline-surveyor.md
+
   technical-writer:
     name: "Technical Writer"
     description: "API docs, architecture overviews, setup guides, READMEs."
@@ -819,7 +824,6 @@ agents:
 unregistered_agents:
   gemini-analyzer: "pending operator in-or-out decision (audit init 3)"
   multi-tenant-auditor: "pending operator in-or-out decision (audit init 3)"
-  baseline-surveyor: "parked by F-2026-06-10 task 004; sibling init-project SKILL task promotes into agents:"
 
 # ─── Skills ────────────────────────────���─────────────────────────────────
 # Skills compile to .md files in dist/skills/.
@@ -1112,6 +1116,20 @@ skills:
       skeleton, and starter role manifests, in strict order.
     usage: "/init-project"
     source: skills/init-project/SKILL.md
+
+  # ── Architecture baseline (F-2026-06-10) ──────────────────────────────
+  rule-sweep:
+    name: "rule-sweep"
+    description: >
+      In-flight architecture-rule capture and sweep loop. A human states a
+      rule mid-build; the rule is captured (sanitized) and appended to the
+      machine baseline with provenance (baseline.py append-rule), the repo is
+      swept for violations and fixed via file-isolated agents, files-changed
+      and violations-remaining are reported honestly, and baseline-verify
+      re-runs so the rule is machine-enforced going forward — never again as
+      prose in someone's memory.
+    usage: "/rule-sweep"
+    source: skills/rule-sweep/SKILL.md
 
 # ─── Standards ───���───────────────────────────────────────────────────────
 # Engineering standards passed through to dist/standards/.

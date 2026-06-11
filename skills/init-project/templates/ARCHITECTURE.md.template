@@ -1,0 +1,55 @@
+<!-- generated from .etc_sdlc/architecture-baseline.yaml — edit via /init-project --phase=baseline -->
+<!-- RENDER:STRIP-START
+  This block documents the template contract and is REMOVED from rendered
+  output by scripts/baseline.py. Everything between the STRIP-START and
+  STRIP-END sentinels is maintainer guidance, never shipped to ARCHITECTURE.md.
+
+  This file is the HUMAN twin of the machine baseline. It is rendered by
+  `scripts/baseline.py render-doc` from `.etc_sdlc/architecture-baseline.yaml`
+  on every ratification. DO NOT hand-edit: changes are overwritten on the next
+  ratify / render-doc. To change the architecture record, re-run
+  `/init-project --phase=baseline` and re-ratify.
+
+  The renderer owns section CONTENT; this skeleton owns section ORDER and the
+  fixed prose. The double-brace placeholders are the only values the renderer
+  substitutes; the surrounding prose is fixed.
+RENDER:STRIP-END -->
+
+# Architecture Baseline
+
+**Status:** {{STATUS}} — ratified by {{RATIFIED_BY}} on {{RATIFIED_AT}}
+**Confidence:** {{CONFIDENCE_SCORE}}
+
+> This is the ratified, evidence-checked record of how this codebase is
+> actually built — the golden registry agents and humans build against.
+
+## Exemplars
+
+The blessed reference implementations. Copy these patterns for new work.
+
+{{EXEMPLARS}}
+
+## Do Not Copy
+
+Superseded or anti-pattern code. Never use these as a model.
+
+{{DO_NOT_COPY}}
+
+## Rules
+
+Normative constraints captured at ratification and via `/rule-sweep`.
+
+{{RULES}}
+
+## Boundary Map
+
+Cross-repo / external seams this repo participates in.
+
+{{BOUNDARY_MAP}}
+
+## Confidence
+
+Score: **{{CONFIDENCE_SCORE}}**. The score is computed from the inputs below
+and is auditable — never a bare assertion.
+
+{{CONFIDENCE_INPUTS}}
