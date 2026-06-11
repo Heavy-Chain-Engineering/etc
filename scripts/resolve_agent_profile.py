@@ -39,17 +39,19 @@ from pathlib import Path
 
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPTS_DIR.parent
 
-# Agents invoke this file directly (`python3 .../scripts/resolve_agent_profile.py`),
-# where `scripts` is not yet an importable package; pytest invokes it as
-# `scripts.resolve_agent_profile` with the repo root already on sys.path. Make
-# the sibling-module import resolve in both cases without a per-call hack.
-if __package__ in (None, ""):  # pragma: no cover — direct-script invocation only
-    if str(REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(REPO_ROOT))
+# `scripts/` is deliberately not a package (no __init__.py); every script uses
+# flat sibling imports and is installed to ~/.claude/scripts/ + invoked by
+# absolute path, so `from scripts.X import ...` is forbidden (see
+# scripts/git_tags.py). Put the scripts dir on sys.path so the flat
+# `import profile_loader` resolves no matter how this file is invoked — direct
+# script, as a `scripts.resolve_agent_profile` module, or via importlib.
+if str(SCRIPTS_DIR) not in sys.path:  # pragma: no cover — import-time path bootstrap
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
-import scripts.profile_loader as profile_loader  # noqa: E402  (path bootstrap above)
+import profile_loader  # noqa: E402  (path bootstrap above)
 
 PROFILES_DIR = profile_loader.PROFILES_DIR
 

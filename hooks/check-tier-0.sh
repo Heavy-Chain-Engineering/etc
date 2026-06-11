@@ -38,12 +38,18 @@ while IFS= read -r FILE_PATH; do
 
   # Allow edits to the Tier 0 files themselves — otherwise /init-project
   # could never create them.
+  #
+  # ARCHITECTURE.md is self-exempt ONLY (F-2026-06-10): it is the brownfield
+  # normative tier-0 artifact, created by /init-project --phase=baseline, so
+  # its own creation must not be blocked. It is deliberately NOT added to the
+  # MISSING block condition below — a missing ARCHITECTURE.md never blocks
+  # (brownfield-only artifact, forward-only).
   REL_PATH="$FILE_PATH"
   if [[ "$FILE_PATH" == /* ]]; then
     REL_PATH="${FILE_PATH#$REPO_ROOT/}"
   fi
   case "$REL_PATH" in
-    DOMAIN.md|PROJECT.md|CLAUDE.md)
+    DOMAIN.md|PROJECT.md|CLAUDE.md|ARCHITECTURE.md)
       ;;
     *)
       NEEDS_TIER_0=true

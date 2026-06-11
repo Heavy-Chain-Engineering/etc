@@ -326,7 +326,7 @@ def test_should_resolve_when_invoked_as_a_standalone_script(
     """Design contract: agents call `python3 .../resolve_agent_profile.py`.
 
     Run from an unrelated cwd with no PYTHONPATH so the in-file path bootstrap
-    (not pytest's pythonpath) is what makes `import scripts.profile_loader`
+    (not pytest's pythonpath) is what makes the flat `import profile_loader`
     resolve. Proves the real agent-invocation path works.
     """
     lock = _write_lock(tmp_path, ["typescript"])

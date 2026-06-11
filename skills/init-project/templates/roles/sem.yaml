@@ -30,6 +30,11 @@ default_consumes:
   # --- Tier 0: orientation (always) ---
   - DOMAIN.md
   - PROJECT.md
+  # ARCHITECTURE.md — ratified normative structure (brownfield baseline,
+  # F-2026-06-10). Present only when /init-project --phase=baseline has run;
+  # the runtime projection is fail-open when it is absent. SEM dispatches
+  # against it so tasks land in the blessed exemplars, not legacy clones.
+  - ARCHITECTURE.md
 
   # --- Tier 1: the full spec surface ---
   # SEM is the only role that consumes the complete PRD and plan set by

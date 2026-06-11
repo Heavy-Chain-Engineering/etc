@@ -1,0 +1,1 @@
+repo-root marker (stands in for .git; tests treat this file's dir as a repo root)

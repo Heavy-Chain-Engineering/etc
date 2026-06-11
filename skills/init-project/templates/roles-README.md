@@ -13,6 +13,14 @@ Manifests use the **soft-POLA** pattern: `default_consumes` (narrow starting
 projection) plus `discovery.allowed_requests` (structured widening). There
 is **no `forbids` key** — widening is logged, not blocked.
 
+Every starter manifest consumes the three root tier-0 artifacts by default:
+`DOMAIN.md`, `PROJECT.md`, and `ARCHITECTURE.md`. The first two are always
+present after `/init-project`. `ARCHITECTURE.md` — the ratified normative
+structure produced by the brownfield baseline (`/init-project
+--phase=baseline`) — is consumed when present and is **fail-open when
+absent**, so a manifest never breaks on a project that has not run the
+baseline phase.
+
 For the full request/response schema and grant lifecycle, see
 `spec/discovery-protocol.md`.
 

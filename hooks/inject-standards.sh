@@ -272,6 +272,21 @@ if [[ -d "$TASK_DIR" ]]; then
   done
 fi
 
+# Inject ARCHITECTURE.md if it exists (F-2026-06-10 brownfield tier-0 doc).
+# Conditional, fail-open — mirrors the INVARIANTS.md seam below: absent file
+# means no section, never an error. Anchored at PROJECT_ROOT (git top-level)
+# because ARCHITECTURE.md is a repo-root tier-0 artifact, exactly like
+# DOMAIN.md/PROJECT.md, which check-tier-0.sh also resolves at the repo root.
+# This is the normative context a subagent needs so it places new code by
+# ratified convention instead of inferring from inconsistent precedent.
+if [[ -f "${PROJECT_ROOT}/ARCHITECTURE.md" ]]; then
+  echo ""
+  echo "### Project Architecture (ratified — normative; conform new code to this)"
+  echo '```markdown'
+  cat "${PROJECT_ROOT}/ARCHITECTURE.md"
+  echo '```'
+fi
+
 # Inject INVARIANTS.md if it exists
 if [[ -f "${CWD}/INVARIANTS.md" ]]; then
   echo ""

@@ -794,6 +794,7 @@ agents:
 unregistered_agents:
   gemini-analyzer: "pending operator in-or-out decision (audit init 3)"
   multi-tenant-auditor: "pending operator in-or-out decision (audit init 3)"
+  baseline-surveyor: "parked by F-2026-06-10 task 004; sibling init-project SKILL task promotes into agents:"
 
 # ─── Skills ────────────────────────────���─────────────────────────────────
 # Skills compile to .md files in dist/skills/.

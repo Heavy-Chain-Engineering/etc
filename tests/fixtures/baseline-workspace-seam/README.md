@@ -1,0 +1,1 @@
+Exercises DISCOVER cross-repo seam detection: a two-repo workspace (each sibling dir marked with a `.repo-root` file — no real `.git` needed; tests treat that marker as the repo root) with an env-var-loaded remote frontend and a shared-DB-schema seam (recipe app, invented domain).
