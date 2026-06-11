@@ -398,12 +398,16 @@ Append Phase 1 outcomes to `phases_run[]` (or `phases_skipped[]`).
 
 **Goal:** survey what the codebase actually IS — its normative artifacts, the
 claims those artifacts make, its competing patterns, and its cross-repo seams —
-verify every load-bearing claim against the tree, and write an *unratified*
-machine baseline at `.etc_sdlc/architecture-baseline.yaml`. This phase never
-honors a doc on faith: a discovered convention doc is a *claim to be checked*,
-not a fact to be trusted (ADR-003). RATIFY (the human matrix-walk that blesses
-the result) and ENFORCE (checker generation) are authored in the next wave of
-this feature build — see the stubs at the end of this phase.
+verify every load-bearing claim against the tree, write an *unratified*
+machine baseline at `.etc_sdlc/architecture-baseline.yaml`, then walk the human
+through ratification and turn the ratified rules into machine-checked
+conformance. This phase never honors a doc on faith: a discovered convention doc
+is a *claim to be checked*, not a fact to be trusted (ADR-003). The four
+sub-steps run in order — **DISCOVER** and **VERIFY** (the parallel surveyor
+fan-out, authored in the prior wave), then **RATIFY** (the human matrix walk)
+and **ENFORCE** (checker generation), both authored in the next wave after that
+fan-out shipped. DISCOVER/VERIFY produce the unratified baseline; RATIFY blesses
+it and renders the human twin; ENFORCE makes the rules self-checking.
 
 **Why this slots between Phase 1 and Phase 2:** Phase 1 produces the `.meta/`
 tree (what files exist); Phase 2 writes the business-context docs (what the
@@ -567,17 +571,179 @@ Agent(
 )
 ```
 
-### RATIFY
+### RATIFY -- the human matrix walk (the engine never fabricates)
 
-The interactive matrix-walk that blesses non-VERIFIED claims and competing
-patterns, then performs the one-way `unratified -> ratified` transition via
-`baseline.py ratify`, is authored in the next wave of this feature build.
+RATIFY is sequential and human. It is an **interactive matrix walk** — the same
+per-cell forcing function as the layered-review precedent
+(`standards/architecture/layer-rubrics.yaml`): you walk every cell that the
+unratified baseline could not settle by evidence and force an explicit human
+decision on each. **The engine never fabricates a decision.** A non-VERIFIED
+claim is not silently adopted; a competing pattern is not auto-blessed; a seam
+is not assumed resolved. Every such cell is surfaced to the operator and the
+human's answer is what gets recorded.
 
-### ENFORCE
+**Mode at entry.** In greenfield mode the trivial baseline was already seeded
+`ratified` (no claims to walk) — skip RATIFY entirely. In brownfield mode,
+proceed.
 
-Checker generation (emitting baseline rules into the project's fitness-function
-tooling or per-profile `baseline-verify.sh`) is authored in the next wave of
-this feature build.
+**Re-init: enter review mode first.** Before walking any cell, read the status
+token:
+
+```
+TOKEN=$(python3 ~/.claude/scripts/baseline.py status <repo_root>)
+```
+
+- `ratified` — this repo already has a blessed baseline. Run the DISCOVER/VERIFY
+  fan-out in **review mode**: re-survey and compare the fresh findings against
+  the ratified baseline. **Zero drift → zero writes:** make NO `baseline.py`
+  calls, write nothing, and emit an "already present" line in the completion
+  report (the idempotency rule at the top of this skill applies — a re-run on an
+  unchanged ratified baseline is a no-op). **Drift detected** (a claim that was
+  VERIFIED now CONTRADICTED, a new competing pattern, a vanished exemplar) →
+  **surface the drift for amendment; never auto-mutate the ratified baseline.**
+  Present the drift list and ask the operator (Pattern A) whether to open an
+  amendment walk over just the drifted cells. The ratified baseline is never
+  silently rewritten — drift is shown, the human decides.
+- `unratified` — a prior ratification was started and aborted. **Resume from the
+  recorded decisions:** the partial decisions already live in the baseline's
+  `claims[].resolution` / `exemplars` / `do_not_copy` / `seams` fields (written
+  by the prior session through `baseline.py`). Walk only the cells that are still
+  undecided; do not re-ask a cell whose decision is already recorded.
+- `missing` — no baseline; RATIFY has nothing to bless (DISCOVER/VERIFY must run
+  first). This should not happen in-pipeline.
+
+**The matrix walk.** Walk these cell classes, one decision per cell. Use
+**Pattern A (`AskUserQuestion`)** for the enumerable verdict and **Pattern B**
+(the `▶ Your answer needed` visual marker) when free-form rationale is needed:
+
+| Cell class | What the human decides | Recorded into |
+|---|---|---|
+| **non-VERIFIED claim** (STALE / ASPIRATIONAL / CONTRADICTED) | `adopt` \| `supersede` \| `record-decision` + a one-line rationale | the claim's `resolution` field |
+| **competing-patterns concern** | which implementation is canonical (the exemplar) and which is `do-not-copy` | `exemplars` + `do_not_copy` |
+| **exemplar blessing** | confirm the candidate is golden, name `applies_to`, name `blessed_by` | `exemplars` |
+| **do-not-copy marker** | confirm the superseded path and capture the reason | `do_not_copy` |
+| **seam resolution** | `sibling-path` (name the sibling repo) **or** `boundary-unknown` | `seams[].resolution` |
+
+Render the enumerable verdict with `AskUserQuestion`, for example a
+non-VERIFIED claim:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Claim CL-007 ('DTOs live in libs/contracts') is CONTRADICTED — 3 counterexamples in libs/people. How do you want to resolve it?",
+    header: "CL-007",
+    multiSelect: false,
+    options: [
+      { label: "Adopt", description: "The claim is the rule; the counterexamples are violations to fix later." },
+      { label: "Supersede", description: "The codebase reality wins; record a new rule that matches the tree." },
+      { label: "Record decision", description: "Neither — capture a one-line decision (e.g. 'in migration; both allowed until Q3')." }
+    ]
+  }]
+)
+```
+
+When a decision needs free-form rationale (the `record-decision` branch, the
+`applies_to` of an exemplar, a sibling-repo path), capture it with Pattern B:
+
+```
+
+---
+
+**▶ Your answer needed:** One line — why record this decision instead of adopting or superseding CL-007?
+
+```
+
+**Persisting decisions (single-writer rule — the skill NEVER edits the YAML).**
+`baseline.py` is the only writer of the baseline format and exposes **no
+per-claim resolution subcommand**. So you record decisions by re-running `init`
+with an updated merged JSON: keep the in-context merged-findings JSON from the
+DISCOVER/VERIFY merge, write each recorded decision into the matching
+`claims[].resolution` / `exemplars` / `do_not_copy` / `seams[].resolution`
+field of that JSON, and re-run:
+
+```
+python3 ~/.claude/scripts/baseline.py init <repo_root> --from <updated-merged-json>
+```
+
+This rewrites the baseline (status stays `unratified`) with the decisions
+recorded — **never hand-edit the YAML**. Re-running `init` is the honest
+persistence path: it is idempotent and atomic, and a mid-walk **abort** simply
+leaves the last `init` result on disk with `status: unratified`, so a re-run
+resumes from exactly the recorded decisions (see review mode above). Flush the
+JSON through `init` after each decision (or batch a few and flush) so an abort
+never loses a recorded decision.
+
+**Ratify.** Once every non-VERIFIED claim carries a `resolution` and every
+concern/seam is decided, perform the one-way transition. `baseline.py ratify`
+is the single call that both flips `unratified -> ratified` **and renders
+`ARCHITECTURE.md`** (the human twin) — do NOT separately call `render-doc`:
+
+```
+python3 ~/.claude/scripts/baseline.py ratify <baseline_path> --by "<operator name>"
+```
+
+If any non-VERIFIED claim still lacks a resolution, `ratify` **exits 2** and
+lists the blockers one per line as `CL-NNN: <reason>`. That is not an
+infrastructure failure — it means the matrix walk missed a cell. Re-enter the
+walk for each listed `CL-NNN`, record the missing resolution through `init`
+(above), and re-run `ratify`. On exit 0 the baseline is `ratified`,
+`ratified_by` / `ratified_at` are stamped, and `ARCHITECTURE.md` is at the repo
+root. Record the ratification (and the ratified-by name) for the completion
+report.
+
+### ENFORCE -- ratified rules become machine-checked conformance (native-tool-first)
+
+ENFORCE turns each ratified rule into an automated conformance check. The
+posture is **native-tool-first** (ADR-004): rules survive after etc leaves, so
+prefer configuring the project's own **fitness-function tool** over shipping etc
+code. Route each rule, then report the routing — never silently wire it into the
+host's CI.
+
+**Per-rule routing.** For each ratified rule, pick exactly one route and record
+its `enforced_by`:
+
+1. **Native fitness-function tool covers the rule class → `enforced_by: native`.**
+   If the project already runs a tool whose rule class covers this rule
+   (illustrative, not a hardcoded list: a module-boundary linter, a
+   dependency-graph checker, an import-restriction lint rule, an
+   architecture-test harness), generate the rule into that tool's own config.
+   The config is written through the normal hooked Edit/Write path (all existing
+   gates active) and shown in the report. The rule's `enforced_by` is `native`.
+
+2. **Mechanizable but no native tool fits → `enforced_by: generated`.** If the
+   rule fits the v1 mechanizable grammar — *"files matching GLOB must not contain
+   NEEDLE"* or *"directory DIR must not contain GLOB files"* (the python profile
+   grammar) — but no native tool covers it, record it as a generated-checker rule
+   for the per-profile `baseline-verify.sh`. `baseline.py` is the single writer;
+   record the rule (and flip its graduation flag) via `append-rule
+   --mechanizable`:
+
+   ```
+   python3 ~/.claude/scripts/baseline.py append-rule <baseline_path> \
+     --statement "<the rule>" --who "<operator name>" \
+     --trigger "ratification session" --mechanizable
+   ```
+
+   The rule lands with `enforced_by: generated`; the profile `baseline-verify.sh`
+   (python reference first; other profiles warn-and-skip) checks it at `/build`
+   wave gates via the `baseline-verify.sh` conductor.
+
+3. **Not mechanizable → `enforced_by: human-judgment`.** A rule that no native
+   tool expresses and that the v1 grammar cannot mechanize (a judgment-bearing
+   rule like "side effects must be isolated") is recorded as `human-judgment`:
+   captured in the baseline and surfaced at review, never falsely automated.
+   Record it via `append-rule` **without** `--mechanizable`.
+
+**The completion report names per-rule routing and recommends — never performs —
+host-CI wiring.** For ENFORCE, the report MUST list each rule with its route
+(`R-NNN → native: <tool>` / `R-NNN → generated: profile baseline-verify` /
+`R-NNN → human-judgment`). etc writes the native-tool config and records the
+generated/human rules, but it **never performs** the host-CI wiring that would
+run these checks in the project's pipeline — it **recommends** the wiring (e.g.
+"add `baseline-verify` to your CI's pre-merge gate; the generated lint config is
+at `<path>` — wire it into your existing lint step") and leaves the change to the
+operator. Silently mutating a team's CI pipeline is out of scope; the operator
+decides.
 
 ## Phase 2 -- Domain Scaffold (DOMAIN.md / PROJECT.md / CLAUDE.md)
 
