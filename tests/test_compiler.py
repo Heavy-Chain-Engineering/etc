@@ -552,6 +552,40 @@ def test_audit_revived_hooks_are_wired(hooks_json: dict[str, Any]) -> None:
         assert script in wired, f"{script} regressed to unwired"
 
 
+def _spec_documented_conductor_hooks() -> set[str]:
+    """Extract the *.sh names documented under the spec's conductor-invoked
+    allowlist comment block (between the 'Conductor-Invoked Hooks' header and
+    the next '# ─── ' section divider). The spec documents these in a comment
+    because they are not event-wired and have no schema key under `gates:`.
+    """
+    lines = (REPO_ROOT / "spec" / "etc_sdlc.yaml").read_text(encoding="utf-8").splitlines()
+    in_block = False
+    found: set[str] = set()
+    for line in lines:
+        if "Conductor-Invoked Hooks" in line:
+            in_block = True
+            continue
+        if in_block and line.startswith("# ─── "):
+            break
+        if in_block:
+            # A hook entry is a comment line naming exactly one `<name>.sh` as
+            # the subject (two leading spaces after '#', not an 'invoker:' line).
+            stripped = line.lstrip("#").strip()
+            if stripped.endswith(".sh") and " " not in stripped:
+                found.add(stripped)
+    return found
+
+
+def test_spec_conductor_hook_allowlist_mirrors_frozenset() -> None:
+    """The spec's documented conductor-invoked hook list and the enforced
+    mirror (INDIRECTLY_INVOKED_HOOKS) must agree exactly. The spec comment
+    block names WHO invokes each hook; this frozenset is what the
+    built-but-never-wired audit gate consults. Drift between them means the
+    spec lies about which hooks are intentionally unwired.
+    """
+    assert _spec_documented_conductor_hooks() == set(INDIRECTLY_INVOKED_HOOKS)
+
+
 def test_dist_contains_no_python_bytecode(tmp_path: Path) -> None:
     """No __pycache__/*.pyc may ship in compiler output (audit init 8).
 

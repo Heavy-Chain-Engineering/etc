@@ -288,3 +288,42 @@ def test_nonexistent_target_file_is_allowed(tmp_path: Path) -> None:
     }
     result = _run_hook(payload, tmp_path)
     assert result.returncode == 0, result.stderr
+
+
+# ── A `..` in the resolved path: intentional allow-without-validation ─────────
+
+
+def test_path_with_parent_ref_is_allowed_without_validation(tmp_path: Path) -> None:
+    """A resolved path containing `..` is INTENTIONALLY allowed (exit 0), not
+    blocked: we cannot reason about where it points, and blocking would
+    false-block weird-but-legit layouts. The schema guard is a write-time
+    honesty check, not an access boundary — baseline.py operates on the
+    already-written file. This pins the degrade-to-allow contract so a future
+    well-meaning 'turn it into a block' change is caught.
+
+    The fixture writes a genuinely INVALID baseline at the real on-disk path,
+    then hands the hook a `..`-containing path string that suffix-matches the
+    baseline name. If the traversal branch did NOT degrade to allow, this
+    invalid file would BLOCK (exit 2) — so exit 0 proves the branch fired."""
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    target = _project(real_dir, "architecture-baseline.yaml", INVALID_BASELINE)
+    # A `..`-containing path string pointing at the same invalid file.
+    traversal_path = real_dir / "sub" / ".." / ".etc_sdlc" / "architecture-baseline.yaml"
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(traversal_path)},
+        "cwd": str(real_dir),
+    }
+    result = _run_hook(payload, real_dir)
+    assert result.returncode == 0, (
+        f"a `..`-containing path must degrade to allow (exit 0), not block; "
+        f"got {result.returncode}: {result.stderr}"
+    )
+    # Prove the allow came from the traversal branch, not from validation:
+    # the same file validated directly DOES block.
+    direct = _run_hook(_claude_payload(target, real_dir), real_dir)
+    assert direct.returncode == 2, (
+        "sanity: the underlying file is genuinely invalid (would block if "
+        f"validated); got {direct.returncode}: {direct.stderr}"
+    )

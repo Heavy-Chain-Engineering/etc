@@ -187,6 +187,18 @@ while IFS= read -r RULE; do
       continue
     fi
 
+    # Containment (security): the rule-derived DIR reaches `find` as its base.
+    # An absolute path (leading /) or any `..` segment would let a baseline rule
+    # scan OUTSIDE the repo tree. Refuse such DIRs honestly (no-check) rather
+    # than scanning them — the checker only evaluates repo-relative directories.
+    case "$DIR" in
+      /* | *..*)
+        emit_result "$RID" "no-check" \
+          "absolute or parent-escaping path in rule DIR is not allowed; use a repo-relative path: '${STMT}'"
+        continue
+        ;;
+    esac
+
     DIR_BASE="${DIR%/}"
     [ -z "$DIR_BASE" ] && DIR_BASE="."
     if [ ! -d "$DIR_BASE" ]; then

@@ -34,8 +34,16 @@
 # Exit codes:
 #   0 always — SessionStart hooks never block.
 
+# set -u: every variable is assigned before use (CWD/PROJECT_ROOT/BASELINE/
+# SEAM_MAP/the mtime + age locals), env-knob reads use ${VAR:-default}, and the
+# helper positionals ($1) are always supplied by their callers — no unset-var
+# abort can fire. pipefail: the few pipelines either feed a fallback (`CWD=...||
+# [[ -z ]]`) or carry `|| true`, so a failed pipe never aborts; pipefail only
+# tightens `$?` reporting and is safe here.
+set -uo pipefail
+
 INPUT=$(cat)
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 
 # If cwd is null/empty or jq is absent, fall back to process cwd.
 if [[ -z "$CWD" ]]; then

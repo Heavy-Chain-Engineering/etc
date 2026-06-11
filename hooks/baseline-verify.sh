@@ -241,6 +241,16 @@ while IFS= read -r PROFILE; do
   PROFILE=$(printf '%s' "$PROFILE" | tr -d '[:space:]')
   [ -z "$PROFILE" ] && continue
 
+  # Security: profile names from profiles.lock are attacker-influenced data and
+  # are interpolated into the gate path (resolve_gate). Whitespace-stripping is
+  # not enough — a `../../tmp/evil` entry would escape standards/code/profiles/.
+  # Validate against the same strict identifier regex scripts/detect_profiles.py
+  # uses (^[a-z][a-z0-9_-]*$); skip any non-conforming name before it is used.
+  if ! [[ "$PROFILE" =~ ^[a-z][a-z0-9_-]*$ ]]; then
+    echo "[baseline-verify] WARN: skipping malformed profile name '${PROFILE}'" >&2
+    continue
+  fi
+
   GATE="$(resolve_gate "$PROFILE")"
   if [ ! -f "$GATE" ]; then
     echo "[baseline-verify] WARN: profile '${PROFILE}' has no baseline-verify.sh at ${GATE}" >&2

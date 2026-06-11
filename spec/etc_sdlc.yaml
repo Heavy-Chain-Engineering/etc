@@ -632,6 +632,32 @@ gates:
     script: check-baseline-fresh.sh
     timeout: 10
 
+# ─── Conductor-Invoked Hooks (allowlist) ────────────────────────────────────
+# Documentation-only section (no schema key fits — these hooks are NOT
+# event-wired, so they do not belong under `gates:`). Three hooks ship in
+# hooks/ but are fired by a conductor (a /build step or a /rule-sweep step)
+# calling them directly, never by a Claude Code event. They are listed here so
+# the spec records WHY they have no `gates:` entry, and WHO invokes each:
+#
+#   verify-green.sh
+#     invoker: /build Step 6c (structural-green gate). Also called internally
+#     by mark-dirty / check-completion-discipline / inject-standards /
+#     runtime-verify as their green precondition.
+#
+#   runtime-verify.sh
+#     invoker: /build Step 6c-runtime (behavioral-runtime DoD gate) and
+#     /build Step 7.6 (pre-release behavioral re-check).
+#
+#   baseline-verify.sh
+#     invoker: /build Step 6c-baseline (architecture-baseline conformance gate)
+#     and /rule-sweep (post-sweep re-check after appending rules).
+#
+# ENFORCED MIRROR: tests/test_compiler.py::INDIRECTLY_INVOKED_HOOKS is the
+# frozenset that allowlists exactly these three as "indirectly invoked" so the
+# built-but-never-wired audit gate does not flag them as dead. That frozenset
+# is the enforced mirror of THIS list — keep the two in lockstep: a hook added
+# or removed here must be added or removed there in the same change.
+
 # ─── Agents ────────────────────────────────────────────────────────────────
 # Agent definitions that compile to .md files in dist/agents/.
 # Each agent has a role, tools, and behavioral constraints.

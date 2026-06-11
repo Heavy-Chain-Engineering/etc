@@ -368,6 +368,19 @@ Workspace enumeration is deliberately shallow and escape-proof
   directories hunting for `.git` boundaries — a repo nested two levels down is
   not a workspace member.
 
+The enumeration the three rules above describe is exactly this loop — a symlink
+child is `continue`d (never resolved), only immediate children carrying a `.git`
+are collected, and there is no upward walk and no recursion:
+
+```bash
+# WORKSPACE_ROOT is the operator-named invocation directory (never its parent).
+for entry in "$WORKSPACE_ROOT"/*/; do
+  [ -L "${entry%/}" ] && continue      # skip symlinked children (no escape)
+  [ -d "${entry}.git" ] || continue    # immediate-child git repos only
+  # "$entry" is a workspace-member repo: run the full single-repo flow here.
+done
+```
+
 ### Workspace Run -- per-repo loop, then one canonical seam map
 
 When workspace mode is accepted, do this:

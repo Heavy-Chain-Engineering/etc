@@ -37,6 +37,13 @@
 #       seam-map degrade)
 #   2 = block (schema-invalid architecture-baseline, OR payload unparseable)
 
+# set -u: every variable is assigned before use (FILE_PATH/KIND/VALIDATOR are
+# initialized to ""; CWD has a fallback; the rest are command-substitution
+# assignments), so unset-var aborts cannot fire on a legitimate path.
+# pipefail: the only pipelines are `printf | python3` whose failure SHOULD
+# propagate to the `|| exit 2` fail-closed guard — pipefail makes that honest.
+set -uo pipefail
+
 INPUT=$(cat)
 
 # ── Payload parse — FAIL CLOSED on parse error (|| exit 2) ───────────────────
@@ -71,8 +78,13 @@ if [[ "$FILE_PATH" != /* ]]; then
   FILE_PATH="${CWD}/${FILE_PATH}"
 fi
 
-# Security: reject path traversal (directory-traversal defense, mirrors the
-# value-hypothesis hook and design.md Security Considerations).
+# A `..` in the resolved path means we cannot reason about where it points, so
+# we INTENTIONALLY allow-without-validation here (exit 0) rather than block.
+# Rationale: blocking would false-block weird-but-legit paths (a project whose
+# real layout legitimately contains a `..` segment), and the schema guard is a
+# write-time honesty check, not an access-control boundary — baseline.py itself
+# operates on the already-written file. Degrade-to-allow keeps the gate from
+# crying wolf on unresolvable paths. (design.md Security Considerations.)
 if [[ "$FILE_PATH" == *..* ]]; then exit 0; fi
 
 # Skip if the file does not exist (Edit can no-op; nothing to validate).

@@ -281,6 +281,36 @@ class TestPythonProfileViolatingFixture:
         assert proc.returncode == 0
 
 
+class TestPythonProfilePathContainment:
+    """Pattern (B) DIR containment (security): a rule whose DIR is absolute or
+    parent-escaping must NOT reach `find` — the profile reports no-check with
+    explicit evidence rather than scanning outside the repo tree."""
+
+    def test_should_no_check_when_dir_is_absolute_path(self, tmp_path: Path) -> None:
+        rule = _rule("R-ABS", "directory /etc must not contain *.spec files")
+
+        proc = _run_profile(tmp_path, [rule])
+
+        assert proc.returncode == 0, proc.stderr
+        by_id = _results_by_id(proc.stdout)
+        assert by_id["R-ABS"]["status"] == "no-check"
+        assert "absolute or parent-escaping path" in by_id["R-ABS"]["evidence"]
+
+    def test_should_no_check_when_dir_escapes_with_parent_ref(
+        self, tmp_path: Path
+    ) -> None:
+        rule = _rule(
+            "R-ESC", "directory ../../etc must not contain *.spec files"
+        )
+
+        proc = _run_profile(tmp_path, [rule])
+
+        assert proc.returncode == 0, proc.stderr
+        by_id = _results_by_id(proc.stdout)
+        assert by_id["R-ESC"]["status"] == "no-check"
+        assert "absolute or parent-escaping path" in by_id["R-ESC"]["evidence"]
+
+
 # ── AC-1: dispatcher contract + every degrade path ──────────────────────────
 
 
@@ -536,3 +566,51 @@ class TestDispatcherDegradePaths:
         # A fail verdict NEVER becomes a nonzero exit (verdicts live in JSON).
         assert proc.returncode == 0
         assert _results_by_id(proc.stdout)["R-001"]["status"] == "fail"
+
+
+class TestDispatcherProfileNameValidation:
+    """Security: profile names from profiles.lock are attacker-influenced data
+    (a poisoned lock). After whitespace-stripping, a name that fails the strict
+    `^[a-z][a-z0-9_-]*$` identifier regex (e.g. a `../../tmp/evil` traversal)
+    must be skipped with a WARN — it never reaches the resolve/run path."""
+
+    def test_should_warn_and_skip_malformed_traversal_profile_name(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _init_repo(tmp_path)
+        # A poisoned lock carrying a legit `python` entry (so the active-count
+        # gate passes and the per-profile loop runs) alongside a `../../tmp/evil`
+        # traversal entry that would resolve a baseline-verify.sh OUTSIDE
+        # standards/code/profiles/ if interpolated into the gate path.
+        _write_lock(repo, ["python", "../../tmp/evil"])
+        _install_python_profile(repo)
+        (repo / "src").mkdir(parents=True)
+        (repo / "src" / "a.py").write_text("# TODO\n", encoding="utf-8")
+        _write_baseline(
+            repo, [_rule("R-001", "files matching src/**/*.py must not contain TODO")]
+        )
+
+        # Plant a sentinel-writing script at the path the traversal would reach,
+        # so "nothing executed" is provable: if the malformed name were resolved
+        # and run, this script would create the sentinel file.
+        sentinel = repo / "pwned.sentinel"
+        evil_dir = repo / "standards" / "code" / "profiles" / ".." / ".." / "tmp" / "evil"
+        evil_dir.mkdir(parents=True, exist_ok=True)
+        evil_gate = evil_dir / "baseline-verify.sh"
+        evil_gate.write_text(
+            f"#!/bin/bash\ntouch {sentinel}\n", encoding="utf-8"
+        )
+        evil_gate.chmod(0o755)
+
+        proc = _run_dispatcher(repo, rule_ids=None)
+
+        assert proc.returncode == 0, proc.stderr
+        # The malformed name is skipped with a WARN naming it.
+        assert "WARN" in proc.stderr
+        assert "malformed profile name" in proc.stderr
+        assert "../../tmp/evil" in proc.stderr
+        # Nothing executed for the bad entry: no sentinel written.
+        assert not sentinel.exists()
+        # The legit `python` entry still ran; only its result is aggregated.
+        by_id = _results_by_id(proc.stdout)
+        assert set(by_id) == {"R-001"}
