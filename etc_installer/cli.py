@@ -296,9 +296,23 @@ def main(  # noqa: PLR0913 -- typer surface; the flags ARE the contract
         mode=mode,
         repo_root=Path.cwd(),
     )
+
+    # Third-party tool preflights fire BEFORE the install steps, matching
+    # the original install.sh ordering (offers right after client
+    # selection). NON_INTERACTIVE prints the verbatim INFO lines; the
+    # Codex client has no third-party-tool surface, so it is skipped.
+    if resolved_client is not ClientChoice.CODEX:
+        install_steps.run_third_party_preflights(context)
+
     exit_code = install_steps.run_all(context, _console)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
+
+    # Status-line + sandbox-config prompts fire AFTER the install steps:
+    # both write into settings.json, which step_merge_settings created.
+    # The installers self-skip in NON_INTERACTIVE mode (--client set).
+    if resolved_client is not ClientChoice.CODEX:
+        install_steps.run_interactive_extras(context)
 
 
 def _entrypoint() -> None:

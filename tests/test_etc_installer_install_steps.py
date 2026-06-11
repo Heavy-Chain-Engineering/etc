@@ -26,6 +26,7 @@ import stat
 import sys
 from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from rich.console import Console
@@ -657,3 +658,174 @@ class TestSettingsMergeInvalidJson:
 
         assert result.status == "error"
         assert "not valid JSON" in result.message
+
+
+# -- Third-party preflight composition (the audit dead-surface fix) ----
+
+
+class TestRunThirdPartyPreflights:
+    """run_third_party_preflights composes preflights.offer_install per tool.
+
+    The audit found offer_install + the four INFO_LINE constants shipped
+    with ZERO call sites — fresh installs never learned the third-party
+    tools were missing. This is the composition that wires them.
+    """
+
+    def test_should_offer_install_for_each_absent_tool_when_interactive(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        # Arrange -- INTERACTIVE mode; force every tool to read as absent.
+        ctx = install_steps.InstallContext(
+            target_dir=install_context.target_dir,
+            dist_dir=install_context.dist_dir,
+            client_choice="claude",
+            mode=OperatorMode.INTERACTIVE,
+            repo_root=install_context.repo_root,
+        )
+        console = Console(file=StringIO())
+
+        # Act -- patch detection to absent + offer_install to a spy.
+        with mock.patch.object(
+            install_steps.preflights, "is_gh_stack_present", return_value=False
+        ), mock.patch.object(
+            install_steps.preflights, "is_impeccable_present", return_value=False
+        ), mock.patch.object(
+            install_steps.preflights, "is_mergiraf_present", return_value=False
+        ), mock.patch.object(
+            install_steps.preflights,
+            "is_google_designmd_present",
+            return_value=False,
+        ), mock.patch.object(
+            install_steps.preflights, "offer_install"
+        ) as offer_spy:
+            install_steps.run_third_party_preflights(ctx)
+
+        # Assert -- one offer per absent tool, all four INFO lines passed.
+        offered_info_lines = {call.args[1] for call in offer_spy.call_args_list}
+        assert install_steps.preflights.F010_INFO_LINE in offered_info_lines
+        assert install_steps.preflights.F011_INFO_LINE in offered_info_lines
+        assert install_steps.preflights.F016_INFO_LINE in offered_info_lines
+        assert install_steps.preflights.F018_INFO_LINE in offered_info_lines
+
+    def test_should_pass_operator_mode_through_to_offer_install(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        # Arrange -- NON_INTERACTIVE mode must reach offer_install so it
+        # prints the INFO line instead of prompting.
+        ctx = install_steps.InstallContext(
+            target_dir=install_context.target_dir,
+            dist_dir=install_context.dist_dir,
+            client_choice="claude",
+            mode=OperatorMode.NON_INTERACTIVE,
+            repo_root=install_context.repo_root,
+        )
+        console = Console(file=StringIO())
+
+        with mock.patch.object(
+            install_steps.preflights, "is_gh_stack_present", return_value=False
+        ), mock.patch.object(
+            install_steps.preflights, "is_impeccable_present", return_value=False
+        ), mock.patch.object(
+            install_steps.preflights, "is_mergiraf_present", return_value=False
+        ), mock.patch.object(
+            install_steps.preflights,
+            "is_google_designmd_present",
+            return_value=False,
+        ), mock.patch.object(
+            install_steps.preflights, "offer_install"
+        ) as offer_spy:
+            install_steps.run_third_party_preflights(ctx)
+
+        # Assert -- every offer got ctx.mode (the 4th positional arg).
+        modes = {call.args[3] for call in offer_spy.call_args_list}
+        assert modes == {OperatorMode.NON_INTERACTIVE}
+
+    def test_should_not_offer_for_tools_already_present(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        # Arrange -- every tool present → no offers at all.
+        ctx = install_steps.InstallContext(
+            target_dir=install_context.target_dir,
+            dist_dir=install_context.dist_dir,
+            client_choice="claude",
+            mode=OperatorMode.INTERACTIVE,
+            repo_root=install_context.repo_root,
+        )
+        console = Console(file=StringIO())
+
+        with mock.patch.object(
+            install_steps.preflights, "is_gh_stack_present", return_value=True
+        ), mock.patch.object(
+            install_steps.preflights, "is_impeccable_present", return_value=True
+        ), mock.patch.object(
+            install_steps.preflights, "is_mergiraf_present", return_value=True
+        ), mock.patch.object(
+            install_steps.preflights,
+            "is_google_designmd_present",
+            return_value=True,
+        ), mock.patch.object(
+            install_steps.preflights, "offer_install"
+        ) as offer_spy:
+            install_steps.run_third_party_preflights(ctx)
+
+        assert offer_spy.call_count == 0
+
+
+# -- Interactive extras composition (status-line + sandbox prompts) ----
+
+
+class TestRunInteractiveExtras:
+    """run_interactive_extras composes the status-line + sandbox prompts.
+
+    The audit found install_status_line + install_sandbox_config shipped
+    with ZERO call sites. This is the composition that wires them, gated
+    on ctx.mode (the field the audit found was computed but never read).
+    """
+
+    def test_should_invoke_both_prompts_when_interactive(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        ctx = install_steps.InstallContext(
+            target_dir=install_context.target_dir,
+            dist_dir=install_context.dist_dir,
+            client_choice="claude",
+            mode=OperatorMode.INTERACTIVE,
+            repo_root=install_context.repo_root,
+        )
+
+        with mock.patch.object(
+            install_steps.status_line, "install_status_line"
+        ) as sl_spy, mock.patch.object(
+            install_steps.sandbox_config, "install_sandbox_config"
+        ) as sc_spy:
+            install_steps.run_interactive_extras(ctx)
+
+        sl_spy.assert_called_once_with(ctx.target_dir, OperatorMode.INTERACTIVE)
+        sc_spy.assert_called_once_with(ctx.target_dir, OperatorMode.INTERACTIVE)
+
+    def test_should_pass_non_interactive_mode_through(
+        self, install_context: install_steps.InstallContext
+    ) -> None:
+        # NON_INTERACTIVE still reaches the installers — they self-skip on
+        # mode internally; the composition must not branch on mode itself.
+        ctx = install_steps.InstallContext(
+            target_dir=install_context.target_dir,
+            dist_dir=install_context.dist_dir,
+            client_choice="claude",
+            mode=OperatorMode.NON_INTERACTIVE,
+            repo_root=install_context.repo_root,
+        )
+
+        with mock.patch.object(
+            install_steps.status_line, "install_status_line"
+        ) as sl_spy, mock.patch.object(
+            install_steps.sandbox_config, "install_sandbox_config"
+        ) as sc_spy:
+            install_steps.run_interactive_extras(ctx)
+
+        sl_spy.assert_called_once_with(
+            ctx.target_dir, OperatorMode.NON_INTERACTIVE
+        )
+        sc_spy.assert_called_once_with(
+            ctx.target_dir, OperatorMode.NON_INTERACTIVE
+        )

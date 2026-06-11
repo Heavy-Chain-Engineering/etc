@@ -21,6 +21,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from etc_installer.paths import to_native_path
+
 # Token the compiler writes in place of an absolute hooks directory.
 # The installer substitutes it with the resolved target hooks dir at
 # install time, since the compiler can't know --target-dir.
@@ -33,8 +35,14 @@ def substitute_hooks_dir(template_text: str, hooks_dir: Path) -> str:
     Operates on the raw template text rather than the parsed JSON so a
     single pass handles every hook command without walking the nested
     Claude Code hooks schema.
+
+    This is THE settings.json write boundary, so the path goes through
+    ``to_native_path`` (audit init 2): on Windows a Git-Bash-style
+    ``/c/Users/...`` hooks dir must land in settings.json in native
+    ``C:\\Users\\...`` form or every hook command fails to execute. On
+    POSIX the conversion is the identity.
     """
-    return template_text.replace(HOOKS_DIR_PLACEHOLDER, str(hooks_dir))
+    return template_text.replace(HOOKS_DIR_PLACEHOLDER, to_native_path(hooks_dir))
 
 
 def merge_hooks(

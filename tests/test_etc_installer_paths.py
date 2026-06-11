@@ -191,3 +191,75 @@ class TestResolveHome:
 
         # Assert
         assert result == fake_home
+
+
+class TestToNativePathNativeWindows:
+    """Audit init 2: the MINGW/MSYS uname-prefix detection can never fire
+    under the uv-provisioned NATIVE Windows CPython the install.sh bootstrap
+    now uses (uname reports "Windows"; cygpath is not guaranteed on PATH).
+    Extended contract: when os.name == 'nt' and the path is a Git-Bash-style
+    drive-prefixed POSIX path (/c/...), convert textually to native form
+    with no cygpath dependency."""
+
+    @pytest.fixture(autouse=True)
+    def _simulate_native_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(paths.os, "name", "nt")
+        # Host-independent: pin uname to the native-Windows value.
+        uname = paths.platform.uname()
+        monkeypatch.setattr(
+            paths.platform, "uname", lambda: uname._replace(system="Windows")
+        )
+
+    def test_converts_drive_prefixed_posix_path(self) -> None:
+        assert (
+            paths.to_native_path(Path("/c/Users/jason/.claude/hooks"))
+            == "C:\\Users\\jason\\.claude\\hooks"
+        )
+
+    def test_converts_bare_drive_root(self) -> None:
+        assert paths.to_native_path(Path("/d")) == "D:\\"
+
+    def test_leaves_non_drive_paths_alone(self) -> None:
+        # The invariant: NO drive-letter transformation for non-drive paths.
+        # (With os.name patched to 'nt', pathlib itself constructs a
+        # WindowsPath whose native rendering uses backslashes — that flavour
+        # rendering is correct on real Windows and not what this test pins.)
+        result = paths.to_native_path(Path("hooks/helpers"))
+        assert result in ("hooks/helpers", "hooks\\helpers")
+        assert ":" not in result, "a relative path must never gain a drive letter"
+
+
+class TestSettingsWriteBoundary:
+    """substitute_hooks_dir is THE settings.json write boundary — where the
+    documented every-Windows-install bug actually bites (hook commands with
+    /c/... paths Claude Code on Windows cannot execute). to_native_path had
+    zero call sites; it must run here."""
+
+    def test_substitution_emits_native_path_under_native_windows(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from etc_installer import settings_merge
+
+        monkeypatch.setattr(paths.os, "name", "nt")
+        uname = paths.platform.uname()
+        monkeypatch.setattr(
+            paths.platform, "uname", lambda: uname._replace(system="Windows")
+        )
+
+        template = '{"command": "{{ETC_HOOKS_DIR}}/check-test-exists.sh"}'
+        out = settings_merge.substitute_hooks_dir(
+            template, Path("/c/Users/jason/.claude/hooks")
+        )
+
+        assert "C:\\\\Users\\\\jason\\\\.claude\\\\hooks" in out or (
+            "C:\\Users\\jason\\.claude\\hooks" in out
+        ), f"settings.json hook commands must carry NATIVE paths on Windows; got: {out}"
+
+    def test_substitution_is_identity_on_posix(self) -> None:
+        from etc_installer import settings_merge
+
+        template = '{"command": "{{ETC_HOOKS_DIR}}/check-test-exists.sh"}'
+        out = settings_merge.substitute_hooks_dir(
+            template, Path("/Users/jason/.claude/hooks")
+        )
+        assert '"/Users/jason/.claude/hooks/check-test-exists.sh"' in out

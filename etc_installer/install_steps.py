@@ -32,6 +32,7 @@ failure modes), AC-011 / AC-012.
 from __future__ import annotations
 
 import json
+import platform
 import shutil
 import stat
 import subprocess
@@ -42,7 +43,13 @@ from types import MappingProxyType
 
 from rich.console import Console
 
-from etc_installer import profiles, settings_merge
+from etc_installer import (
+    preflights,
+    profiles,
+    sandbox_config,
+    settings_merge,
+    status_line,
+)
 from etc_installer.preflights import OperatorMode
 
 # Documented step count (AC-012). The test asserts this matches the
@@ -446,8 +453,13 @@ def run_codex_install(ctx: InstallContext, console: Console) -> int:
     (project_dir / ".agents").mkdir(parents=True, exist_ok=True)
 
     _install_codex_agents_md(ctx.dist_dir / "AGENTS.md", project_dir / "AGENTS.md")
-    shutil.copy2(ctx.dist_dir / ".codex" / "hooks.json", project_dir / ".codex" / "hooks.json")
-    shutil.copy2(ctx.dist_dir / "gate-classification.json", project_dir / "gate-classification.json")
+    shutil.copy2(
+        ctx.dist_dir / ".codex" / "hooks.json", project_dir / ".codex" / "hooks.json"
+    )
+    shutil.copy2(
+        ctx.dist_dir / "gate-classification.json",
+        project_dir / "gate-classification.json",
+    )
     console.print(f"  {_GLYPHS['ok']} Installed Codex instructions and gate classification")
 
     for relative in (
@@ -478,6 +490,109 @@ def run_codex_install(ctx: InstallContext, console: Console) -> int:
     return 0
 
 
+# ── Third-party preflights + interactive extras composition ──────────────
+#
+# The audit ("built-but-never-wired") found preflights.offer_install,
+# status_line.install_status_line, and sandbox_config.install_sandbox_config
+# shipped as tested modules with ZERO call sites. These two orchestration
+# functions are the missing composition: cli.py calls
+# run_third_party_preflights BEFORE the install steps (matching the
+# original install.sh ordering at install.sh:237-273 — preflights fire
+# right after client selection) and run_interactive_extras AFTER (the
+# status-line + sandbox prompts both write into settings.json, which the
+# merge step must have created first; spec.md BR-007 / BR-008).
+
+
+def run_third_party_preflights(ctx: InstallContext) -> None:
+    """Offer the four third-party tools when they are absent (BR-005).
+
+    Mirrors install.sh:237-273. For each tool not already present, calls
+    ``preflights.offer_install`` — which prints the verbatim INFO line in
+    NON_INTERACTIVE mode and prompts the operator in INTERACTIVE mode.
+
+    gh-stack is INFO-only by contract (GitHub private preview; most
+    operators lack access — install.sh:240-246), so it is offered in a
+    forced NON_INTERACTIVE posture regardless of ``ctx.mode``: the
+    operator sees the INFO line but is never prompted to install a tool
+    they cannot reach.
+
+    impeccable adds the Claude Code skill-directory check from
+    install.sh:251 (``~/.claude/skills/impeccable``) on top of the
+    on-PATH probe, since a skill-version install satisfies the F011 need
+    without the CLI on PATH.
+
+    The preflights are informational and never abort — ``offer_install``
+    swallows install failures into warnings.
+
+    Args:
+        ctx: Resolved InstallContext. ``ctx.mode`` gates prompt-vs-info.
+    """
+    if not preflights.is_gh_stack_present():
+        # INFO-only: never prompt (private preview). Force info-line path.
+        preflights.offer_install(
+            "gh-stack",
+            preflights.F010_INFO_LINE,
+            ["gh", "extension", "install", "github/gh-stack"],
+            OperatorMode.NON_INTERACTIVE,
+        )
+
+    impeccable_skill_dir = ctx.target_dir.parent / "skills" / "impeccable"
+    if not preflights.is_impeccable_present() and not impeccable_skill_dir.is_dir():
+        preflights.offer_install(
+            "impeccable",
+            preflights.F011_INFO_LINE,
+            ["npm", "install", "-g", "impeccable"],
+            ctx.mode,
+        )
+
+    if not preflights.is_mergiraf_present():
+        mergiraf_argv = _mergiraf_install_argv()
+        preflights.offer_install(
+            "Mergiraf", preflights.F016_INFO_LINE, mergiraf_argv, ctx.mode
+        )
+
+    if not preflights.is_google_designmd_present():
+        preflights.offer_install(
+            "@google/design.md",
+            preflights.F018_INFO_LINE,
+            ["npm", "install", "-g", "@google/design.md"],
+            ctx.mode,
+        )
+
+
+def _mergiraf_install_argv() -> list[str]:
+    """Return the platform-appropriate Mergiraf install argv (install.sh:258-262).
+
+    macOS prefers brew (no Rust toolchain required); every other platform
+    falls back to cargo.
+    """
+    if platform.system() == "Darwin":
+        return ["brew", "install", "mergiraf"]
+    return ["cargo", "install", "mergiraf"]
+
+
+def run_interactive_extras(ctx: InstallContext) -> None:
+    """Run the status-line + sandbox-config prompts (BR-007 / BR-008).
+
+    Composes ``status_line.install_status_line`` then
+    ``sandbox_config.install_sandbox_config`` — in that order, matching
+    spec.md BR-008 ("after the status-line prompt"). Both installers
+    self-skip in NON_INTERACTIVE mode (``--client`` flag set), so this
+    function passes ``ctx.mode`` straight through without branching on it
+    itself: the mode gate lives in the installers, keeping this
+    composition a thin sequencer.
+
+    Must run AFTER the install steps: both installers read an existing
+    ``settings.json`` (created by ``step_merge_settings``).
+
+    Args:
+        ctx: Resolved InstallContext. ``ctx.mode`` and ``ctx.target_dir``
+            are forwarded to each installer.
+    """
+    status_line.install_status_line(ctx.target_dir, ctx.mode)
+    sandbox_config.install_sandbox_config(ctx.target_dir, ctx.mode)
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -503,7 +618,8 @@ def _missing_codex_dist_paths(dist_dir: Path) -> list[str]:
         ".agents/skills",
     )
     return [
-        f"dist/codex/{relative} not found. Run `python3 compile-sdlc.py spec/etc_sdlc.yaml --client codex` first"
+        f"dist/codex/{relative} not found. Run "
+        "`python3 compile-sdlc.py spec/etc_sdlc.yaml --client codex` first"
         for relative in required
         if not (dist_dir / relative).exists()
     ]
