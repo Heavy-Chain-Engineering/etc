@@ -11,10 +11,9 @@ acceptance criteria AC8-AC10 via:
   the new ``6d.5`` sub-step documents the helper invocation.
 
 Precedent: tests/test_release_notes.py (sys.path manipulation, tmp_path
-report fixtures) + tests/test_user_flow_completeness.py (autouse
-session-scoped compile fixture, explicit ``_ = _compile_sdlc`` Pyright
-workaround, grep-based contract assertions over committed source plus
-compiled dist/ outputs).
+report fixtures) + tests/test_user_flow_completeness.py (shared
+session-scoped ``compiled_dist`` fixture, grep-based contract assertions
+over committed source plus compiled dist/ outputs).
 
 Path-traversal-guard workaround: ``completion_report.py`` resolves
 ``--feature-dir`` against ``<cwd>/.etc_sdlc/features`` and refuses paths
@@ -35,7 +34,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 COMPLETION_REPORT_SCRIPT = SCRIPTS_DIR / "completion_report.py"
-BUILD_SKILL_DIST_PATH = REPO_ROOT / "dist/skills/build/SKILL.md"
+BUILD_SKILL_REL = Path("skills") / "build" / "SKILL.md"
 
 # Make scripts/ importable (sibling to tests/).
 if str(SCRIPTS_DIR) not in sys.path:
@@ -43,43 +42,21 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import release_notes  # pyright: ignore[reportMissingImports]  # noqa: E402
 
-# ── Session-scoped compile fixture ──────────────────────────────────────
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _compile_sdlc() -> None:
-    """Run compile-sdlc.py once at session start so dist/ is fresh.
-
-    The compiler is idempotent — running twice is fine. We do NOT mock the
-    compile step; assertions in this module read real files written by
-    compile-sdlc.py from the committed source artifacts.
-    """
-    subprocess.run(
-        ["python3", "compile-sdlc.py", "spec/etc_sdlc.yaml"],
-        check=True,
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-    )
-
-
-# Module-level reference so Pyright sees the autouse fixture as accessed.
-# The fixture is invoked by pytest at session start regardless of this line;
-# the line exists only to silence Pyright's "is not accessed" hint, which is
-# independent of `# pyright: ignore` directives and can only be silenced by
-# an actual reference to the symbol.
-_ = _compile_sdlc
-
-
 # ── Module-scoped text fixtures ──────────────────────────────────────────
+
+# Compiled artifacts are read from the shared session-scoped ``compiled_dist``
+# fixture (conftest.py), which compiles into a tmp dir — the operator's real
+# dist/ is never read or mutated by this suite.
 
 
 @pytest.fixture(scope="module")
-def build_skill_dist_text() -> str:
-    assert BUILD_SKILL_DIST_PATH.exists(), (
-        f"missing compiled skill: {BUILD_SKILL_DIST_PATH}; "
-        "the session-scoped compile fixture should have created it"
+def build_skill_dist_text(compiled_dist: Path) -> str:
+    path = compiled_dist / BUILD_SKILL_REL
+    assert path.exists(), (
+        f"missing compiled skill: {path}; "
+        "the shared compiled_dist fixture should have created it"
     )
-    return BUILD_SKILL_DIST_PATH.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8")
 
 
 # ── Helpers for the path-traversal-guard workaround ──────────────────────

@@ -11,6 +11,7 @@ Grep-based, consistent with the other *_md_* contract tests in the suite.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -22,22 +23,38 @@ def _read_build_skill() -> str:
     return BUILD_SKILL_PATH.read_text(encoding="utf-8")
 
 
+# Audit init 9: the original exact-string check ("python3 -m pytest") let the
+# guarded incident recur verbatim under any other invocation spelling (e.g.
+# `uv run pytest`). The regex family covers every RUNNER-PREFIXED invocation
+# shape — `python -m pytest`, `python3 -m pytest`, `uv run pytest`,
+# `poetry run pytest`, `pipenv run pytest` — which are unambiguous
+# invocations wherever they appear. Bare `pytest` is deliberately NOT
+# matched: the skill legitimately mentions the word in prose and in /goal
+# condition templates ("pytest reports 0 failures"), and a positional
+# anchor cannot reliably tell those apart.
+_HARDCODED_PYTEST_FAMILY = re.compile(
+    r"(?:uv run|poetry run|pipenv run|python3? -m)\s+pytest\b"
+)
+
+
 def test_should_have_zero_hardcoded_pytest_invocations() -> None:
-    """No literal ``python3 -m pytest`` may remain in the build skill.
+    """No hardcoded pytest INVOCATION (any spelling) may remain in the skill.
 
     Regression: legacy prose predating the F020 dispatcher broke /build on
     every non-Python language profile (pytest exit 5 read as a failed wave).
+    The check is a regex FAMILY, not an exact string — `uv run pytest` is
+    the same incident wearing a different coat.
     """
     # Arrange
     content = _read_build_skill()
 
     # Act
-    occurrences = content.count("python3 -m pytest")
+    hits = [m.group(0).strip() for m in _HARDCODED_PYTEST_FAMILY.finditer(content)]
 
     # Assert
-    assert occurrences == 0, (
-        f"skills/build/SKILL.md still has {occurrences} hardcoded "
-        f"'python3 -m pytest' invocation(s); use the F020 dispatcher "
+    assert hits == [], (
+        f"skills/build/SKILL.md still has hardcoded pytest invocation(s) "
+        f"{hits}; use the F020 dispatcher "
         f"(printf ... | bash hooks/verify-green.sh) instead."
     )
 

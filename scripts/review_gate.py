@@ -135,12 +135,17 @@ def _detect_touched_layers(design_path: Path) -> list[str]:
     """
     if not design_path.is_file():
         return []
-    completed = subprocess.run(
-        ["python3", str(LAYER_REVIEW_SCRIPT), "detect", "--design", str(design_path)],
-        capture_output=True,
-        text=True,
-        timeout=GIT_TIMEOUT_SECONDS,
-    )
+    try:
+        completed = subprocess.run(
+            ["python3", str(LAYER_REVIEW_SCRIPT), "detect", "--design", str(design_path)],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # Mirror _git_diff_files: a hung or unrunnable detect degrades to
+        # no-layers (the docstring's promise) — never crashes the gate.
+        return []
     if completed.returncode != 0:
         return []
     try:

@@ -6,20 +6,97 @@ project structures, task files, transcript files, and invariant files.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import platform
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_DIR = REPO_ROOT / "hooks"
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+SPEC_PATH = REPO_ROOT / "spec" / "etc_sdlc.yaml"
+COMPILE_SCRIPT = REPO_ROOT / "compile-sdlc.py"
 HOOK_TIMEOUT_SECONDS = 10
+
+
+@pytest.fixture(scope="session")
+def compiled_dist(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Compile ``spec/etc_sdlc.yaml`` ONCE per session into a tmp directory.
+
+    Returns the output ``dist`` Path. Tests that need to read compiled
+    artifacts (``settings-hooks.json``, ``skills/.../SKILL.md``,
+    ``agents/*.md``, ``sdlc/dod-templates.json``) read them FROM THIS PATH —
+    never from ``REPO_ROOT/dist``. This keeps the operator's real, hand-built
+    ``dist/`` byte-untouched by a suite run and removes the per-file
+    ``rmtree``-the-real-dist fixtures that caused the xdist flake.
+
+    Invocation mirrors ``tests/test_codex_compiler.py::_run_compile``:
+    ``sys.executable`` (NEVER bare ``"python3"`` — a bare interpreter may
+    lack the ``filelock`` package, silently disabling the compile filelock)
+    plus the compiler's ``--output <dir>`` flag.
+
+    Under pytest-xdist this session fixture runs ONCE PER WORKER. That is
+    intentional and safe: each worker compiles into its own
+    ``tmp_path_factory`` directory, so no shared mutable state remains and
+    workers cannot collide on a single dist tree.
+    """
+    output_dir = tmp_path_factory.mktemp("compiled_dist") / "dist"
+    subprocess.run(
+        [
+            sys.executable,
+            str(COMPILE_SCRIPT),
+            str(SPEC_PATH),
+            "--output",
+            str(output_dir),
+        ],
+        cwd=str(REPO_ROOT),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return output_dir
+
+
+def load_script_module(name: str) -> ModuleType:
+    """Load ``scripts/<name>.py`` as an importable module by file path.
+
+    The single-file-CLI gate scripts under ``scripts/`` are not a package,
+    so tests load them via ``importlib`` from their absolute path. This helper
+    replaces the ~30 byte-similar per-file loaders. It registers the module in
+    ``sys.modules`` under ``name`` (so dataclasses / enums defined inside
+    resolve by qualified name) and asserts the import spec and loader are
+    non-None before executing.
+
+    Args:
+        name: Module stem under ``scripts/`` (e.g. ``"review_gate"``).
+
+    Returns:
+        The executed module object.
+
+    Raises:
+        FileNotFoundError: If ``scripts/<name>.py`` does not exist.
+    """
+    module_path = SCRIPTS_DIR / f"{name}.py"
+    if not module_path.is_file():
+        msg = f"Script module not found: {module_path}"
+        raise FileNotFoundError(msg)
+    spec = importlib.util.spec_from_file_location(name, module_path)
+    assert spec is not None and spec.loader is not None, (
+        f"could not build import spec for {module_path}"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture(autouse=True, scope="session")

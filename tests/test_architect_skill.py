@@ -4,8 +4,9 @@ Covers PRD .etc_sdlc/features/F006-spec-architect-split/spec.md acceptance
 criteria AC15-AC18 via:
 
 - Grep-based assertions over the compiled ``dist/`` outputs (skills/architect,
-  skills/spec, skills/build, agents/architect). The session-scoped autouse
-  ``_compile_sdlc`` fixture guarantees the dist artifacts are fresh.
+  skills/spec, skills/build, agents/architect). The shared session-scoped
+  ``compiled_dist`` fixture (conftest.py) compiles into a tmp dir and yields
+  its path; the operator's real dist/ is never read or mutated.
 - In-process unit tests against ``scripts/value_hypothesis.py`` to prove the
   schema validator accepts both the legacy single-``author_role`` shape
   (F001-F009) AND the new ``spec_author_role`` + ``architect_author_role``
@@ -25,16 +26,14 @@ Precedent:
 - tests/test_directory_lifecycle.py (F009) — closest pattern: pytest
   tmp_path + sys.path manipulation for in-process imports +
   ``# pyright: ignore[reportMissingImports]`` directive on the import.
-- tests/test_completion_report.py (F005) — autouse session-scoped
-  ``_compile_sdlc`` fixture + module-level ``_ = _compile_sdlc`` Pyright
-  workaround + grep-based contract assertions over committed dist outputs.
+- tests/test_completion_report.py (F005) — shared ``compiled_dist`` fixture
+  + grep-based contract assertions over compiled dist outputs.
 - tests/test_wave_planner_implicit_deps.py (F008) — sys.path manipulation
   for in-process helper imports.
 """
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -43,11 +42,14 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Compiled artifacts (the session-scoped fixture guarantees these are fresh).
-ARCHITECT_SKILL_DIST = REPO_ROOT / "dist" / "skills" / "architect" / "SKILL.md"
-SPEC_SKILL_DIST = REPO_ROOT / "dist" / "skills" / "spec" / "SKILL.md"
-BUILD_SKILL_DIST = REPO_ROOT / "dist" / "skills" / "build" / "SKILL.md"
-ARCHITECT_AGENT_DIST = REPO_ROOT / "dist" / "agents" / "architect.md"
+# Compiled artifacts are read from the shared session-scoped ``compiled_dist``
+# fixture (conftest.py), which compiles into a tmp dir — the operator's real
+# dist/ is never read or mutated by this suite. The fragments below are the
+# paths relative to that tmp dist root.
+ARCHITECT_SKILL_REL = Path("skills") / "architect" / "SKILL.md"
+SPEC_SKILL_REL = Path("skills") / "spec" / "SKILL.md"
+BUILD_SKILL_REL = Path("skills") / "build" / "SKILL.md"
+ARCHITECT_AGENT_REL = Path("agents") / "architect.md"
 
 # Make scripts/ importable so the in-process schema-validator tests can drive
 # value_hypothesis.validate_schema directly. Mirrors F005/F008/F009 precedent.
@@ -57,70 +59,36 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import value_hypothesis as value_hypothesis_module  # pyright: ignore[reportMissingImports]  # noqa: E402
 
-# ── Session-scoped compile fixture ───────────────────────────────────────
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _compile_sdlc() -> None:
-    """Run compile-sdlc.py once at session start so dist/ is fresh.
-
-    The compiler is idempotent — running twice is fine. We do NOT mock the
-    compile step; assertions in this module read real files written by
-    compile-sdlc.py from the committed source artifacts.
-    """
-    subprocess.run(
-        ["python3", "compile-sdlc.py", "spec/etc_sdlc.yaml"],
-        check=True,
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-    )
-
-
-# Module-level reference so Pyright sees the autouse fixture as accessed.
-# The fixture is invoked by pytest at session start regardless of this line;
-# the line exists only to silence Pyright's "is not accessed" hint, which is
-# independent of `# pyright: ignore` directives and can only be silenced by
-# an actual reference to the symbol.
-_ = _compile_sdlc
-
-
 # ── Module-scoped text fixtures ──────────────────────────────────────────
 
 
-@pytest.fixture(scope="module")
-def architect_skill_dist_text() -> str:
-    assert ARCHITECT_SKILL_DIST.exists(), (
-        f"missing compiled skill: {ARCHITECT_SKILL_DIST}; "
-        "the session-scoped compile fixture should have created it"
+def _read_dist_artifact(compiled_dist: Path, rel: Path) -> str:
+    path = compiled_dist / rel
+    assert path.exists(), (
+        f"missing compiled artifact: {path}; "
+        "the shared compiled_dist fixture should have created it"
     )
-    return ARCHITECT_SKILL_DIST.read_text(encoding="utf-8")
-
-
-@pytest.fixture(scope="module")
-def spec_skill_dist_text() -> str:
-    assert SPEC_SKILL_DIST.exists(), (
-        f"missing compiled skill: {SPEC_SKILL_DIST}; "
-        "the session-scoped compile fixture should have created it"
-    )
-    return SPEC_SKILL_DIST.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
-def build_skill_dist_text() -> str:
-    assert BUILD_SKILL_DIST.exists(), (
-        f"missing compiled skill: {BUILD_SKILL_DIST}; "
-        "the session-scoped compile fixture should have created it"
-    )
-    return BUILD_SKILL_DIST.read_text(encoding="utf-8")
+def architect_skill_dist_text(compiled_dist: Path) -> str:
+    return _read_dist_artifact(compiled_dist, ARCHITECT_SKILL_REL)
 
 
 @pytest.fixture(scope="module")
-def architect_agent_dist_text() -> str:
-    assert ARCHITECT_AGENT_DIST.exists(), (
-        f"missing compiled agent: {ARCHITECT_AGENT_DIST}; "
-        "the session-scoped compile fixture should have created it"
-    )
-    return ARCHITECT_AGENT_DIST.read_text(encoding="utf-8")
+def spec_skill_dist_text(compiled_dist: Path) -> str:
+    return _read_dist_artifact(compiled_dist, SPEC_SKILL_REL)
+
+
+@pytest.fixture(scope="module")
+def build_skill_dist_text(compiled_dist: Path) -> str:
+    return _read_dist_artifact(compiled_dist, BUILD_SKILL_REL)
+
+
+@pytest.fixture(scope="module")
+def architect_agent_dist_text(compiled_dist: Path) -> str:
+    return _read_dist_artifact(compiled_dist, ARCHITECT_AGENT_REL)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

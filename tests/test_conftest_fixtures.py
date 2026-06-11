@@ -2,7 +2,12 @@
 
 import json
 from pathlib import Path
+from types import ModuleType
 from typing import Any
+
+from tests.conftest import load_script_module
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 class TestRunHook:
@@ -40,6 +45,65 @@ class TestRunHook:
         # Assert
         assert result.exit_code == 2
         assert "BLOCKED" in result.stderr
+
+
+class TestCompiledDist:
+    """Tests for the shared compiled_dist fixture.
+
+    The fixture compiles spec/etc_sdlc.yaml once per session into a tmp
+    directory so tests never read or mutate the operator's real dist/.
+    """
+
+    def test_should_yield_existing_directory_when_invoked(
+        self, compiled_dist: Path
+    ) -> None:
+        # Assert
+        assert compiled_dist.is_dir()
+
+    def test_should_emit_expected_artifacts_when_compiled(
+        self, compiled_dist: Path
+    ) -> None:
+        # Assert — the compiler wrote the canonical tree into the tmp dist
+        assert (compiled_dist / "settings-hooks.json").is_file()
+        assert (compiled_dist / "agents" / "sem.md").is_file()
+        assert (compiled_dist / "skills" / "implement" / "SKILL.md").is_file()
+
+    def test_should_not_be_the_repo_dist_when_invoked(
+        self, compiled_dist: Path
+    ) -> None:
+        # Assert — hermeticity: the fixture's dist is NOT the operator's real
+        # dist/, so a suite run never mutates REPO_ROOT/dist.
+        assert compiled_dist != REPO_ROOT / "dist"
+        assert REPO_ROOT not in compiled_dist.parents
+
+
+class TestLoadScriptModule:
+    """Tests for the shared load_script_module helper."""
+
+    def test_should_return_module_when_script_exists(self) -> None:
+        # Act
+        module = load_script_module("review_gate")
+
+        # Assert
+        assert isinstance(module, ModuleType)
+        assert hasattr(module, "main")
+
+    def test_should_register_module_in_sys_modules_when_loaded(self) -> None:
+        # Arrange
+        import sys
+
+        # Act
+        load_script_module("cross_feature_collision_check")
+
+        # Assert
+        assert "cross_feature_collision_check" in sys.modules
+
+    def test_should_raise_when_script_missing(self) -> None:
+        # Act / Assert
+        import pytest
+
+        with pytest.raises(FileNotFoundError):
+            load_script_module("definitely_not_a_real_script_xyz")
 
 
 class TestTmpProject:

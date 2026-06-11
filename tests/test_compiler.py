@@ -17,8 +17,12 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DIST_DIR = REPO_ROOT / "dist"
-SETTINGS_HOOKS_PATH = DIST_DIR / "settings-hooks.json"
+
+# Compiled artifacts are read from the shared session-scoped ``compiled_dist``
+# fixture (conftest.py), which compiles into a tmp dir — the operator's real
+# dist/ is never read by this suite. Tests that drive the compiler directly
+# into their own ``tmp_path`` (via ``_load_compile_sdlc_module``) are already
+# hermetic and unaffected.
 
 EXPECTED_GATE_EVENTS = frozenset({
     # UserPromptSubmit removed in v1.5 — conversation is no longer gated.
@@ -59,23 +63,24 @@ EXPECTED_AGENTS = frozenset({
 
 
 @pytest.fixture(scope="module")
-def hooks_json() -> dict[str, Any]:
-    """Load and parse dist/settings-hooks.json once for all tests."""
-    assert SETTINGS_HOOKS_PATH.exists(), (
-        f"Compiled artifact not found: {SETTINGS_HOOKS_PATH}. "
-        f"Run 'python3 compile-sdlc.py spec/etc_sdlc.yaml' first."
+def hooks_json(compiled_dist: Path) -> dict[str, Any]:
+    """Load and parse the compiled settings-hooks.json once for all tests."""
+    settings_path = compiled_dist / "settings-hooks.json"
+    assert settings_path.exists(), (
+        f"Compiled artifact not found: {settings_path}. "
+        "The shared compiled_dist fixture should have created it."
     )
-    content = SETTINGS_HOOKS_PATH.read_text()
+    content = settings_path.read_text()
     return json.loads(content)
 
 
 @pytest.fixture(scope="module")
-def dod_templates() -> dict[str, Any]:
-    """Load and parse dist/sdlc/dod-templates.json once for all tests."""
-    dod_path = DIST_DIR / "sdlc" / "dod-templates.json"
+def dod_templates(compiled_dist: Path) -> dict[str, Any]:
+    """Load and parse the compiled sdlc/dod-templates.json once for all tests."""
+    dod_path = compiled_dist / "sdlc" / "dod-templates.json"
     assert dod_path.exists(), (
         f"Compiled artifact not found: {dod_path}. "
-        f"Run 'python3 compile-sdlc.py spec/etc_sdlc.yaml' first."
+        "The shared compiled_dist fixture should have created it."
     )
     content = dod_path.read_text()
     return json.loads(content)
@@ -420,10 +425,10 @@ class TestShouldReferenceCorrectScripts:
 # -- Test 5: Skill directory ---------------------------------------------------
 
 
-def test_should_create_skill_directory() -> None:
+def test_should_create_skill_directory(compiled_dist: Path) -> None:
     """dist/skills/implement/SKILL.md must exist."""
     # Arrange
-    skill_path = DIST_DIR / "skills" / "implement" / "SKILL.md"
+    skill_path = compiled_dist / "skills" / "implement" / "SKILL.md"
 
     # Act — just check existence and non-emptiness
 
@@ -435,10 +440,10 @@ def test_should_create_skill_directory() -> None:
 # -- Test 6: Agent definitions -------------------------------------------------
 
 
-def test_should_copy_agent_definitions() -> None:
+def test_should_copy_agent_definitions(compiled_dist: Path) -> None:
     """dist/agents/ must contain sem.md, backend-developer.md, and others."""
     # Arrange
-    agents_dir = DIST_DIR / "agents"
+    agents_dir = compiled_dist / "agents"
     actual_agents = frozenset(f.name for f in agents_dir.glob("*.md"))
 
     # Act

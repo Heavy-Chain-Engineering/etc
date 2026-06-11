@@ -21,23 +21,19 @@ heredocs after task 005 (cli.py / install_steps.py / __main__.py).
 
 Precedent: tests/test_user_flow_completeness.py (F001), tests/
 test_spec_enforcer_reachability.py (F002), and tests/
-test_orphan_surface_dispatch_gate.py (F003). Same autouse session-scoped
-compile fixture pattern; same `Path(...).read_text(encoding="utf-8")`
-reading idiom; same grep-based assertions over committed source plus
-compiled dist/ outputs.
+test_orphan_surface_dispatch_gate.py (F003). Same
+`Path(...).read_text(encoding="utf-8")` reading idiom; same grep-based
+assertions over committed source.
 
 This file's tests assert on source content (etc_installer/paths.py,
-compile-sdlc.py) rather than dist/. The autouse compile fixture is
-retained anyway for consistency with F001/F002/F003 and so a future test
-added here that does need dist/ can rely on it. Per BR-007, the tests run
-on macOS/Linux without a Windows VM — no `cygpath`, no `uname`, no
-Windows-specific subprocess.
+compile-sdlc.py) rather than dist/, so it needs no compile fixture. Per
+BR-007, the tests run on macOS/Linux without a Windows VM — no `cygpath`,
+no `uname`, no Windows-specific subprocess.
 """
 
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -47,34 +43,12 @@ COMPILE_SDLC_PY = REPO_ROOT / "compile-sdlc.py"
 PATHS_PY = REPO_ROOT / "etc_installer" / "paths.py"
 
 
-# -- Session-scoped compile fixture ------------------------------------------
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _compile_sdlc() -> None:
-    """Run compile-sdlc.py once at session start so dist/ is fresh.
-
-    The compiler is idempotent — running twice is fine. We do NOT mock the
-    compile step. F004's tests assert on source files (install.sh and
-    compile-sdlc.py), so dist/ freshness is not load-bearing for THIS
-    file's assertions; the fixture is retained for consistency with
-    F001/F002/F003 and so a future test added here that does need dist/
-    can rely on it.
-    """
-    subprocess.run(
-        ["python3", "compile-sdlc.py", "spec/etc_sdlc.yaml"],
-        check=True,
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-    )
-
-
-# Module-level reference so Pyright sees the autouse fixture as accessed.
-# The fixture is invoked by pytest at session start regardless of this line;
-# the line exists only to silence Pyright's "is not accessed" hint, which is
-# independent of `# pyright: ignore` directives and can only be silenced by
-# an actual reference to the symbol.
-_ = _compile_sdlc
+# This module's assertions read SOURCE files only (compile-sdlc.py,
+# etc_installer/paths.py) — never compiled dist/ outputs — so it needs no
+# compile fixture. The previous per-file ``_compile_sdlc`` fixture that
+# rmtree'd and rebuilt the operator's real dist/ was pure overhead here and
+# has been removed; if a future test added here needs compiled artifacts it
+# can consume the shared session-scoped ``compiled_dist`` fixture (conftest.py).
 
 
 # -- Module-scoped text fixtures ---------------------------------------------

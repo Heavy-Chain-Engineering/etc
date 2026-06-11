@@ -21,7 +21,6 @@ total. All tests share the module-level fixture and constants below.
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -31,38 +30,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Source artifact (assert directly against the committed file).
 STANDARDS_DOC_PATH = Path(REPO_ROOT) / "standards/process/user-flow-completeness.md"
 
-# Compiled artifact (the session-scoped fixture guarantees it is fresh).
-# Sibling subtask 003.002 owns the build-skill assertions; the path constant
-# is declared here so both this module and the sibling share the canonical
-# location and the module-scoped text fixture below loads it once.
-BUILD_SKILL_DIST_PATH = Path(REPO_ROOT) / "dist/skills/build/SKILL.md"
-
-
-# -- Session-scoped compile fixture ------------------------------------------
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _compile_sdlc() -> None:
-    """Run compile-sdlc.py once at session start so dist/ is fresh.
-
-    The compiler is idempotent — running twice is fine. We do NOT mock the
-    compile step; assertions in this module read real files written by
-    compile-sdlc.py from the committed source artifacts.
-    """
-    subprocess.run(
-        ["python3", "compile-sdlc.py", "spec/etc_sdlc.yaml"],
-        check=True,
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-    )
-
-
-# Module-level reference so Pyright sees the autouse fixture as accessed.
-# The fixture is invoked by pytest at session start regardless of this line;
-# the line exists only to silence Pyright's "is not accessed" hint, which is
-# independent of `# pyright: ignore` directives and can only be silenced by
-# an actual reference to the symbol.
-_ = _compile_sdlc
+# Compiled artifact is read from the shared session-scoped ``compiled_dist``
+# fixture (conftest.py), which compiles into a tmp dir — the operator's real
+# dist/ is never read or mutated by this suite.
+BUILD_SKILL_REL = Path("skills") / "build" / "SKILL.md"
 
 
 # -- Module-scoped text fixtures ---------------------------------------------
@@ -77,12 +48,13 @@ def standard_doc_text() -> str:
 
 
 @pytest.fixture(scope="module")
-def build_skill_dist_text() -> str:
-    assert BUILD_SKILL_DIST_PATH.exists(), (
-        f"missing compiled build skill: {BUILD_SKILL_DIST_PATH}; "
-        "the session-scoped compile fixture should have created it"
+def build_skill_dist_text(compiled_dist: Path) -> str:
+    path = compiled_dist / BUILD_SKILL_REL
+    assert path.exists(), (
+        f"missing compiled build skill: {path}; "
+        "the shared compiled_dist fixture should have created it"
     )
-    return BUILD_SKILL_DIST_PATH.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8")
 
 
 # -- Standards-doc tests (BR-009) --------------------------------------------

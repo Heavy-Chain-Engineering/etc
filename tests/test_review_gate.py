@@ -391,6 +391,28 @@ def test_should_return_empty_layers_when_detect_output_unparseable(
     assert review_gate._detect_touched_layers(design) == []
 
 
+def test_should_return_empty_layers_when_detect_subprocess_raises(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Audit init 9: the docstring promises a failed detect 'yields an empty
+    list', but the subprocess call had no try/except — a TimeoutExpired or
+    missing interpreter crashed the whole gate. 100% line coverage hid the
+    missing failure path (no line was uncovered; a PATH was)."""
+    import subprocess as _subprocess
+
+    def _raise_timeout(*_args, **_kwargs):
+        raise _subprocess.TimeoutExpired(cmd="layer_review", timeout=1)
+
+    monkeypatch.setattr(review_gate.subprocess, "run", _raise_timeout)
+    design = tmp_path / "design.md"
+    design.write_text("# d\n", encoding="utf-8")
+
+    assert review_gate._detect_touched_layers(design) == [], (
+        "a hung/failed layer detect must degrade to no-layers (architect "
+        "review gates out), never crash the build's review gate"
+    )
+
+
 def test_should_return_empty_layers_when_detect_exits_nonzero(
     tmp_path: Path, monkeypatch
 ) -> None:

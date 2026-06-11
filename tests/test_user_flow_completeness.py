@@ -13,15 +13,14 @@ Precedent: tests/test_spec_three_state.py and tests/test_init_project.py
 (class TestSkillMdContract) — grep-based contract tests over committed
 source plus compiled dist/ outputs.
 
-The dist/ outputs are compiled by a session-scoped autouse fixture that
-invokes `python3 compile-sdlc.py spec/etc_sdlc.yaml` once at session start.
-The compiler is idempotent; running it twice is safe. The fixture does NOT
-mock the compile step — assertions run against real dist/ files.
+The dist/ outputs come from the shared session-scoped ``compiled_dist``
+fixture (conftest.py), which compiles ``spec/etc_sdlc.yaml`` into a tmp dir
+and yields its path. The operator's real dist/ is never read or mutated;
+assertions run against the freshly compiled tmp artifacts.
 """
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -33,8 +32,10 @@ STANDARD_DOC = REPO_ROOT / "standards" / "process" / "user-flow-completeness.md"
 SKILL_SRC = REPO_ROOT / "skills" / "spec" / "SKILL.md"
 INJECT_HOOK = REPO_ROOT / "hooks" / "inject-standards.sh"
 
-# Compiled artifacts (the session-scoped fixture guarantees these are fresh).
-SKILL_DIST = REPO_ROOT / "dist" / "skills" / "spec" / "SKILL.md"
+# Compiled artifact is read from the shared session-scoped ``compiled_dist``
+# fixture (conftest.py), which compiles into a tmp dir — the operator's real
+# dist/ is never read or mutated by this suite.
+SKILL_REL = Path("skills") / "spec" / "SKILL.md"
 
 # The canonical User-flow sentence form (BR-001, AC1). Asserted verbatim.
 CANONICAL_SENTENCE = (
@@ -73,33 +74,6 @@ USER_VERBS: tuple[str, ...] = (
 )
 
 
-# -- Session-scoped compile fixture ------------------------------------------
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _compile_sdlc() -> None:
-    """Run compile-sdlc.py once at session start so dist/ is fresh.
-
-    The compiler is idempotent — running twice is fine. We do NOT mock the
-    compile step; assertions in this module read real files written by
-    compile-sdlc.py from the committed source artifacts.
-    """
-    subprocess.run(
-        ["python3", "compile-sdlc.py", "spec/etc_sdlc.yaml"],
-        check=True,
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-    )
-
-
-# Module-level reference so Pyright sees the autouse fixture as accessed.
-# The fixture is invoked by pytest at session start regardless of this line;
-# the line exists only to silence Pyright's "is not accessed" hint, which is
-# independent of `# pyright: ignore` directives and can only be silenced by
-# an actual reference to the symbol.
-_ = _compile_sdlc
-
-
 # -- Module-scoped text fixtures ---------------------------------------------
 
 
@@ -110,12 +84,13 @@ def standard_text() -> str:
 
 
 @pytest.fixture(scope="module")
-def skill_dist_text() -> str:
-    assert SKILL_DIST.exists(), (
-        f"missing compiled skill: {SKILL_DIST}; "
-        "the session-scoped compile fixture should have created it"
+def skill_dist_text(compiled_dist: Path) -> str:
+    path = compiled_dist / SKILL_REL
+    assert path.exists(), (
+        f"missing compiled skill: {path}; "
+        "the shared compiled_dist fixture should have created it"
     )
-    return SKILL_DIST.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
