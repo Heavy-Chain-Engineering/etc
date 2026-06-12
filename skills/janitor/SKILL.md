@@ -134,6 +134,25 @@ the worktree (which does not exist yet) — it only reads. Classify each candida
 by category; candidates outside the v1 set are recorded in the report but **not
 actioned** (AC-009).
 
+**Published-asset classification (BR-001, before candidate finalization).** For
+each `dead-code` deletion candidate, classify its path BEFORE the candidate is
+finalized in the select step:
+
+```bash
+python3 scripts/janitor_assets.py classify <path>   # → published-asset | other
+```
+
+A `published-asset` path is **a published API surface**: it is served from a
+deploy-to-URL root (the glob list lives ONLY in
+`standards/process/janitor-write-boundary.md`; never hardcode a copy), and a
+sibling repo may hotlink the URL it serves.
+**Repo-local unreferenced-ness alone is never sufficient evidence for this file class**
+— so a published-asset candidate is NOT finalized on the repo-local
+test-unreached proof; it carries forward to the select-time org search below. A
+candidate classified `other` (e.g. `src/helper.py`) is **not** a published
+asset: it gets **no org search and no new prompt** — its flow is byte-equivalent
+to today.
+
 ### Step 2: SELECT (flawless-only, capped)
 
 Filter the candidate list to the **v1 categories ONLY** (BR-004, AC-009):
@@ -153,9 +172,68 @@ active-surface rule); report it as skipped (edge 6).
 **Nothing to clean →** exit 0 with a "nothing to clean" report, **no PR, no
 branch, no worktree created**, no leftover state (edge 1, AC-001).
 
+**Published-asset guard at select (BR-002/BR-003/BR-004/BR-005, the gh trust
+crossing).** Decide each deletion candidate **per-candidate** through the
+helper's single composition, `evaluate_candidate(path)` (classify, then search
+ONLY when the path is published-asset). The decision flow below matches
+`evaluate_candidate`'s semantics exactly; the orchestrator shells out to the
+unchanged `classify` / `consumer-search` CLI surfaces at its gh crossing:
+
+1. **Classify first (no search yet).** A path that classifies `other` (e.g.
+   `src/helper.py`) short-circuits to the verdict **`cleared-other`** with **no
+   org search and no new prompt** — the gh crossing is never reached and the
+   non-published-asset flow is byte-equivalent to today.
+2. **Published-asset → search.** A path that classifies `published-asset`
+   carries forward to the org-wide consumer search HERE, in the orchestrator —
+   this is the orchestrator's single **gh trust crossing**; the fix-subagent is
+   networkless and never runs the search (see Subagent Dispatch /
+   `agents/janitor.md`). The search applies **identically in both lanes** —
+   `/janitor` and `/janitor --autonomous`; reviewer presence never substitutes
+   for consumer evidence:
+
+```bash
+python3 scripts/janitor_assets.py consumer-search <filename> --repo-root .
+# → JSON verdict {status, consumers[], evidence{}|null, reason|null}
+#   status ∈ { cleared | blocked | fail-closed | cleared-other }
+#   the CLOSED four-token vocabulary (never invent a fifth)
+```
+
+Branch on the verdict `status` (never the exit code), and record the outcome in
+the run record (Step 8) for **every published-asset candidate, cleared or not**:
+
+- **`cleared`** (org search succeeded, **zero** consumers) → the candidate is
+  cleared for deletion; record the `evidence` dict verbatim — its `query`,
+  `org_scope`, ISO-8601 `searched_at` timestamp, and `hit_count` (BR-006).
+- **`cleared-other`** (path is NOT published-asset; classification alone cleared
+  it — **no search ran**, so there is **no evidence** dict) → ordinary
+  dead-code flow, recorded distinctly from a searched `cleared` (see Step 8; the
+  "search not needed" vs "searched, found nothing" distinction is the audit
+  value).
+- **`blocked`** (one or more consumers) → **drop** the candidate; record the
+  named `consumers[]` in the run record (the asset is consumed across a repo
+  boundary). In interactive mode the operator MAY still confirm the deletion
+  naming the known consumers (operator authority, edge 7) — recorded verbatim.
+- **`fail-closed`** (search could not run — gh absent, unauthenticated,
+  rate-limited, error, or a malformed org/option-like filename; `reason` names
+  the class) → **never clear by repo-local fallback** (BR-003 / GA-003). The two
+  lanes diverge here, identically to the standard's dynamic-rule precedent:
+  - **interactive** → route to an **operator-confirm** prompt (Pattern A) naming
+    the asset and the fail-closed `reason`; the operator decides.
+  - **`--autonomous`** → **drop** the candidate from the run and record the
+    **fail-closed drop** (with `reason`) in `runs.jsonl`. No prompt, no clear.
+
+Each published-asset candidate evaluates independently: cleared ones stay cleared
+once their evidence is recorded; a mid-run rate-limit fails only the remaining
+candidates closed (edge 6).
+
 In **interactive** mode you MAY confirm the selected batch via Pattern A
-(`AskUserQuestion`). In **--autonomous** mode you MUST NOT prompt — proceed with
-the selected batch or, if empty, take the nothing-to-clean exit.
+(`AskUserQuestion`); the published-asset operator-confirm prompt above is the
+ONLY new prompt this feature adds, and it fires **only** for published-asset
+candidates. A candidate classified `other` reaches select with **no org search
+and no new prompt** — the non-published-asset flow is byte-equivalent to today.
+In **--autonomous** mode you MUST NOT prompt — proceed with the selected batch,
+take the autonomous fail-closed **drop** for any unsearchable published asset,
+or, if the batch is empty, take the nothing-to-clean exit.
 
 ### Step 3: ISOLATE (worktree off main — MANDATORY)
 
@@ -268,6 +346,27 @@ aborted_boundary, aborted_gates, aborted_worktree, aborted_timeout}`. Trust is
 NOT written here — clean-streaks are reconciled lazily at the next run's Step 0
 (ADR-003). This skill is a read-only consumer of `trust.yaml`.
 
+**Published-asset audit trail (BR-006).** The run line additionally carries a
+`published_assets[]` array with one entry per candidate evaluated through
+`evaluate_candidate` at select — **cleared or not** — so the Step 2 outcome is
+auditable. Each entry records the path, the verdict `status` (one of the CLOSED
+four-token vocabulary `cleared` | `blocked` | `fail-closed` | `cleared-other`),
+and the select-time outcome:
+
+- `cleared` → a search **ran** and found zero consumers; record the `evidence`
+  dict verbatim (`query`, `org_scope`, `searched_at`, `hit_count`).
+- `cleared-other` → the path was **not** published-asset, so **no search ran**
+  and there is **no evidence** dict. This is recorded as a distinct status from a
+  searched `cleared` — that "search not needed" vs "searched, found nothing"
+  distinction is the feature's audit value (an `evidence`-less `cleared-other`
+  must never be mistaken for an attested zero-hit clear).
+- `blocked` → the named `consumers[]` (and the operator-confirm record, if the
+  operator authorized the deletion despite a named consumer — edge 7).
+- `fail-closed` → the `reason` (gh-boundary class) plus the lane resolution: the
+  **operator-confirm** record (interactive) or the **fail-closed drop**
+  (autonomous). Recording the fail-closed drop in `runs.jsonl` is mandatory in
+  the autonomous lane — a dropped published-asset candidate is never silent.
+
 ### Step 9: TEARDOWN (always)
 
 Remove the worktree on completion **or** abort — idempotent, best-effort:
@@ -355,5 +454,6 @@ If any item fails, the run is NOT done regardless of which steps reported succes
 - `agents/janitor.md` — the constrained fix-subagent
 - `scripts/janitor_boundary_check.py` — the mechanical pre-PR veto
 - `scripts/janitor_trust.py` — the sole `trust.yaml` writer
+- `scripts/janitor_assets.py` — published-asset `classify` + `consumer-search`
 - `standards/process/janitor-write-boundary.md` — forbidden paths + ceiling (SoT)
 - `skills/efficiency/SKILL.md` — F019 observe-and-propose cousin

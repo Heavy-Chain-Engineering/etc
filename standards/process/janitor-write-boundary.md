@@ -43,6 +43,7 @@ boundary check directly, not by the glob list.
 | `open-pr-files` | Any file touched by a currently-open PR | **dynamic** (`gh pr` query) |
 | `recently-committed` | Any file with a commit in the last 24 hours | **dynamic** (git log probe) |
 | `cross-context` | A change spanning 2+ bounded contexts | **dynamic** (path-root analysis) |
+| `published-assets` | Files served from a deploy-to-URL root — `public/**`, `static/**`, `www/**`; a **cross-repo published API surface** | **dynamic** (org-wide consumer search) |
 | `file-count-ceiling` | A diff touching more than the file-count ceiling | numeric ceiling (below) |
 
 **Note on `behavior-changing-logic`:** this is a semantic property of the *edit*,
@@ -128,6 +129,9 @@ public-facing-copy         docs/**
 public-facing-copy         CHANGELOG.md
 public-facing-copy         **/CHANGELOG.md
 active-feature-dirs        .etc_sdlc/features/active/**
+published-assets           public/**
+published-assets           static/**
+published-assets           www/**
 ```
 
 ---
@@ -156,9 +160,12 @@ max_files = 3
 
 These rules depend on repository state at run time and are enforced by
 `janitor_boundary_check.py` directly. They are documented here so the standard
-remains the single source of truth, but they are intentionally NOT in the
-`janitor-forbidden-globs` block (a glob cannot express "committed in the last 24
-hours").
+remains the single source of truth, but their *clearance* is not expressible as a
+static glob (a glob cannot express "committed in the last 24 hours"). Most carry
+no entry in the `janitor-forbidden-globs` block at all; `published-assets` is the
+exception — its three path-glob entries (`public/**`, `static/**`, `www/**`) live
+in the block so the survey can *classify* a candidate by path, while the org-wide
+consumer search below decides whether that classified candidate may be deleted.
 
 - **`open-pr-files`** — a changed path appears in the file list of any currently
   open PR (`gh pr list --state open` joined with `gh pr view --json files`). A
@@ -172,9 +179,37 @@ hours").
 - **`cross-context`** — the changed paths span 2 or more bounded contexts
   (distinct top-level package/context roots). A single run stays within one
   context.
+- **`published-assets`** — a changed path matches `public/**`, `static/**`, or
+  `www/**`: a file served from a deploy-to-URL root, and therefore
+  **a published API surface** consumed across repo boundaries (sibling projects
+  hotlink the URL it serves). Repo-local scans see only this repo; they cannot
+  observe a cross-repo consumer.
+  **Repo-local unreferenced-ness alone is never sufficient evidence for this file class.**
+  Such a candidate is cleared for
+  deletion only when the orchestrator runs an **org-wide consumer search** (the
+  org derived from the repo's remote owner; the implementing helper is
+  `scripts/janitor_assets.py`) and one of these holds:
+  - the search completes successfully with **zero** consumer hits — in which case
+    the query string, the org and scope searched, and an ISO-8601 timestamp are
+    recorded as evidence; or
+  - the operator explicitly confirms the deletion, naming the known consumers.
+
+  Any consumer hit **aborts** the candidate, naming the consumers in the run
+  record. The search runs only in the orchestrator (the fix-subagent is
+  networkless); the subagent aborts `success=false` on any published-asset
+  deletion lacking orchestrator-supplied evidence. This rule is **identical in
+  both lanes** — preview (draft-PR) and autonomous; reviewer presence never
+  substitutes for consumer evidence. The evidence (the cleared search, the
+  operator-confirm record, or the fail-closed drop) lands in the janitor run
+  record `.etc_sdlc/janitor/runs.jsonl` for every published-asset candidate,
+  cleared or not.
 
 When `gh` or git state is unavailable for a dynamic rule, the rule fails closed:
-the run aborts rather than assuming the path is safe.
+the run aborts rather than assuming the path is safe. For `published-assets` this
+means a search that cannot run (gh absent, unauthenticated, rate-limited, or
+erroring) never clears the candidate by falling back to repo-local evidence: the
+preview lane routes to an operator-confirm prompt and the autonomous lane drops
+the candidate, recording the fail-closed drop in `runs.jsonl`.
 
 ---
 

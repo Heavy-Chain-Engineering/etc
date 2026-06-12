@@ -8,6 +8,35 @@
 # Exit codes:
 #   0 = allow the command
 #   2 = block the command (with reason to stderr)
+#
+# ── SCOPING NOTE: gh DELIVERY commands are deliberately NOT blocked here ──────
+# Security review F-2026-06-12 (MEDIUM) asked whether this hook should block
+# `gh` delivery (gh pr create/merge/close, gh release create, gh repo delete)
+# so a prompt-injected janitor fix-subagent cannot cross the delivery trust
+# boundary it is forbidden to cross (agents/janitor.md: "the orchestrator is
+# the only component that crosses the trust boundary ... its single crossing is
+# gh on the operator's existing auth; you never do").
+#
+# It must NOT be done in this hook. This gate (spec/etc_sdlc.yaml
+# `safety-guardrails`) is event=PreToolUse, matcher="Bash" with NO agent
+# scoping — it fires on EVERY Bash call, in the MAIN orchestrator session as
+# well as in subagents. The orchestrator's LEGITIMATE delivery runs through
+# this exact hook: `/janitor` opens its PR with `gh pr create [--draft]`
+# (skills/janitor/SKILL.md), `/pull-tickets` runs `gh pr create`
+# (skills/pull-tickets/SKILL.md), and /build ships PRs. A blanket gh-delivery
+# block would brick all three.
+#
+# The PreToolUse Bash payload carries no reliable main-session-vs-subagent
+# discriminator (only commands/cwd/client/transcript_path — the transcript path
+# identifies a session, not whether it is a subagent's; hook_payload.py's
+# "subagent" kind keys off the Task/Agent spawn tool, not Bash-within-a-
+# subagent). With no discriminator, the correct fix is a SUBAGENT-SCOPED hook
+# (e.g. a hook wired to fire only inside the janitor fix-subagent's context, or
+# tightening the janitor agent toolset so Bash cannot reach gh), NOT a rule in
+# this global gate. That is a wiring/design decision for the operator. The
+# regression tests pinning "gh delivery is ALLOWED by this hook" exist so a
+# future blanket block added here fails loudly and routes the fix to the right
+# layer. See tests/test_block_dangerous_commands.py::test_gh_*.
 
 INPUT=$(cat)
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
