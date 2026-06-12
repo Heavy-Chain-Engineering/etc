@@ -183,6 +183,62 @@ class TestSkillRunsOrgSearchAtSelect:
         assert "consumer" in low and "search" in low
 
 
+class TestSkillPerCandidateComposition:
+    """AC-2: the select-step decision flow matches evaluate_candidate's
+    composition (classify → OTHER short-circuits with NO search; PUBLISHED_ASSET
+    delegates to the consumer search). The CLI surfaces are unchanged; the prose
+    must describe the per-candidate evaluation through that composition."""
+
+    def test_should_describe_per_candidate_evaluation(self) -> None:
+        low = _skill_text().lower()
+        # Each candidate is decided one at a time via the classify→search
+        # composition (evaluate_candidate's semantics).
+        assert "evaluate_candidate" in low or "per-candidate" in low
+        assert "candidate" in low
+
+    def test_should_name_evaluate_candidate_composition(self) -> None:
+        # The skill references the single composition entry point by name so a
+        # reader maps the prose to the helper's structurally-enforced semantics.
+        assert "evaluate_candidate" in _skill_text()
+
+    def test_should_short_circuit_other_with_no_search(self) -> None:
+        low = _skill_text().lower()
+        # OTHER classification short-circuits: cleared-other, no gh crossing.
+        assert "cleared-other" in low
+        assert "no search" in low or "no org search" in low
+
+    def test_should_keep_existing_cli_invocations(self) -> None:
+        # The skill still shells out to the unchanged classify / consumer-search
+        # CLI surfaces where it crosses to the helper (the composition is the
+        # decision flow, not a new CLI subcommand).
+        text = _skill_text()
+        assert "janitor_assets.py classify" in text
+        assert "janitor_assets.py consumer-search" in text
+
+
+class TestSkillVerdictVocabulary:
+    """AC-2: the closed verdict vocabulary is the FOUR tokens the helper now
+    returns; the skill pins each and never invents a fifth."""
+
+    def test_should_pin_all_four_closed_tokens(self) -> None:
+        low = _skill_text().lower()
+        for token in ("cleared", "blocked", "fail-closed", "cleared-other"):
+            assert token in low, token
+
+    def test_should_distinguish_cleared_other_from_searched_cleared(self) -> None:
+        low = _skill_text().lower()
+        # cleared-other = classification cleared it, no search was needed —
+        # explicitly distinct from a searched `cleared` (zero-hit). That
+        # distinction is the audit value.
+        assert "cleared-other" in low
+        assert "no search" in low or "never searched" in low or "not searched" in low
+
+    def test_should_state_the_vocabulary_is_closed(self) -> None:
+        low = _skill_text().lower()
+        # The four tokens are the closed set; the skill says so.
+        assert "closed" in low and "vocabulary" in low
+
+
 class TestSkillRecordsEvidenceInRunsJsonl:
     """AC-2: evidence / operator-confirm / fail-closed drop recorded in
     runs.jsonl for EVERY published-asset candidate, cleared or not."""
@@ -209,6 +265,19 @@ class TestSkillRecordsEvidenceInRunsJsonl:
         assert "query" in low
         assert "scope" in low or "org" in low
         assert "timestamp" in low or "iso-8601" in low or "searched_at" in low
+
+    def test_should_record_cleared_other_distinct_from_searched_cleared(
+        self,
+    ) -> None:
+        # The audit value of the feature: the run record distinguishes a
+        # classification-only clear (cleared-other, no search ran) from a
+        # searched zero-hit clear (cleared, evidence dict attached). Both
+        # statuses appear in the run-record description.
+        low = _skill_text().lower()
+        assert "cleared-other" in low
+        assert "cleared" in low
+        # The distinction is explicitly about whether a search ran / evidence.
+        assert "no search" in low or "no evidence" in low or "no org search" in low
 
 
 class TestSkillBothLanesIdentical:

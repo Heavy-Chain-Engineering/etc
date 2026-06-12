@@ -20,6 +20,14 @@ Coverage targets (per task 001 acceptance criteria):
         - gh absent / CalledProcessError / unparseable output
                           → fail-closed verdict (NOT cleared, distinct)
         - non-boundary error                     → propagates (crashes loud)
+    AC-6 evaluate_candidate composition (regression pin)
+        - OTHER path        → cleared-other, runner NEVER invoked
+        - PUBLISHED_ASSET   → delegates to consumer_search
+    Security hardening
+        - option-like filename (-...)            → fail-closed, no runner call
+        - argv `--` sentinel before the filename positional
+        - malformed/whitespace org login         → fail-closed
+        - traversal path (public/../../etc)      → classify OTHER
 """
 
 from __future__ import annotations
@@ -220,7 +228,9 @@ def test_should_record_iso8601_searched_at_when_cleared() -> None:
 
     verdict = janitor_assets.consumer_search("orphan.png", gh_runner=runner)
 
-    searched_at = verdict.evidence["searched_at"]  # type: ignore[index]
+    evidence = verdict.evidence
+    assert evidence is not None
+    searched_at = evidence["searched_at"]
     # Round-trips as ISO-8601 with a trailing Z (UTC).
     assert searched_at.endswith("Z")
     parsed = datetime.fromisoformat(searched_at.replace("Z", "+00:00"))
@@ -348,6 +358,177 @@ def test_should_fail_closed_when_org_owner_missing_from_repo_view() -> None:
     verdict = janitor_assets.consumer_search("orphan.png", gh_runner=runner)
 
     assert verdict.status == janitor_assets.FAIL_CLOSED
+
+
+# ── AC-6: evaluate_candidate composition (regression pin) ───────────────
+
+
+def _exploding_runner(argv: list[str]) -> str:
+    """A runner that fails the test if it is EVER called.
+
+    Wired into evaluate_candidate for an OTHER path to prove the gh crossing
+    is never reached (AC-6: a plain dead-code deletion flows as today).
+    """
+    raise AssertionError(f"runner must not be invoked for an OTHER path: {argv}")
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["src/helper.py", "tests/test_helper.py", "README.md", "app/public/logo.png"],
+)
+def test_should_clear_other_without_invoking_runner_when_path_not_published(
+    path: str,
+) -> None:
+    # AC-6 regression pin: an OTHER-classified path is cleared by
+    # classification alone — consumer_search is NEVER reached, so the
+    # exploding runner is never called.
+    verdict = janitor_assets.evaluate_candidate(path, gh_runner=_exploding_runner)
+
+    assert verdict.status == janitor_assets.CLEARED_OTHER
+    assert verdict.consumers == []
+    assert verdict.evidence is None
+
+
+def test_should_delegate_to_consumer_search_when_path_published() -> None:
+    # The PUBLISHED_ASSET branch DOES cross to gh: a zero-hit search clears
+    # it with recorded evidence (same shape consumer_search returns).
+    runner = _gh_runner_from(owner="acme", code_hits=[])
+
+    verdict = janitor_assets.evaluate_candidate("public/orphan.png", gh_runner=runner)
+
+    assert verdict.status == janitor_assets.CLEARED
+    assert verdict.evidence is not None
+    assert "orphan.png" in verdict.evidence["query"]
+
+
+def test_should_block_via_evaluate_candidate_when_published_asset_consumed() -> None:
+    runner = _gh_runner_from(
+        owner="acme",
+        code_hits=[_hit("acme/email-templates", "emails/welcome.html")],
+    )
+
+    verdict = janitor_assets.evaluate_candidate("public/img/logo.png", gh_runner=runner)
+
+    assert verdict.status == janitor_assets.BLOCKED
+    assert verdict.consumers == ["acme/email-templates:emails/welcome.html"]
+
+
+def test_should_search_basename_not_full_path_via_evaluate_candidate() -> None:
+    # The org search is by basename (the asset's filename), not the repo
+    # path — the consumer hotlinks the deployed URL's leaf, not the repo path.
+    captured: list[list[str]] = []
+    base = _gh_runner_from(owner="acme", code_hits=[])
+
+    def recording_runner(argv: list[str]) -> str:
+        captured.append(argv)
+        return base(argv)
+
+    janitor_assets.evaluate_candidate("public/img/nested/logo.png", gh_runner=recording_runner)
+
+    search_calls = [a for a in captured if a[:3] == ["gh", "search", "code"]]
+    assert search_calls, "expected a gh search code call"
+    # filename positional sits after the `--` sentinel; it is the basename.
+    assert search_calls[0][-1] == "logo.png"
+
+
+# ── Security hardening: argv-option injection (item 4) ───────────────────
+
+
+def test_should_place_end_of_options_sentinel_before_filename() -> None:
+    captured: list[list[str]] = []
+    base = _gh_runner_from(owner="acme", code_hits=[])
+
+    def recording_runner(argv: list[str]) -> str:
+        captured.append(argv)
+        return base(argv)
+
+    janitor_assets.consumer_search("logo.png", gh_runner=recording_runner)
+
+    search_calls = [a for a in captured if a[:3] == ["gh", "search", "code"]]
+    assert search_calls
+    argv = search_calls[0]
+    assert "--" in argv
+    # The filename positional is the LAST token, immediately after `--`.
+    assert argv[argv.index("--") + 1] == "logo.png"
+    assert argv[-1] == "logo.png"
+
+
+def test_should_fail_closed_when_filename_looks_like_an_option() -> None:
+    # An option-like filename must NEVER clear: it is rejected before any
+    # runner call (argv-option-injection defense).
+    verdict = janitor_assets.consumer_search("--limit", gh_runner=_exploding_runner)
+
+    assert verdict.status == janitor_assets.FAIL_CLOSED
+    assert verdict.status != janitor_assets.CLEARED
+    assert verdict.reason is not None
+    assert "--limit" in verdict.reason
+
+
+def test_should_reject_option_like_filename_before_any_runner_call() -> None:
+    # Belt-and-braces on the "before any runner call" guarantee: the
+    # exploding runner proves no gh crossing happens for a `-`-prefixed name.
+    verdict = janitor_assets.consumer_search("-rf", gh_runner=_exploding_runner)
+
+    assert verdict.status == janitor_assets.FAIL_CLOSED
+
+
+# ── Security hardening: org-login validation (item 5) ────────────────────
+
+
+@pytest.mark.parametrize(
+    "bad_login",
+    ["acme\n", " acme", "acme corp", "-acme", "acme/../../etc", ""],
+)
+def test_should_fail_closed_when_org_login_is_malformed(bad_login: str) -> None:
+    # A login carrying whitespace, newlines, or otherwise outside GitHub's
+    # org charset is a malformed/hostile remote → fail closed, never search.
+    def runner(argv: list[str]) -> str:
+        if argv[:3] == ["gh", "repo", "view"]:
+            return json.dumps({"owner": {"login": bad_login}})
+        raise AssertionError(f"unexpected gh argv after bad org: {argv}")
+
+    verdict = janitor_assets.consumer_search("orphan.png", gh_runner=runner)
+
+    assert verdict.status == janitor_assets.FAIL_CLOSED
+
+
+def test_should_accept_hyphenated_org_login() -> None:
+    # A valid hyphenated org (GitHub's charset) clears the search normally.
+    runner = _gh_runner_from(owner="Heavy-Chain-Engineering", code_hits=[])
+
+    verdict = janitor_assets.consumer_search("orphan.png", gh_runner=runner)
+
+    assert verdict.status == janitor_assets.CLEARED
+    assert verdict.evidence is not None
+    assert verdict.evidence["org_scope"] == "Heavy-Chain-Engineering"
+
+
+# ── Security hardening: classify traversal canonicalization (item 6) ─────
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "public/../../../etc/passwd",
+        "public/../secret",
+        "static/../../outside.txt",
+        "../public/logo.png",
+        "/public/logo.png",
+        "www/../..",
+    ],
+)
+def test_should_classify_other_when_path_uses_traversal_or_escapes_root(
+    path: str,
+) -> None:
+    # A traversal-laden string must not spoof a published root; anything that
+    # normalizes to escape the repo root (leading .. or absolute /) is OTHER.
+    assert janitor_assets.classify(path) == janitor_assets.OTHER
+
+
+def test_should_classify_published_when_inner_traversal_stays_under_root() -> None:
+    # public/img/../logo.png normalizes to public/logo.png — still a genuine
+    # published-asset path; canonicalization must not over-reject.
+    assert janitor_assets.classify("public/img/../logo.png") == (janitor_assets.PUBLISHED_ASSET)
 
 
 # ── CLI surfaces ─────────────────────────────────────────────────────────

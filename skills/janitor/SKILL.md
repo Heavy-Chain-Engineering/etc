@@ -173,17 +173,29 @@ active-surface rule); report it as skipped (edge 6).
 branch, no worktree created**, no leftover state (edge 1, AC-001).
 
 **Published-asset guard at select (BR-002/BR-003/BR-004/BR-005, the gh trust
-crossing).** For every candidate the survey classified `published-asset`, run
-the org-wide consumer search HERE, in the orchestrator — this is the
-orchestrator's single **gh trust crossing**; the fix-subagent is networkless and
-never runs the search (see Subagent Dispatch / `agents/janitor.md`). The search
-applies **identically in both lanes** — `/janitor` and `/janitor --autonomous`;
-reviewer presence never substitutes for consumer evidence:
+crossing).** Decide each deletion candidate **per-candidate** through the
+helper's single composition, `evaluate_candidate(path)` (classify, then search
+ONLY when the path is published-asset). The decision flow below matches
+`evaluate_candidate`'s semantics exactly; the orchestrator shells out to the
+unchanged `classify` / `consumer-search` CLI surfaces at its gh crossing:
+
+1. **Classify first (no search yet).** A path that classifies `other` (e.g.
+   `src/helper.py`) short-circuits to the verdict **`cleared-other`** with **no
+   org search and no new prompt** — the gh crossing is never reached and the
+   non-published-asset flow is byte-equivalent to today.
+2. **Published-asset → search.** A path that classifies `published-asset`
+   carries forward to the org-wide consumer search HERE, in the orchestrator —
+   this is the orchestrator's single **gh trust crossing**; the fix-subagent is
+   networkless and never runs the search (see Subagent Dispatch /
+   `agents/janitor.md`). The search applies **identically in both lanes** —
+   `/janitor` and `/janitor --autonomous`; reviewer presence never substitutes
+   for consumer evidence:
 
 ```bash
 python3 scripts/janitor_assets.py consumer-search <filename> --repo-root .
 # → JSON verdict {status, consumers[], evidence{}|null, reason|null}
-#   status ∈ { cleared | blocked | fail-closed }   (closed vocabulary)
+#   status ∈ { cleared | blocked | fail-closed | cleared-other }
+#   the CLOSED four-token vocabulary (never invent a fifth)
 ```
 
 Branch on the verdict `status` (never the exit code), and record the outcome in
@@ -192,14 +204,19 @@ the run record (Step 8) for **every published-asset candidate, cleared or not**:
 - **`cleared`** (org search succeeded, **zero** consumers) → the candidate is
   cleared for deletion; record the `evidence` dict verbatim — its `query`,
   `org_scope`, ISO-8601 `searched_at` timestamp, and `hit_count` (BR-006).
+- **`cleared-other`** (path is NOT published-asset; classification alone cleared
+  it — **no search ran**, so there is **no evidence** dict) → ordinary
+  dead-code flow, recorded distinctly from a searched `cleared` (see Step 8; the
+  "search not needed" vs "searched, found nothing" distinction is the audit
+  value).
 - **`blocked`** (one or more consumers) → **drop** the candidate; record the
   named `consumers[]` in the run record (the asset is consumed across a repo
   boundary). In interactive mode the operator MAY still confirm the deletion
   naming the known consumers (operator authority, edge 7) — recorded verbatim.
 - **`fail-closed`** (search could not run — gh absent, unauthenticated,
-  rate-limited, error; `reason` names the class) → **never clear by repo-local
-  fallback** (BR-003 / GA-003). The two lanes diverge here, identically to the
-  standard's dynamic-rule precedent:
+  rate-limited, error, or a malformed org/option-like filename; `reason` names
+  the class) → **never clear by repo-local fallback** (BR-003 / GA-003). The two
+  lanes diverge here, identically to the standard's dynamic-rule precedent:
   - **interactive** → route to an **operator-confirm** prompt (Pattern A) naming
     the asset and the fail-closed `reason`; the operator decides.
   - **`--autonomous`** → **drop** the candidate from the run and record the
@@ -330,13 +347,19 @@ NOT written here — clean-streaks are reconciled lazily at the next run's Step 
 (ADR-003). This skill is a read-only consumer of `trust.yaml`.
 
 **Published-asset audit trail (BR-006).** The run line additionally carries a
-`published_assets[]` array with one entry per published-asset candidate the
-survey classified — **cleared or not** — so the consumer-search outcome from
-Step 2 is auditable. Each entry records the path, the verdict `status`
-(`cleared` | `blocked` | `fail-closed`), and the select-time outcome:
+`published_assets[]` array with one entry per candidate evaluated through
+`evaluate_candidate` at select — **cleared or not** — so the Step 2 outcome is
+auditable. Each entry records the path, the verdict `status` (one of the CLOSED
+four-token vocabulary `cleared` | `blocked` | `fail-closed` | `cleared-other`),
+and the select-time outcome:
 
-- `cleared` → the `evidence` dict verbatim (`query`, `org_scope`, `searched_at`,
-  `hit_count`).
+- `cleared` → a search **ran** and found zero consumers; record the `evidence`
+  dict verbatim (`query`, `org_scope`, `searched_at`, `hit_count`).
+- `cleared-other` → the path was **not** published-asset, so **no search ran**
+  and there is **no evidence** dict. This is recorded as a distinct status from a
+  searched `cleared` — that "search not needed" vs "searched, found nothing"
+  distinction is the feature's audit value (an `evidence`-less `cleared-other`
+  must never be mistaken for an attested zero-hit clear).
 - `blocked` → the named `consumers[]` (and the operator-confirm record, if the
   operator authorized the deletion despite a named consumer — edge 7).
 - `fail-closed` → the `reason` (gh-boundary class) plus the lane resolution: the

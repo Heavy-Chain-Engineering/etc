@@ -55,3 +55,65 @@ def test_short_f_force_push_still_blocks() -> None:
     result = _run_hook("git push -f internal my-branch")
     assert result.returncode == 2, "git push -f must still block"
     assert "Force push" in result.stderr
+
+
+# -- gh delivery scoping (security review F-2026-06-12) ------------------------
+#
+# These tests PIN the deliberate decision NOT to block gh delivery commands in
+# this hook. The safety-guardrails gate (spec/etc_sdlc.yaml) is
+# event=PreToolUse, matcher="Bash" with NO agent scoping: it fires on EVERY
+# Bash call, in the MAIN orchestrator session as well as in subagents. The
+# orchestrator's LEGITIMATE delivery runs through this exact hook
+# (`/janitor` and `/pull-tickets` open PRs with `gh pr create`; /build ships
+# PRs), and the PreToolUse Bash payload carries no reliable
+# main-session-vs-subagent discriminator. A blanket block here would brick
+# legitimate delivery; the correct fix for the janitor-subagent trust boundary
+# is a subagent-scoped hook (an operator wiring decision), not a rule in this
+# global gate. If a future change adds a blanket gh-delivery block here, these
+# tests fail loudly and route the fix to the right layer. See the SCOPING NOTE
+# in hooks/block-dangerous-commands.sh.
+
+import pytest  # noqa: E402  (placed next to the tests it parametrizes)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'gh pr create --draft --title "janitor: lint cleanup" --body "..."',
+        "gh pr create --base main --head claude/janitor/lint-2026-06-12",
+        "gh pr merge 42 --squash",
+        "gh pr close 42",
+        "gh release create v1.2.3 --notes 'release'",
+        "gh repo delete owner/throwaway --yes",
+    ],
+    ids=[
+        "gh_pr_create_draft",
+        "gh_pr_create_ready",
+        "gh_pr_merge",
+        "gh_pr_close",
+        "gh_release_create",
+        "gh_repo_delete",
+    ],
+)
+def test_gh_delivery_commands_are_allowed_by_this_global_hook(command: str) -> None:
+    """This global Bash gate must NOT block gh delivery: the orchestrator's
+    legitimate PR/release flow runs through it. The janitor-subagent boundary
+    is enforced elsewhere (toolset / subagent-scoped hook), not here."""
+    result = _run_hook(command)
+    assert result.returncode == 0, (
+        f"{command!r} must be ALLOWED by this global PreToolUse-Bash hook — the "
+        f"orchestrator's legitimate delivery runs through it. If you intended to "
+        f"block gh delivery for the janitor subagent, do it in a subagent-scoped "
+        f"hook, not here (see the SCOPING NOTE in the hook). "
+        f"got exit {result.returncode}: {result.stderr}"
+    )
+
+
+def test_gh_delivery_still_subject_to_other_existing_rules() -> None:
+    """Scoping the gh carve-out must not weaken sibling rules: a gh command
+    smuggling a blocked bypass flag (--no-verify) is still blocked."""
+    result = _run_hook("gh pr merge 42 --merge -- --no-verify")
+    assert result.returncode == 2, (
+        "an embedded --no-verify must still block even within a gh command line"
+    )
+    assert "bypass safety" in result.stderr

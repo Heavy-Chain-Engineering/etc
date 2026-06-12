@@ -8,12 +8,16 @@ subscriber email shipped a broken image for three days (canary incident
 AP-001). Files under deploy-to-URL roots are a **cross-repo published API
 surface**: repo-local reachability scans structurally cannot clear them.
 
-This module supplies the two pure pieces the orchestrator (survey/select)
-needs to guard such deletions
+This module supplies the pieces the orchestrator (survey/select) needs to
+guard such deletions
 (F-2026-06-12-janitor-published-asset-surface, BR-001/BR-002/BR-003):
 
     classify(path)            — is this path published-asset surface?
     consumer_search(filename) — does any repo in this org consume it?
+    evaluate_candidate(path)  — the single composition the skill calls per
+                                candidate: classify, then search ONLY if the
+                                path is published-asset (AC-6 — an OTHER path
+                                clears WITHOUT ever crossing to gh).
 
 ``classify`` is by path against a CLOSED glob set anchored at the path root
 (``public/``, ``static/``, ``www/``); non-matching paths pass through
@@ -32,11 +36,16 @@ skill records this token in the run record and the agent aborts on it):
     blocked      — at least one consumer found; deletion rejected upstream,
                    each consumer named "<repo>:<path>" (BR-002).
     fail-closed  — the search could not run (gh absent, non-zero exit,
-                   rate-limit, unparseable output). NOT cleared, NEVER a
-                   repo-local fallback (BR-003 / GA-003); distinct from a
-                   genuine zero-hit clear. The boundary failure class is
-                   named in ``reason`` so the run record and operator-confirm
-                   prompt can surface WHY.
+                   rate-limit, unparseable output, or a malformed org/
+                   option-like filename). NOT cleared, NEVER a repo-local
+                   fallback (BR-003 / GA-003); distinct from a genuine
+                   zero-hit clear. The boundary/rejection cause is named in
+                   ``reason`` so the run record and operator-confirm prompt
+                   can surface WHY.
+    cleared-other — the path is NOT published-asset surface; classification
+                   alone clears it with no org search (AC-6). Distinct from
+                   ``cleared`` so the skill can tell "search not needed" from
+                   "searched, found nothing".
 
 The gh-boundary failure set is deliberately NARROW (binary absent, non-zero
 exit, unparseable JSON), mirroring ``janitor_trust.py``'s degrade suite: an
@@ -59,13 +68,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import posixpath
+import re
 import subprocess
 import sys
-from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Protocol, TypedDict
 
 # ── Classification vocabulary (AC-1) ─────────────────────────────────────
 
@@ -88,6 +98,13 @@ CLEARED: str = "cleared"
 BLOCKED: str = "blocked"
 FAIL_CLOSED: str = "fail-closed"
 
+# The composition verdict for a non-published-asset path: classification
+# alone clears it WITHOUT an org search (AC-6 — a plain dead-code deletion
+# like src/helper.py flows exactly as today, no gh crossing). Distinct from
+# ``cleared`` (which attests to a completed zero-hit search) so the skill can
+# tell "never needed a search" from "searched and found nothing".
+CLEARED_OTHER: str = "cleared-other"
+
 # The gh-boundary failure classes that degrade ``consumer_search`` to the
 # fail-closed verdict (NOT a repo-local fallback): the binary is absent
 # (FileNotFoundError), gh exits non-zero — no remote, auth scope, rate
@@ -102,26 +119,68 @@ _GH_BOUNDARY_ERRORS: tuple[type[Exception], ...] = (
     json.JSONDecodeError,
 )
 
-# The seam every gh call flows through: argv list → captured stdout.
-# Injectable so tests stay hermetic; the default shells `gh` via subprocess.
-GhRunner = Callable[[list[str]], str]
+# GitHub's account/org login charset: alphanumeric or single hyphens, may not
+# start with a hyphen, 1–39 chars. A derived owner.login that fails this is a
+# malformed/hostile remote (whitespace, newline, injected text) — we refuse to
+# search a scope we cannot validate and fail closed rather than attest to it.
+_ORG_LOGIN_PATTERN: re.Pattern[str] = re.compile(r"[A-Za-z0-9][A-Za-z0-9\-]{0,38}")
+
+
+class GhRunner(Protocol):
+    """The seam every gh call flows through: argv list → captured stdout.
+
+    Injectable so tests stay hermetic (the ``janitor_trust.py`` ``gh_runner``
+    pattern); the default shells ``gh`` via subprocess. A Protocol (structural
+    typing) so any plain ``(list[str]) -> str`` callable — including the test
+    fakes — satisfies it without importing or subclassing anything.
+    """
+
+    def __call__(self, argv: list[str]) -> str: ...
+
+
+class _CodeSearchHit(TypedDict, total=False):
+    """One ``gh search code --json repository,path`` hit record.
+
+    ``total=False``: gh may omit either field on a malformed/partial hit;
+    ``_name_consumer`` substitutes a legible placeholder rather than dropping
+    the hit (a hit is a hit). ``repository`` is gh's ``{nameWithOwner: ...}``
+    shape.
+    """
+
+    repository: dict[str, str]
+    path: str
+
+
+class SearchEvidence(TypedDict):
+    """The BR-006 audit dict recorded for a COMPLETED org-wide search.
+
+    Pinned shape (skill records it verbatim in the run record): the exact
+    query run, the org scope it attests to, an ISO-8601 timestamp, and the
+    hit count (non-zero on ``blocked``; zero on ``cleared``).
+    """
+
+    query: str
+    org_scope: str
+    searched_at: str
+    hit_count: int
 
 
 @dataclass(frozen=True)
 class ConsumerVerdict:
-    """The outcome of an org-wide consumer search for one asset filename.
+    """The outcome of evaluating one deletion candidate.
 
     ``status`` is one of the CLOSED tokens ``cleared`` | ``blocked`` |
-    ``fail-closed``. ``consumers`` are named ``"<repo>:<path>"`` (non-empty
-    iff ``blocked``). ``evidence`` carries the audit dict on ``cleared`` and
-    ``blocked`` (the searched scope is attestable); it is ``None`` on
-    ``fail-closed`` (no search completed, so nothing is attested).
-    ``reason`` names the gh-boundary failure class on ``fail-closed`` only.
+    ``fail-closed`` | ``cleared-other``. ``consumers`` are named
+    ``"<repo>:<path>"`` (non-empty iff ``blocked``). ``evidence`` carries the
+    audit dict on ``cleared`` and ``blocked`` (the searched scope is
+    attestable); it is ``None`` on ``fail-closed`` (no search completed) and
+    on ``cleared-other`` (no search was needed). ``reason`` names the
+    gh-boundary failure class on ``fail-closed`` only.
     """
 
     status: str
     consumers: list[str] = field(default_factory=list)
-    evidence: dict[str, Any] | None = None
+    evidence: SearchEvidence | None = None
     reason: str | None = None
 
 
@@ -137,11 +196,54 @@ def classify(path: str) -> str:
     ``my-public/x``, and the nested ``app/public/x`` do NOT (v1 anchors to
     the documented top-level roots). A leading ``./`` is normalized away.
     Every other path returns ``OTHER`` and is left untouched by the guard.
+
+    The path is canonicalized LEXICALLY first (``posixpath.normpath``) so a
+    traversal-laden string cannot spoof a published root:
+    ``public/../../etc/passwd`` normalizes to ``../etc/passwd`` and classifies
+    ``OTHER``, and any path that escapes the repo root (a leading ``..`` after
+    normalization, or an absolute ``/...``) is ``OTHER`` by construction —
+    those are not repo-relative published-asset surface.
     """
-    parts = PurePosixPath(path.strip()).parts
-    if parts and parts[0] in PUBLISHED_ROOTS:
+    normalized = posixpath.normpath(path.strip())
+    parts = PurePosixPath(normalized).parts
+    if not parts or parts[0] in ("..", "/"):
+        return OTHER
+    if parts[0] in PUBLISHED_ROOTS:
         return PUBLISHED_ASSET
     return OTHER
+
+
+# ── Guard composition (AC-6) ─────────────────────────────────────────────
+
+
+def evaluate_candidate(
+    path: str,
+    *,
+    repo_root: str = ".",
+    gh_runner: GhRunner | None = None,
+) -> ConsumerVerdict:
+    """Decide one deletion candidate: classify, then search ONLY if needed.
+
+    This is the single, obvious entry point the /janitor survey/select step
+    calls per candidate — the composition the skill wires against:
+
+        OTHER           → ``cleared-other`` immediately, with NO org search
+                          (AC-6: a plain dead-code deletion like
+                          ``src/helper.py`` flows exactly as today — the gh
+                          crossing is never reached).
+        PUBLISHED_ASSET → delegate to ``consumer_search`` on the filename
+                          (the asset's basename), returning its
+                          cleared/blocked/fail-closed verdict verbatim.
+
+    Keeping the classify→search decision in ONE function makes the AC-6
+    "never search an OTHER path" invariant structurally true (and testable
+    with an exploding runner) rather than a convention each caller must
+    re-implement.
+    """
+    if classify(path) == OTHER:
+        return ConsumerVerdict(status=CLEARED_OTHER)
+    filename = PurePosixPath(path.strip()).name
+    return consumer_search(filename, repo_root=repo_root, gh_runner=gh_runner)
 
 
 # ── Consumer search (AC-2 / AC-3) ────────────────────────────────────────
@@ -165,8 +267,18 @@ def consumer_search(
     unparseable output — degrades to ``fail-closed`` (NOT cleared, never a
     repo-local fallback; BR-003 / GA-003), naming the failure class in
     ``reason``. A non-boundary error propagates and crashes loudly.
+
+    A ``filename`` that begins with ``-`` is rejected BEFORE any runner call
+    (``fail-closed``): it cannot be a legitimate basename and could otherwise
+    be parsed by gh as an option (argv-option injection). The search argv also
+    carries the ``--`` end-of-options sentinel as belt-and-braces.
     """
     runner = gh_runner or _default_gh_runner
+    if filename.startswith("-"):
+        return ConsumerVerdict(
+            status=FAIL_CLOSED,
+            reason=f"refusing option-like filename: {filename!r}",
+        )
     searched_at = _now_iso()
     try:
         org = _derive_org(runner, repo_root)
@@ -188,51 +300,62 @@ def _derive_org(runner: GhRunner, repo_root: str) -> str:
     """Return the org login from the repo's remote owner (GA-002).
 
     Raises ``CalledProcessError`` (gh boundary, handled by the caller) when
-    the response has no usable ``owner.login`` — an org we cannot name is a
-    scope we cannot attest to, so it must fail closed rather than search a
-    blank or guessed scope.
+    the response has no usable ``owner.login``, or when the login is not a
+    well-formed GitHub org name (``_ORG_LOGIN_PATTERN``) — an org we cannot
+    name OR cannot validate is a scope we cannot attest to, so it must fail
+    closed rather than search a blank, guessed, or hostile scope (a login
+    carrying whitespace / newlines / injected text never reaches an argv).
     """
     out = runner(["gh", "repo", "view", repo_root, "--json", "owner"])
     parsed = json.loads(out) if out.strip() else {}
     owner = parsed.get("owner") if isinstance(parsed, dict) else None
     login = owner.get("login") if isinstance(owner, dict) else None
-    if not isinstance(login, str) or not login:
+    if not isinstance(login, str) or not _ORG_LOGIN_PATTERN.fullmatch(login):
         raise subprocess.CalledProcessError(
-            1, ["gh", "repo", "view"], "owner.login missing from gh output"
+            1, ["gh", "repo", "view"], f"unusable owner.login: {login!r}"
         )
     return login
 
 
-def _search_code(runner: GhRunner, filename: str, org: str) -> list[dict[str, Any]]:
+def _search_code(runner: GhRunner, filename: str, org: str) -> list[_CodeSearchHit]:
     """Return the org-wide code-search hit records for ``filename``.
 
     ``gh search code`` supports ``--json repository,path`` (verified against
     the installed gh); the default output is JSON when ``--json`` is given,
-    so we parse it directly. A non-list parse is treated as zero hits.
+    so we parse it directly. A non-list parse is treated as zero hits; each
+    list element is trusted to be a (possibly partial) ``_CodeSearchHit`` and
+    defensively destructured by ``_name_consumer``.
+
+    The ``--`` end-of-options sentinel precedes the ``filename`` positional so
+    a value gh would otherwise read as a flag is forced to be the search term
+    (argv-option-injection defense; the caller also rejects ``-``-prefixed
+    filenames up front).
     """
     out = runner(
         [
             "gh",
             "search",
             "code",
-            filename,
             "--owner",
             org,
             "--json",
             "repository,path",
+            "--",
+            filename,
         ]
     )
     parsed = json.loads(out) if out.strip() else []
     return parsed if isinstance(parsed, list) else []
 
 
-def _name_consumer(hit: dict[str, Any]) -> str:
+def _name_consumer(hit: _CodeSearchHit) -> str:
     """Name one consumer ``"<repo>:<path>"`` from a gh search-code hit.
 
     ``repository`` is the ``{nameWithOwner: ...}`` shape gh returns; falls
     back to a literal placeholder for either missing half so a malformed hit
     still produces a non-empty, operator-legible consumer line (a hit is a
-    hit — never silently dropped).
+    hit — never silently dropped). Destructured defensively because the parsed
+    JSON's runtime shape is only as trustworthy as gh's output.
     """
     repository = hit.get("repository") if isinstance(hit, dict) else None
     repo_name = repository.get("nameWithOwner") if isinstance(repository, dict) else None
@@ -240,7 +363,7 @@ def _name_consumer(hit: dict[str, Any]) -> str:
     return f"{repo_name or '<unknown-repo>'}:{path or '<unknown-path>'}"
 
 
-def _build_evidence(filename: str, org: str, searched_at: str, hit_count: int) -> dict[str, Any]:
+def _build_evidence(filename: str, org: str, searched_at: str, hit_count: int) -> SearchEvidence:
     """Build the BR-006 evidence dict recorded for a completed search."""
     return {
         "query": f"gh search code {filename} --owner {org}",
