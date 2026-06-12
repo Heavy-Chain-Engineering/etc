@@ -32,6 +32,11 @@ default_consumes:
   # --- Tier 0: orientation (always) ---
   - DOMAIN.md
   - PROJECT.md
+  # ARCHITECTURE.md — ratified normative structure (brownfield baseline,
+  # F-2026-06-10). Present only when /init-project --phase=baseline has run;
+  # the runtime projection is fail-open when it is absent. The architect owns
+  # its evolution: new ADRs must reconcile with the ratified boundary map.
+  - ARCHITECTURE.md
 
   # --- Tier 2: the architect's home tier ---
   # ADRs record past decisions; invariants express the rules those decisions

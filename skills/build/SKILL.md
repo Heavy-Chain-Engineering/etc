@@ -736,6 +736,109 @@ designs that predate this feature — the check is cosmetic / a no-op on
 them and never retroactively blocks. Designs authored after the release
 tag carry the section that `check` parses.
 
+**Step 1d: Architecture-baseline three-state gate (brownfield consumer).**
+
+This sub-step is the Step 1c sibling that consumes the architecture
+baseline (F-2026-06-10-brownfield-architecture-baseline). It runs AFTER
+Step 1c has resolved and BEFORE Step 2. It branches on the **status
+token** emitted by `scripts/baseline.py status` — the gate reads the
+TOKEN, never the exit code (the status contract: exit 0 = evaluable
+token on stdout, exit 1 = IO error). The deviation rationale (a hard
+block scoped to recorded-intent states only) is ADR-002
+(`docs/adrs/F-2026-06-10-brownfield-architecture-baseline-002-three-state-gate-deviation.md`).
+
+**Obtain the token.** Resolve `$REPO_ROOT` to the project root (the
+directory holding `.etc_sdlc/`) and run:
+
+```bash
+TOKEN=$(python3 ~/.claude/scripts/baseline.py status "$REPO_ROOT")
+STATUS_RC=$?
+```
+
+The status subcommand prints exactly one token of the closed set
+`missing | unratified | ratified | malformed` and exits 0 whenever the
+baseline is evaluable; it exits 1 only on an IO error (e.g. `$REPO_ROOT`
+is not a directory). **Branch on the TOKEN, never the exit code** — with
+one exception: a non-zero `STATUS_RC` (exit 1) is itself the
+infrastructure-failure STOP, handled in the malformed branch below.
+
+**Baseline-exempt hatch (audited bypass — checked first).** Before
+branching on the token, check whether the baseline declares itself
+exempt. Read the single `baseline_exempt:` field via a cheap grep (the
+status-field-only posture per `standards/architecture/layer-boundaries.md`
+— the gate never parses the YAML beyond this one line):
+
+```bash
+EXEMPT_REASON=$(grep -m1 '^baseline_exempt:' "$REPO_ROOT/.etc_sdlc/architecture-baseline.yaml" 2>/dev/null \
+    | sed 's/^baseline_exempt:[[:space:]]*//' | sed 's/^["'\'']//;s/["'\'']$//')
+```
+
+When `baseline_exempt` carries a NON-EMPTY reason, the gate takes the
+SOFT path regardless of the token: emit a warning that QUOTES the
+recorded reason (the audited-bypass record), record the bypass in
+`verification.md` under a `## Architecture Baseline` subsection
+(`baseline-exempt bypass: "<reason>"`), and PROCEED to Step 2. An empty
+or absent `baseline_exempt` field is not an exemption — fall through to
+the token branch.
+
+**Decision matrix (token branch):**
+
+- **`missing` — SOFT path (forward-only; legacy repos are NEVER blocked).**
+  Emit this EXACT verbatim warning to stderr (the test contract greps
+  for the verbatim string — do not paraphrase, reflow, or mutate it),
+  then PROCEED to Step 2:
+
+  ```
+  WARNING: no architecture baseline found for this brownfield repo. Consider /init-project --phase=baseline to discover, verify, and ratify the repo's architectural patterns. Proceeding without baseline conformance.
+  ```
+
+  The `missing` branch is the ambiguous state where every legacy project
+  lives; it keeps ADR-003's advisory-default rationale exactly where it
+  applies. It NEVER blocks.
+
+- **`unratified` — HARD STOP (recorded-intent state).** STOP, do not
+  proceed to Step 2. An operator started ratification and abandoned it —
+  a recorded-intent state, not a heuristic false positive. Report:
+
+  > Architecture baseline is present but UNRATIFIED. /build is a
+  > recorded-intent hard block per ADR-002: an abandoned ratification
+  > must be finished before building. Run
+  > `python3 ~/.claude/scripts/baseline.py ratify
+  > .etc_sdlc/architecture-baseline.yaml --by <name>` to complete the
+  > ratification matrix walk (or re-run `/init-project --phase=baseline`),
+  > then re-invoke /build. To opt this repo out instead, declare
+  > `baseline_exempt: "<reason>"` in the baseline.
+
+  This is the scoped advisory-default deviation (ADR-002): the hard
+  block applies ONLY to this recorded-intent state, never to heuristics.
+
+- **`malformed` — STOP as an infrastructure failure.** A corrupt
+  ratification record is NEVER treated as ratified. STOP, do not proceed
+  to Step 2, and report it as an infrastructure failure (not an advisory
+  finding):
+
+  > Architecture baseline at `.etc_sdlc/architecture-baseline.yaml` is
+  > malformed (schema violation, unparseable YAML, or unknown
+  > schema_version). This is an infrastructure failure — fix or
+  > regenerate the baseline via `/init-project --phase=baseline` before
+  > building. A corrupt ratification record is never honored as ratified.
+
+  A non-zero `STATUS_RC` (the status subcommand exited 1 on an IO error)
+  routes to this SAME infrastructure-failure STOP branch — an
+  unevaluable baseline is treated exactly like a malformed one (never
+  silently proceeded past).
+
+- **`ratified` — proceed.** The baseline is ratified; proceed to Step 2.
+  The per-wave baseline-verify gate (Step 6c-baseline) will enforce its
+  mechanizable rules during execution.
+
+**Forward-only posture.** Step 1d never blocks a `missing` baseline, so
+legacy and brownfield repos that never started a baseline feel zero
+upgrade friction. The hard block is reachable only after an operator
+initiates the baseline phase (the `unratified`/`malformed` states are
+unreachable without operator action), and the `baseline_exempt` hatch is
+always available as the declared opt-out.
+
 ### Step 2: SETUP
 
 Determine the feature slug from the spec title (lowercase, hyphens).
@@ -1394,6 +1497,57 @@ up (behavioral, not structural).
 Per-wave results are advisory fast feedback; the authoritative,
 totalizing re-run at Step 7.6 re-checks every declared-live AC against
 the assembled app (ADR-003) and is the gate that routes the terminal tag.
+
+**6c-baseline. Per-wave architecture-baseline conformance sibling
+(F-2026-06-10-brownfield-architecture-baseline).**
+
+After the 6c-runtime behavioral gate above passes and before the
+`phase-N/done` tag is written (6d), fire the architecture-baseline
+conformance gate for the wave's working tree. This is the ENFORCE-stage
+consumer of the ratified baseline's mechanizable rules; it runs the same
+dispatcher the `/rule-sweep` skill uses. The full rule lives in
+`standards/process/architecture-baseline.md`; this step cites it and
+orchestrates.
+
+**Dispatch (conductor side — written against the dispatcher contract,
+not its implementation).** Pipe the dispatcher JSON contract to
+`hooks/baseline-verify.sh` on stdin (never as shell args —
+metacharacter-injection defense, parity with runtime-verify). The wave
+gate checks ALL mechanizable rules, so `rule_ids` is `null`:
+
+```bash
+printf '{"repo_root":"%s","rule_ids":null,"cwd":"%s"}' \
+    "$REPO_ROOT" "$CWD" | bash hooks/baseline-verify.sh
+```
+
+The dispatcher aggregates per-profile results and returns
+`{"results":[{"rule_id","status","evidence"},...]}` with `status` in the
+closed enum `pass | fail | no-check`. **The dispatcher ALWAYS exits 0 —
+the verdicts live in the results JSON. Read the verdicts from the JSON,
+NEVER from the dispatcher exit code.** Unknown `status` values aggregate
+as `fail` (fail-closed, per the contract-completeness declaration).
+
+**Skip-silently conditions (parity with verify-green warn-and-skip).** Do
+NOT fail — proceed straight to 6d — when any of these hold:
+
+- No baseline exists (`scripts/baseline.py status` would report
+  `missing`): there is nothing to enforce. (A `missing` baseline never
+  reaches a build wave anyway, because Step 1d's `missing` branch is the
+  soft path; this is the belt-and-suspenders skip.)
+- No mechanizable rules are present: the dispatcher returns an empty
+  `results` array (or all `no-check`), which is not a failure.
+- A missing `profiles.lock` or an absent profile `baseline-verify.sh` →
+  the dispatcher emits a bracketed stderr WARN and skips that profile
+  (F020-003 warn-and-skip format).
+
+**Zero-tolerance close (mirrors 6c verify-green).** Any rule whose
+`results[].status` is `fail` FAILS the wave: STOP, do NOT write the
+`phase-N/done` tag, surface the offending `rule_id`s and their
+`evidence` verbatim into the wave's `verification.md` (Step 7), and route
+to the existing 6e failure/remediation path. There is no threshold or
+delta-based exception; this mirrors 6c's zero-is-zero contract, applied
+to baseline conformance. The verdict is read from the results JSON, never
+from the dispatcher's (always-zero) exit code.
 
 **6d. Checkpoint and phase/wave-done tags:**
 

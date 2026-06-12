@@ -349,6 +349,97 @@ invocations get distinct IDs. On a non-zero exit code, surface the stderr
 to the user via Pattern B and STOP — Phase 2 cannot proceed without an
 allocated feature directory.
 
+**Phase 2 Step 0.5: Architecture-baseline status probe (brownfield warning).**
+
+Immediately after the feature directory is allocated — and before any
+research runs — probe the repo's architecture-baseline status. Thinking is
+free, but the author must know whether the repo's architectural ground truth
+is verified. Set `REPO_ROOT` to the repository root and run the status probe
+that wave 0 shipped:
+
+```
+TOKEN=$(python3 ~/.claude/scripts/baseline.py status "$REPO_ROOT")
+```
+
+The probe emits exactly one token to stdout — `missing`, `unratified`,
+`ratified`, or `malformed`. **Branch on the TOKEN, never on the exit code**
+(the CLI exits 0 whenever the status is evaluable). The token set is the
+closed contract from `standards/process/architecture-baseline.md` and ADR-002:
+
+- **`ratified`** — the baseline is verified and human-ratified. Pass
+  silently; proceed to research with no warning.
+- **`missing`** — the repo never ran the baseline phase (every legacy /
+  brownfield repo lands here at first). Proceed, but emit the brownfield
+  warning below so the author knows the architectural ground truth is
+  unverified and how to backfill it.
+- **`unratified`** — an operator started the baseline phase and abandoned
+  it: a recorded-intent state, not a heuristic false positive. Emit the same
+  warning. (This is the state `/build` HARD-STOPS on per ADR-002; `/spec`
+  only WARNs — thinking is free.)
+- **`malformed`** — the baseline record is corrupt; treat exactly like
+  `unratified` for the warning (a corrupt ratification record is never
+  treated as ratified) and recommend re-running the baseline phase.
+
+**On `missing`, `unratified`, or `malformed`**, render the warning as a
+Pattern B status block (NOT a question) — loud, verbatim, and naming the
+backfill command:
+
+```
+
+---
+
+**⚠ UNRATIFIED architecture baseline.** This repo's architecture baseline is
+`<TOKEN>`: its architectural ground truth (golden paths, do-not-copy
+modules, boundary rules) is UNVERIFIED. Specs authored against an unverified
+baseline can encode stale or aspirational architecture. Thinking is free, so
+/spec does NOT block — but you should know. Backfill the baseline with:
+`/init-project --phase=baseline`.
+
+```
+
+Then reuse the **existing contract-completeness WARN+recorded-override
+machinery** (BR-006; do NOT fork a parallel mechanism) to gate proceeding.
+Invoke Pattern A:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "The architecture baseline is <TOKEN> (unverified). Proceed with /spec anyway?",
+    header: "Architecture baseline",
+    multiSelect: false,
+    options: [
+      {
+        label: "No, backfill the baseline first (Recommended)",
+        description: "Stop /spec and run /init-project --phase=baseline to discover, verify, and ratify the architecture baseline, then re-run /spec against verified ground truth."
+      },
+      {
+        label: "Yes, proceed — I accept the unverified baseline",
+        description: "Record a baseline override in state.yaml.spec_phase.contract_completeness.overrides[] with contract_class: baseline, ref: repo, and a non-empty reason, surfaced downstream into verification.md / release-notes. Proceed to research."
+      }
+    ]
+  }]
+)
+```
+
+**Override path (reuse, never fork).** On "Yes, proceed", prompt via
+Pattern B for a one-line override reason (MUST be **non-empty** — re-ask if
+empty), **sanitize** it at the capture site (strip `[\x00-\x1f\x7f]`, cap at
+512 chars), and record a Phase 5 `overrides[]` entry into the **existing**
+`state.yaml.spec_phase.contract_completeness.overrides[]` list:
+`contract_class: baseline`, `ref: repo`, `reason: <reason>`,
+`recorded_at: <ISO8601>`. The `overrides[]` schema already accepts arbitrary
+`contract_class` strings; `baseline` simply extends that enum in prose — it
+shares the same list, the same merge-preserve write (Phase 5 contract-
+completeness block), and the same downstream surfacing into `verification.md`
+/ `release-notes`. **Silent dismissal is prohibited**: every baseline
+override carries a non-empty reason and is surfaced downstream, exactly like
+the format/liveness/DTO overrides. This is a WARN, not a hard-block — a
+brownfield repo with no baseline yet is a legitimate reason to proceed.
+
+This probe is **forward-only**: a `missing` baseline never blocks /spec, and
+no on-disk artifact is mutated unless the author proceeds and an override is
+recorded.
+
 **Dispatch these research tasks in parallel:**
 
 1. **Codebase Exploration** -- Read the existing codebase to understand context:

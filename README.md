@@ -26,6 +26,8 @@ It is built by Heavy Chain Engineering for our own client engagements. We share 
 Some high-level features:
 
 - **Bootstrap any repo with `/init-project`** — turns greenfield OR brownfield into a harness-ready state in one pass: technical scaffold, interactive DOMAIN.md, tiered docs skeleton, starter role manifests. Idempotent.
+- **Architecture baseline for brownfield repos** — `/init-project` now runs a DISCOVER → VERIFY → RATIFY → ENFORCE loop: it finds your existing conventions and exemplar code, **fact-checks every documented claim against the tree** (docs are claims, not facts), has a human bless the target patterns, and turns the result into a machine-checked conformance gate. Workspace mode initializes multi-repo systems and maps the cross-repo seams (routing, auth/session, shared schema) that single-repo views miss.
+- **In-flight rule capture with `/rule-sweep`** — a reviewer names a convention mid-build; the rule lands in the architecture baseline, the repo is swept and fixed, and the rule is enforced at every future build gate. Lessons terminate in gates, not in memory.
 - **Deep system archaeology with `/discovery`** — multi-source investigation across code, data, Salesforce orgs, and infra. Surfaces what is *actually* happening — not what the docs claim, not what the diagrams show. Built for migrations, due diligence, and brownfields whose documentation has drifted from reality.
 - **Socratic specification with a three-state classifier** — `/spec` interviews until it can write a buildable PRD; classifies the result (well-specified / research-assisted / rejected); refuses to draft from vague input.
 - **SME-led MVP definition** — domain experts capture real work via `/journey` in plain English; the intersection of journeys IS the MVP.
@@ -159,7 +161,8 @@ Skills are slash commands. Each lives at `skills/<name>/SKILL.md`. Highlights:
 | `/janitor` | Autonomous cleanup | Boy-Scout-rule background cleanup. Surveys the repo, fixes flawless-only categories (lint/format, test-proven dead-code, whitespace/imports) in an **isolated git worktree off `main`**, verifies, runs a mechanical pre-PR boundary check, and opens a PR — never touches your working tree. `/janitor` (interactive) or `/janitor --autonomous` (hands-off). Per-category graduated trust: preview draft-PR → autonomous ready-PR after N clean merges. Janitor submits; a human merges. |
 | `/metrics` | Weekly review | Three-layer report: process (git tags), outcome (`value-hypothesis.yaml`), cost (telemetry). Headline metric is **% hypothesis-validated**, broken down by author role. |
 | `/pull-tickets` | Closed-loop intake | Pulls Linear tickets via MCP, generates PRDs, runs `/build`, or returns the ticket with clarifying questions. |
-| `/init-project` | Bootstrapping a repo | Creates `DOMAIN.md`, `PROJECT.md`, `CLAUDE.md`, role manifests. Idempotent. |
+| `/init-project` | Bootstrapping a repo | Creates `DOMAIN.md`, `PROJECT.md`, `CLAUDE.md`, role manifests. On brownfield repos, adds the architecture-baseline phase: discovers existing conventions, verifies every doc claim against the code, walks you through ratifying exemplars + do-not-copy markers, and generates a conformance checker. Workspace mode handles multi-repo systems with a shared seam map. Idempotent. |
+| `/rule-sweep` | Mid-build rule capture | You name an architectural rule; it lands in the baseline with provenance, the repo is swept and fixed by file-isolated agents, and the conformance checker enforces it from then on. |
 
 Plus `/decompose`, `/implement`, `/tasks`, `/checkpoint`, `/retrospective`, `/harness-feedback`. Read `skills/<name>/SKILL.md` for the full contract on each.
 

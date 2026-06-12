@@ -24,6 +24,11 @@ tier_access:
 default_consumes:
   - DOMAIN.md
   - PROJECT.md
+  # ARCHITECTURE.md — ratified normative structure (brownfield baseline,
+  # F-2026-06-10). Present only when /init-project --phase=baseline has run;
+  # fail-open when absent. The reviewer checks new code against its ratified
+  # rules and flags clones of do-not-copy modules.
+  - ARCHITECTURE.md
   - docs/prds/**/*.md           # EDIT ME — reviewer often needs cross-PRD context
   - docs/invariants/**/*.md     # all invariants, no filter
   - docs/adrs/**/*.md           # all ADRs

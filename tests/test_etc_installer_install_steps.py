@@ -682,7 +682,6 @@ class TestRunThirdPartyPreflights:
             mode=OperatorMode.INTERACTIVE,
             repo_root=install_context.repo_root,
         )
-        console = Console(file=StringIO())
 
         # Act -- patch detection to absent + offer_install to a spy.
         with mock.patch.object(
@@ -719,7 +718,6 @@ class TestRunThirdPartyPreflights:
             mode=OperatorMode.NON_INTERACTIVE,
             repo_root=install_context.repo_root,
         )
-        console = Console(file=StringIO())
 
         with mock.patch.object(
             install_steps.preflights, "is_gh_stack_present", return_value=False
@@ -751,7 +749,6 @@ class TestRunThirdPartyPreflights:
             mode=OperatorMode.INTERACTIVE,
             repo_root=install_context.repo_root,
         )
-        console = Console(file=StringIO())
 
         with mock.patch.object(
             install_steps.preflights, "is_gh_stack_present", return_value=True

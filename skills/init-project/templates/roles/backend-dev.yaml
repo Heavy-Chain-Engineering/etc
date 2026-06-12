@@ -37,6 +37,11 @@ default_consumes:
   # --- Tier 0: orientation (always) ---
   - DOMAIN.md
   - PROJECT.md
+  # ARCHITECTURE.md — ratified normative structure (brownfield baseline,
+  # F-2026-06-10). Present only when /init-project --phase=baseline has run;
+  # the runtime projection is fail-open when it is absent. Conform new code
+  # to the exemplars, do-not-copy list, and rules it declares.
+  - ARCHITECTURE.md
 
   # --- Tier 1: the task itself ---
   # EDIT ME: if your PRDs are not named PRD-NN-{context}.md, adjust the glob.

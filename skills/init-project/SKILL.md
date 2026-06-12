@@ -7,8 +7,12 @@ description: Bootstrap any repository into a state where the ETC harness can ope
 
 You are the project initializer. Your job is to turn any repository -- greenfield
 or brownfield -- into a state where the ETC harness can operate on it. You do
-this by orchestrating four phases in strict order: technical scaffold, domain
-scaffold, documentation skeleton, and role manifests.
+this by orchestrating phases in strict order: technical scaffold (Phase 1),
+architecture baseline (Phase 1.5 -- discover and verify the existing
+architecture), domain scaffold (Phase 2), documentation skeleton (Phase 3),
+and role manifests (Phase 4). Phase 1.5 slots between the technical and domain
+scaffolds: it surveys what the codebase actually IS before you write the
+business-context docs that describe what it should be.
 
 You are interactive. You ask questions and wait for answers. You NEVER silently
 overwrite a file the user already created. You NEVER re-implement logic that
@@ -62,6 +66,11 @@ are absolute:
    summarizing the agent's returned result, (e) extracting
    candidate entity nouns from `.meta/**/description.md` for Phase 2.
 
+Phase 1.5 (architecture baseline) dispatches the `baseline-surveyor`
+subagent in parallel batches — see that phase's own Subagent Dispatch
+rules. The merge and the `baseline.py init` call run in your context; the
+discovery and verification work does NOT.
+
 Phases 2, 3, and 4 run in your own context. They are interactive (Phase 2)
 or template-copy (Phases 3, 4) — no subagent dispatch. Do not dispatch
 subagents for those phases.
@@ -95,8 +104,9 @@ fails because a template is missing, STOP and report the gap.
 ## Usage
 
 ```
-/init-project                        -- run all four phases in order
+/init-project                        -- run all phases in order
 /init-project --phase=tech           -- run only Phase 1 (delegate to project-bootstrapper)
+/init-project --phase=baseline       -- run only Phase 1.5 (architecture baseline: discover/verify)
 /init-project --phase=domain         -- run only Phase 2 (DOMAIN.md / PROJECT.md / CLAUDE.md)
 /init-project --phase=skeleton       -- run only Phase 3 (docs/ directories and READMEs)
 /init-project --phase=roles          -- run only Phase 4 (starter role manifests)
@@ -275,8 +285,13 @@ skim past it. Either use `AskUserQuestion` or the visual marker above.
 
 Parse the command for `--phase=<name>`:
 
-- No `--phase`: run Phases 1, 2, 3, 4 in order.
+- No `--phase`: run Phases 1, 1.5, 2, 3, 4 in order.
 - `--phase=tech`: run Phase 1 only.
+- `--phase=baseline`: run Phase 1.5 only (the architecture-baseline backfill
+  path). Preflight: the Phase 1 `.meta/` tree must exist. If it is absent,
+  emit the precondition block (see Phase 1.5) and STOP — a discovery pass over
+  an un-surveyed repo would burn the parallel fan-out on a tree the
+  scaffolder never described.
 - `--phase=domain`: run Phase 2 only. Preflight: Phase 1 artifacts should exist,
   but if `.meta/` is missing you proceed anyway and record that brownfield
   vocabulary is unavailable (per AC#6 in the spec).
@@ -285,6 +300,169 @@ Parse the command for `--phase=<name>`:
   should exist; warn if they do not but continue.
 
 Unknown `--phase` values are a fatal error -- report the valid values and stop.
+
+## Workspace Mode -- multi-repo initialization
+
+Some teams clone several repos side by side under one parent directory — a
+two-repo product whose frontend and backend ship from different repos, a
+platform plus its SDKs, a constellation of services. The cross-repo contracts
+(who owns which URL routes, where the session is injected, whose schema the
+shared database follows, which repo loads whose embed bundle) live in *nobody's*
+single-repo context. That blindness is a verified client failure: a two-repo
+system "worked locally, broke in dev" precisely because routing/session/schema
+contracts lived in no one repo's baseline. Workspace mode fixes it: each repo
+gets a full, complete-standalone init+baseline, AND the workspace gets ONE
+canonical cross-repo seam map.
+
+### Detection at skill entry (BEFORE Phase 1)
+
+Before running any phase, inspect the **shape of the invocation directory**.
+This detection runs at entry so a directory-of-repos is routed to workspace mode
+rather than being mistaken for a single (non-)repo by Phase 1. Enumerate the
+invocation directory's **immediate children only** and branch on this trichotomy
+(four arms):
+
+| Invocation directory shape | Route |
+|---|---|
+| The invocation dir **is itself a git repo** (a `.git` at its root) | **Normal single-repo flow** — Phases 1, 1.5, 2-4 as documented below. A multi-package single repo (a **monorepo**: many packages, one `.git`) is **NOT a workspace** — it has one git-repo boundary, so it runs the normal single-repo flow. The discriminator is git-repo-boundary count, never package count. |
+| A **non-repo directory containing ≥2 immediate-child git repos** | **Offer workspace mode** via Pattern A (`AskUserQuestion`). On accept, run the Workspace Run loop below. On decline, fall back to treating the directory as a single (greenfield) target. |
+| A **non-repo directory containing exactly 1 child git repo** | **Degrade to single-repo flow** inside that one child, and emit a **note** that workspace mode was not entered (one repo is not a workspace; the seam map needs at least two repos to map a seam between). Never silently. |
+| A **non-repo directory containing 0 child git repos** | **Normal greenfield handling** — there is nothing to fan out over; run the single-repo flow at the invocation directory. |
+
+The offer (≥2 child repos) uses Pattern A so workspace mode is never
+auto-entered — the operator decides whether to fan out across the whole
+directory:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "This directory contains <N> git repos and is not itself a repo. Initialize all <N> as a workspace (per-repo baseline + one cross-repo seam map)?",
+    header: "Workspace mode",
+    multiSelect: false,
+    options: [
+      {
+        label: "Workspace mode (Recommended)",
+        description: "Init + architecture-baseline each repo, then build ONE <workspace>/.etc_workspace/seam-map.yaml mapping the cross-repo contracts (URL routing, session/auth, shared schema, embed loaders). Solo-cloned repos keep full context."
+      },
+      {
+        label: "Single repo only",
+        description: "Treat this directory as one greenfield target and run the normal flow here. No cross-repo seam map."
+      }
+    ]
+  }]
+)
+```
+
+### Safety rails (verbatim — never relax)
+
+Workspace enumeration is deliberately shallow and escape-proof
+(ADR-005 security note; the `.hook-markers` symlink-defense precedent):
+
+- **Never crawl upward.** Only the operator-named invocation directory is the
+  workspace root. Do not walk to its parent looking for more repos.
+- **Never follow symlinks out of the workspace.** A child entry that is a
+  symlink pointing outside the workspace root is skipped, not resolved and
+  initialized.
+- **Immediate children only.** Enumerate the direct children of the invocation
+  directory and check each for a `.git`. Do not descend recursively into nested
+  directories hunting for `.git` boundaries — a repo nested two levels down is
+  not a workspace member.
+
+The enumeration the three rules above describe is exactly this loop — a symlink
+child is `continue`d (never resolved), only immediate children carrying a `.git`
+are collected, and there is no upward walk and no recursion:
+
+```bash
+# WORKSPACE_ROOT is the operator-named invocation directory (never its parent).
+for entry in "$WORKSPACE_ROOT"/*/; do
+  [ -L "${entry%/}" ] && continue      # skip symlinked children (no escape)
+  [ -d "${entry}.git" ] || continue    # immediate-child git repos only
+  # "$entry" is a workspace-member repo: run the full single-repo flow here.
+done
+```
+
+### Workspace Run -- per-repo loop, then one canonical seam map
+
+When workspace mode is accepted, do this:
+
+**1. Per-repo init+baseline loop (SEQUENTIAL).** For each immediate-child git
+repo, in turn, run the **full single-repo flow** — Phase 1 (technical scaffold),
+Phase 1.5 (architecture baseline: DISCOVER → VERIFY → RATIFY → ENFORCE), and
+Phases 2-4 — exactly as documented below, with that repo as the repo root.
+Repos are processed **sequentially**, one at a time — **one ratification session
+at a time**, because **human attention** (the Phase 1.5 RATIFY matrix walk) is
+the bottleneck; parallel ratification walks would thrash the operator. After a
+repo finishes, its own `.etc_sdlc/architecture-baseline.yaml` is **complete
+standalone**: a teammate who later clones *just that repo* gets its full baseline
+with a read-only seam **mirror** — no workspace dependency, no solo-clone
+blindness. The DISCOVER step's `seams` surveyor (per repo) produces that repo's
+seam findings; keep each repo's seam findings in context for the merge below.
+
+**2. Merge the per-repo seam findings into ONE canonical seam map.** After every
+repo's single-repo flow has completed, **reconcile** the per-repo seam findings
+into the single canonical artifact at:
+
+```
+<workspace>/.etc_workspace/seam-map.yaml
+```
+
+This is the one canonical cross-repo seam map for the whole workspace (the
+single editable source; per-repo `seams:` blocks are regenerated mirrors of it).
+Reconciliation is human-mediated via the interactive patterns (Pattern A for the
+enumerable owner/consumer assignment, Pattern B for free-form contract/evidence
+notes): for each detected seam, assign the **owner** repo (who defines the
+contract) and the **consumer** repo(s) (who depend on it), and compute the
+workspace-level **confidence** score. A seam with no resolvable owner caps
+workspace confidence at LOW (ADR-005). The seam map records, per the ADR-005
+schema:
+
+```yaml
+schema_version: 1
+repos:
+  - {name: <repo>, path: <abs-or-workspace-relative path>}
+seams:
+  - id: WS-001
+    kind: url-routing        # closed enum: url-routing | auth-session | data-schema | embed-loader
+    owner_repo: <repo that defines the contract>
+    consumer_repos: [<repos that depend on it>]
+    contract: "<the cross-repo contract, in one line>"
+    evidence: "<file-level evidence; env-var NAMES only, never values>"
+confidence: low              # workspace-level: low | medium | high
+```
+
+The four seam **kinds** are the closed enum `url-routing | auth-session |
+data-schema | embed-loader` — exactly the covr contracts (stub-per-route URL
+ownership, window-global session injection, shared-DB schema, embed-bundle
+loader).
+
+**3. Write the seam map, then regenerate the mirrors.**
+
+> **Single-writer-rule boundary (state this explicitly).** `baseline.py` is the
+> single writer of the per-repo baseline format (`architecture-baseline.yaml`),
+> and it exposes **no seam-map writer subcommand** — wave 2 added `sync-seams`,
+> which **READS** `.etc_workspace/seam-map.yaml` and regenerates the per-repo
+> mirrors from it, but there is no `init-seam-map` / `write-seam-map` command. So
+> the skill **writes the seam-map YAML via the Write tool**. This is allowed
+> because the seam map lives **OUTSIDE** any repo's `.etc_sdlc` (it is under
+> `<workspace>/.etc_workspace/`): the single-writer rule covers each repo's
+> `architecture-baseline.yaml`, NOT the workspace seam file. Write the canonical
+> seam map first, THEN run `sync-seams` — `sync-seams` reads the map to build the
+> mirrors, so a sync before the write would mirror a stale or absent map.
+
+After writing the canonical seam map, regenerate every repo's read-only mirror:
+
+```
+python3 ~/.claude/scripts/baseline.py sync-seams <workspace_root>
+```
+
+`sync-seams` validates the seam map (exit 1 on a malformed map or an
+out-of-enum `kind` — a bad map never silently mirrors) and rewrites each repo's
+baseline `seams:` block as a read-only **mirror** filtered to the seams touching
+that repo, with a hand-edits-will-be-overwritten header. A non-zero exit is an
+infrastructure failure — STOP and report it; do not hand-edit the mirrors.
+
+After the loop and the sync, the workspace has: N complete-standalone per-repo
+baselines, ONE canonical seam map, and N regenerated read-only mirrors.
 
 ## Phase 1 -- Technical Scaffold (delegate to project-bootstrapper)
 
@@ -378,6 +556,357 @@ entities for Phase 2. If `.meta/` is empty or unreadable, set
 `brownfield_vocabulary = []` and note the gap.
 
 Append Phase 1 outcomes to `phases_run[]` (or `phases_skipped[]`).
+
+## Phase 1.5 -- Architecture Baseline (discover + verify the existing architecture)
+
+**Goal:** survey what the codebase actually IS — its normative artifacts, the
+claims those artifacts make, its competing patterns, and its cross-repo seams —
+verify every load-bearing claim against the tree, write an *unratified*
+machine baseline at `.etc_sdlc/architecture-baseline.yaml`, then walk the human
+through ratification and turn the ratified rules into machine-checked
+conformance. This phase never honors a doc on faith: a discovered convention doc
+is a *claim to be checked*, not a fact to be trusted (ADR-003). The four
+sub-steps run in order — **DISCOVER** and **VERIFY** (the parallel surveyor
+fan-out, authored in the prior wave), then **RATIFY** (the human matrix walk)
+and **ENFORCE** (checker generation), both authored in the next wave after that
+fan-out shipped. DISCOVER/VERIFY produce the unratified baseline; RATIFY blesses
+it and renders the human twin; ENFORCE makes the rules self-checking.
+
+**Why this slots between Phase 1 and Phase 2:** Phase 1 produces the `.meta/`
+tree (what files exist); Phase 2 writes the business-context docs (what the
+system is *for*). The baseline sits between them so the domain docs are written
+with an evidence-based picture of the real architecture in hand, not an
+aspirational one.
+
+**Mode at entry.** Read the mode `project-bootstrapper` reported in Phase 1
+(greenfield vs brownfield):
+
+- **Greenfield** (the scaffolder just created the structure; there is no
+  pre-existing architecture to discover): skip the DISCOVER/VERIFY fan-out
+  entirely. The scaffold IS the architecture, so there is nothing to verify.
+  Seed a trivial **ratified** baseline directly from the scaffold layout with
+  **no verification pass** — call
+  `python3 ~/.claude/scripts/baseline.py init <repo_root> --from <merged-json>`
+  with a minimal merged-json (empty `inventory`, empty `claims`, the scaffold's
+  top-level package dirs as the only exemplar candidates), then record it as
+  ratified per the scaffold. Append Phase 1.5 to `phases_run[]` and proceed to
+  Phase 2. Do NOT dispatch surveyors in greenfield mode.
+- **Brownfield** (an existing tree the scaffolder surveyed): run DISCOVER and
+  VERIFY below.
+
+### Preconditions (standalone `--phase=baseline`)
+
+When invoked standalone, this phase depends on Phase 1's output. Before any
+dispatch, check the precondition:
+
+- The Phase 1 `.meta/` tree must exist (`.meta/description.md` at repo root).
+  It is the surveyed file map the fan-out reasons over and the source of the
+  candidate vocabulary.
+
+If the `.meta/` tree is absent, do NOT proceed. Emit this precondition block
+and STOP:
+
+```
+
+---
+
+**Precondition not met — Phase 1 artifacts absent.**
+
+Phase 1.5 (architecture baseline) needs the Phase 1 `.meta/` description tree,
+but `.meta/description.md` was not found at the repo root. Run technical
+scaffolding first:
+
+  /init-project --phase=tech
+
+then re-run `/init-project --phase=baseline`.
+
+```
+
+(When the full pipeline runs end-to-end, Phase 1 has just produced `.meta/`, so
+this precondition is already satisfied and the block never fires.)
+
+### DISCOVER -- enumerate candidate normative artifacts (parallel fan-out)
+
+DISCOVER answers "what artifacts could carry normative intent, and what
+competing patterns and seams exist?" It dispatches read-only `baseline-surveyor`
+agents and merges their structured findings. See **Subagent Dispatch (Phase 1.5)**
+below for the absolute dispatch rules.
+
+The DISCOVER assignments are:
+
+- one `inventory` assignment — globs the tree for convention docs, ADRs, lint
+  configs, generators, reference implementations, and agent-docs (secrets
+  excluded), returning a typed inventory with last-modified dates;
+- one `patterns:<concern>` assignment per competing-pattern concern worth
+  measuring (e.g. `patterns:dto-placement`, `patterns:state-management`) —
+  enumerate the distinct implementations and their instance counts;
+- one `seams` assignment — detects cross-repo boundary signals (url-routing,
+  auth-session, data-schema, embed-loader), recording env-var NAMES only.
+
+**Empty inventory is valid.** If the `inventory` surveyor returns
+`findings: []` (a no-docs repo — no convention docs, no ADRs, no lint config),
+that is a legitimate result, not a failure. Proceed to VERIFY with zero claim
+sources and let `baseline.py init` write a valid baseline with an empty
+inventory and empty claim ledger. Do not synthesize claims to fill the void.
+
+### VERIFY -- check every load-bearing claim against the tree (parallel fan-out)
+
+VERIFY answers "is each claim these artifacts make actually TRUE of the tree?"
+For every artifact the `inventory` step surfaced that carries load-bearing
+claims (convention docs, ADRs, agent-docs), dispatch one
+`claims:<artifact>` surveyor. Each extracts the load-bearing claims from its
+ONE artifact, greps the tree for confirming evidence and counterexamples, and
+classifies each claim into the closed enum `VERIFIED | STALE | ASPIRATIONAL |
+CONTRADICTED` with file-level evidence. Only `VERIFIED` claims will later enter
+agent context silently; every other classification is surfaced to the human at
+ratification. The surveyor classifies; it never honors a doc on faith (ADR-003).
+
+**Self-check — etc's own prior tier-0 artifacts are verified, not retained
+(re-init).** On a re-init of a repo that etc has bootstrapped before, existing
+`DOMAIN.md`, `PROJECT.md`, and `.meta/` description files are NOT trusted just
+because etc generated them. Their load-bearing claims (system boundaries, the
+"What It Is Not" scope statements, Product Core entities, the `.meta/` purpose
+lines) enter the claim ledger through the **same verification pass** as any
+third-party doc: dispatch `claims:DOMAIN.md`, `claims:PROJECT.md`, and (for the
+root and any subsystem) `claims:.meta/description.md` surveyors alongside the
+third-party artifacts. A claim etc wrote a year ago can be just as STALE as a
+vendor's README — and etc's own generated DOMAIN.md has shipped a factually
+wrong system-boundary claim before (ADR-003). Existing tier-0 claims are
+**never silently retained**; they are re-verified every re-init.
+
+### Merge and write the unratified baseline
+
+After every dispatched surveyor in every batch has returned:
+
+1. Merge all `findings` blocks in your context (the conductor role): combine the
+   inventory entries, concatenate the per-artifact claim ledgers (renumber `id`s
+   to a single `CL-NNN` sequence), collect the pattern concerns and exemplar
+   candidates, and collect the seams. Preserve every `bounds_applied:` note a
+   surveyor reported — a sampled survey must stay disclosed through the merge.
+2. Write the merged result to a temporary JSON file (the engine-output shape the
+   CLI expects: top-level `inventory`, `claims`, `exemplars`, `do_not_copy`,
+   `seams`, `confidence`).
+3. Call the CLI — it is the ONLY writer of the baseline format; do NOT write or
+   parse the YAML yourself:
+
+```
+python3 ~/.claude/scripts/baseline.py init <repo_root> --from <merged-json>
+```
+
+   It assembles, sanitizes free-form claim text, validates the schema, and
+   atomically writes `.etc_sdlc/architecture-baseline.yaml` with `status:
+   unratified`. It prints the written path on stdout. A non-zero exit is an
+   infrastructure failure — STOP and report it; do not hand-edit the YAML.
+
+Append Phase 1.5 to `phases_run[]`. Record the baseline path and the
+classification tallies (verified / stale / aspirational / contradicted counts)
+for the completion report.
+
+### Subagent Dispatch (Phase 1.5) -- Non-Negotiable
+
+The same absolute dispatch discipline as Phase 1, applied to the surveyor
+fan-out:
+
+1. **You MUST dispatch discovery and verification via the Agent tool with
+   `subagent_type: "baseline-surveyor"`.** One Agent invocation per assignment
+   (one `inventory`, one `seams`, one `patterns:<concern>` per concern, one
+   `claims:<artifact>` per claim-bearing artifact). You MUST NOT survey or
+   verify in your own context — that work belongs to the read-only surveyor.
+2. **Dispatch in parallel batches of at most 5 (≤5 per batch).** This mirrors
+   the project-bootstrapper precedent (parallelism ceiling). Issue up to five
+   Agent invocations, wait for that batch to return, then dispatch the next
+   batch. Do not exceed five concurrent surveyors.
+3. **You MUST NOT call another skill to do the fan-out.** No skill-calls-skill;
+   dispatch the agent directly.
+4. **The surveyors are read-only.** They never write, never mutate the tree,
+   never read secrets. You are the conductor: you merge their structured
+   findings and you alone call `baseline.py init`.
+5. **Merge only after every dispatched surveyor in every batch returns.** A
+   partial merge would write a baseline missing whole artifacts' claims.
+
+Each Agent invocation has this shape:
+
+```
+Agent(
+  subagent_type: "baseline-surveyor",
+  description: "Baseline survey: <assignment>",
+  prompt: "[conductor] assignment=<inventory|claims:<artifact>|patterns:<concern>|seams> repo_root=<abs repo root> bounds=<optional>. Return exactly the findings YAML block for this assignment per your definition — no prose. If you cannot complete it, return findings: [] with a single survey_error: line."
+)
+```
+
+### RATIFY -- the human matrix walk (the engine never fabricates)
+
+RATIFY is sequential and human. It is an **interactive matrix walk** — the same
+per-cell forcing function as the layered-review precedent
+(`standards/architecture/layer-rubrics.yaml`): you walk every cell that the
+unratified baseline could not settle by evidence and force an explicit human
+decision on each. **The engine never fabricates a decision.** A non-VERIFIED
+claim is not silently adopted; a competing pattern is not auto-blessed; a seam
+is not assumed resolved. Every such cell is surfaced to the operator and the
+human's answer is what gets recorded.
+
+**Mode at entry.** In greenfield mode the trivial baseline was already seeded
+`ratified` (no claims to walk) — skip RATIFY entirely. In brownfield mode,
+proceed.
+
+**Re-init: enter review mode first.** Before walking any cell, read the status
+token:
+
+```
+TOKEN=$(python3 ~/.claude/scripts/baseline.py status <repo_root>)
+```
+
+- `ratified` — this repo already has a blessed baseline. Run the DISCOVER/VERIFY
+  fan-out in **review mode**: re-survey and compare the fresh findings against
+  the ratified baseline. **Zero drift → zero writes:** make NO `baseline.py`
+  calls, write nothing, and emit an "already present" line in the completion
+  report (the idempotency rule at the top of this skill applies — a re-run on an
+  unchanged ratified baseline is a no-op). **Drift detected** (a claim that was
+  VERIFIED now CONTRADICTED, a new competing pattern, a vanished exemplar) →
+  **surface the drift for amendment; never auto-mutate the ratified baseline.**
+  Present the drift list and ask the operator (Pattern A) whether to open an
+  amendment walk over just the drifted cells. The ratified baseline is never
+  silently rewritten — drift is shown, the human decides.
+- `unratified` — a prior ratification was started and aborted. **Resume from the
+  recorded decisions:** the partial decisions already live in the baseline's
+  `claims[].resolution` / `exemplars` / `do_not_copy` / `seams` fields (written
+  by the prior session through `baseline.py`). Walk only the cells that are still
+  undecided; do not re-ask a cell whose decision is already recorded.
+- `missing` — no baseline; RATIFY has nothing to bless (DISCOVER/VERIFY must run
+  first). This should not happen in-pipeline.
+
+**The matrix walk.** Walk these cell classes, one decision per cell. Use
+**Pattern A (`AskUserQuestion`)** for the enumerable verdict and **Pattern B**
+(the `▶ Your answer needed` visual marker) when free-form rationale is needed:
+
+| Cell class | What the human decides | Recorded into |
+|---|---|---|
+| **non-VERIFIED claim** (STALE / ASPIRATIONAL / CONTRADICTED) | `adopt` \| `supersede` \| `record-decision` + a one-line rationale | the claim's `resolution` field |
+| **competing-patterns concern** | which implementation is canonical (the exemplar) and which is `do-not-copy` | `exemplars` + `do_not_copy` |
+| **exemplar blessing** | confirm the candidate is golden, name `applies_to`, name `blessed_by` | `exemplars` |
+| **do-not-copy marker** | confirm the superseded path and capture the reason | `do_not_copy` |
+| **seam resolution** | `sibling-path` (name the sibling repo) **or** `boundary-unknown` | `seams[].resolution` |
+
+Render the enumerable verdict with `AskUserQuestion`, for example a
+non-VERIFIED claim:
+
+```
+AskUserQuestion(
+  questions: [{
+    question: "Claim CL-007 ('DTOs live in libs/contracts') is CONTRADICTED — 3 counterexamples in libs/people. How do you want to resolve it?",
+    header: "CL-007",
+    multiSelect: false,
+    options: [
+      { label: "Adopt", description: "The claim is the rule; the counterexamples are violations to fix later." },
+      { label: "Supersede", description: "The codebase reality wins; record a new rule that matches the tree." },
+      { label: "Record decision", description: "Neither — capture a one-line decision (e.g. 'in migration; both allowed until Q3')." }
+    ]
+  }]
+)
+```
+
+When a decision needs free-form rationale (the `record-decision` branch, the
+`applies_to` of an exemplar, a sibling-repo path), capture it with Pattern B:
+
+```
+
+---
+
+**▶ Your answer needed:** One line — why record this decision instead of adopting or superseding CL-007?
+
+```
+
+**Persisting decisions (single-writer rule — the skill NEVER edits the YAML).**
+`baseline.py` is the only writer of the baseline format and exposes **no
+per-claim resolution subcommand**. So you record decisions by re-running `init`
+with an updated merged JSON: keep the in-context merged-findings JSON from the
+DISCOVER/VERIFY merge, write each recorded decision into the matching
+`claims[].resolution` / `exemplars` / `do_not_copy` / `seams[].resolution`
+field of that JSON, and re-run:
+
+```
+python3 ~/.claude/scripts/baseline.py init <repo_root> --from <updated-merged-json>
+```
+
+This rewrites the baseline (status stays `unratified`) with the decisions
+recorded — **never hand-edit the YAML**. Re-running `init` is the honest
+persistence path: it is idempotent and atomic, and a mid-walk **abort** simply
+leaves the last `init` result on disk with `status: unratified`, so a re-run
+resumes from exactly the recorded decisions (see review mode above). Flush the
+JSON through `init` after each decision (or batch a few and flush) so an abort
+never loses a recorded decision.
+
+**Ratify.** Once every non-VERIFIED claim carries a `resolution` and every
+concern/seam is decided, perform the one-way transition. `baseline.py ratify`
+is the single call that both flips `unratified -> ratified` **and renders
+`ARCHITECTURE.md`** (the human twin) — do NOT separately call `render-doc`:
+
+```
+python3 ~/.claude/scripts/baseline.py ratify <baseline_path> --by "<operator name>"
+```
+
+If any non-VERIFIED claim still lacks a resolution, `ratify` **exits 2** and
+lists the blockers one per line as `CL-NNN: <reason>`. That is not an
+infrastructure failure — it means the matrix walk missed a cell. Re-enter the
+walk for each listed `CL-NNN`, record the missing resolution through `init`
+(above), and re-run `ratify`. On exit 0 the baseline is `ratified`,
+`ratified_by` / `ratified_at` are stamped, and `ARCHITECTURE.md` is at the repo
+root. Record the ratification (and the ratified-by name) for the completion
+report.
+
+### ENFORCE -- ratified rules become machine-checked conformance (native-tool-first)
+
+ENFORCE turns each ratified rule into an automated conformance check. The
+posture is **native-tool-first** (ADR-004): rules survive after etc leaves, so
+prefer configuring the project's own **fitness-function tool** over shipping etc
+code. Route each rule, then report the routing — never silently wire it into the
+host's CI.
+
+**Per-rule routing.** For each ratified rule, pick exactly one route and record
+its `enforced_by`:
+
+1. **Native fitness-function tool covers the rule class → `enforced_by: native`.**
+   If the project already runs a tool whose rule class covers this rule
+   (illustrative, not a hardcoded list: a module-boundary linter, a
+   dependency-graph checker, an import-restriction lint rule, an
+   architecture-test harness), generate the rule into that tool's own config.
+   The config is written through the normal hooked Edit/Write path (all existing
+   gates active) and shown in the report. The rule's `enforced_by` is `native`.
+
+2. **Mechanizable but no native tool fits → `enforced_by: generated`.** If the
+   rule fits the v1 mechanizable grammar — *"files matching GLOB must not contain
+   NEEDLE"* or *"directory DIR must not contain GLOB files"* (the python profile
+   grammar) — but no native tool covers it, record it as a generated-checker rule
+   for the per-profile `baseline-verify.sh`. `baseline.py` is the single writer;
+   record the rule (and flip its graduation flag) via `append-rule
+   --mechanizable`:
+
+   ```
+   python3 ~/.claude/scripts/baseline.py append-rule <baseline_path> \
+     --statement "<the rule>" --who "<operator name>" \
+     --trigger "ratification session" --mechanizable
+   ```
+
+   The rule lands with `enforced_by: generated`; the profile `baseline-verify.sh`
+   (python reference first; other profiles warn-and-skip) checks it at `/build`
+   wave gates via the `baseline-verify.sh` conductor.
+
+3. **Not mechanizable → `enforced_by: human-judgment`.** A rule that no native
+   tool expresses and that the v1 grammar cannot mechanize (a judgment-bearing
+   rule like "side effects must be isolated") is recorded as `human-judgment`:
+   captured in the baseline and surfaced at review, never falsely automated.
+   Record it via `append-rule` **without** `--mechanizable`.
+
+**The completion report names per-rule routing and recommends — never performs —
+host-CI wiring.** For ENFORCE, the report MUST list each rule with its route
+(`R-NNN → native: <tool>` / `R-NNN → generated: profile baseline-verify` /
+`R-NNN → human-judgment`). etc writes the native-tool config and records the
+generated/human rules, but it **never performs** the host-CI wiring that would
+run these checks in the project's pipeline — it **recommends** the wiring (e.g.
+"add `baseline-verify` to your CI's pre-merge gate; the generated lint config is
+at `<path>` — wire it into your existing lint step") and leaves the change to the
+operator. Silently mutating a team's CI pipeline is out of scope; the operator
+decides.
 
 ## Phase 2 -- Domain Scaffold (DOMAIN.md / PROJECT.md / CLAUDE.md)
 

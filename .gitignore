@@ -59,3 +59,4 @@ docs/.internal/
 
 # Taskmaster internal state
 .taskmaster/
+covr-test/

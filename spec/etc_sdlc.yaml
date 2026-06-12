@@ -203,6 +203,19 @@ gates:
     timeout: 10
     on_failure: block
 
+  baseline-schema:
+    description: >
+      Validates that any baseline.yaml written or edited conforms to the
+      canonical schema. Closes the write-time gate so a malformed baseline
+      rule file cannot ship silently. Only triggers when the edited path
+      ends in `baseline.yaml`; the script self-skips otherwise.
+    event: PostToolUse
+    matcher: "Edit|Write"
+    type: command
+    script: check-baseline-schema.sh
+    timeout: 10
+    on_failure: block
+
   # ── During Work: Tracking ───────────────────────────────────────────
 
   dirty-marker:
@@ -607,6 +620,44 @@ gates:
     script: check-profiles-fresh.sh
     timeout: 10
 
+  baseline-fresh:
+    description: >
+      Baseline staleness check. Warns (never blocks) at session start when
+      the project's baseline.yaml is missing or stale, so agents do not run
+      a whole session against an out-of-date baseline rule set. Advisory
+      only — no on_failure, mirroring profiles-fresh.
+    event: SessionStart
+    matcher: startup
+    type: command
+    script: check-baseline-fresh.sh
+    timeout: 10
+
+# ─── Conductor-Invoked Hooks (allowlist) ────────────────────────────────────
+# Documentation-only section (no schema key fits — these hooks are NOT
+# event-wired, so they do not belong under `gates:`). Three hooks ship in
+# hooks/ but are fired by a conductor (a /build step or a /rule-sweep step)
+# calling them directly, never by a Claude Code event. They are listed here so
+# the spec records WHY they have no `gates:` entry, and WHO invokes each:
+#
+#   verify-green.sh
+#     invoker: /build Step 6c (structural-green gate). Also called internally
+#     by mark-dirty / check-completion-discipline / inject-standards /
+#     runtime-verify as their green precondition.
+#
+#   runtime-verify.sh
+#     invoker: /build Step 6c-runtime (behavioral-runtime DoD gate) and
+#     /build Step 7.6 (pre-release behavioral re-check).
+#
+#   baseline-verify.sh
+#     invoker: /build Step 6c-baseline (architecture-baseline conformance gate)
+#     and /rule-sweep (post-sweep re-check after appending rules).
+#
+# ENFORCED MIRROR: tests/test_compiler.py::INDIRECTLY_INVOKED_HOOKS is the
+# frozenset that allowlists exactly these three as "indirectly invoked" so the
+# built-but-never-wired audit gate does not flag them as dead. That frozenset
+# is the enforced mirror of THIS list — keep the two in lockstep: a hook added
+# or removed here must be added or removed there in the same change.
+
 # ─── Agents ────────────────────────────────────────────────────────────────
 # Agent definitions that compile to .md files in dist/agents/.
 # Each agent has a role, tools, and behavioral constraints.
@@ -753,6 +804,11 @@ agents:
     name: "Project Bootstrapper"
     description: "Analyzes existing code, generates .meta/ descriptions."
     source: agents/project-bootstrapper.md
+
+  baseline-surveyor:
+    name: "Baseline Surveyor"
+    description: "Read-only discovery/verify worker for the architecture-baseline phase; inventory, claim verification, pattern measurement, seam detection in parallel batches."
+    source: agents/baseline-surveyor.md
 
   technical-writer:
     name: "Technical Writer"
@@ -1086,6 +1142,20 @@ skills:
       skeleton, and starter role manifests, in strict order.
     usage: "/init-project"
     source: skills/init-project/SKILL.md
+
+  # ── Architecture baseline (F-2026-06-10) ──────────────────────────────
+  rule-sweep:
+    name: "rule-sweep"
+    description: >
+      In-flight architecture-rule capture and sweep loop. A human states a
+      rule mid-build; the rule is captured (sanitized) and appended to the
+      machine baseline with provenance (baseline.py append-rule), the repo is
+      swept for violations and fixed via file-isolated agents, files-changed
+      and violations-remaining are reported honestly, and baseline-verify
+      re-runs so the rule is machine-enforced going forward — never again as
+      prose in someone's memory.
+    usage: "/rule-sweep"
+    source: skills/rule-sweep/SKILL.md
 
 # ─── Standards ───���───────────────────────────────────────────────────────
 # Engineering standards passed through to dist/standards/.

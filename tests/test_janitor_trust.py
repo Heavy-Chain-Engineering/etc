@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -58,13 +60,23 @@ def _gh_runner_from(
     closed: list[dict[str, Any]] | None = None,
     commits_by_number: dict[int, int] | None = None,
     absent: bool = False,
-):
+    list_raises: BaseException | None = None,
+    list_returns: str | None = None,
+    view_raises: BaseException | None = None,
+) -> Callable[[list[str]], str]:
     """Build a fake gh runner.
 
     `merged` / `closed` are the PR records `gh pr list` would return for the
     respective `--state`. `commits_by_number` maps a PR number to the number
     of commits on its branch (as `gh pr view --json commits` would report).
     `absent=True` simulates the `gh` binary not being installed.
+
+    Failure-injection hooks (for the degrade-path tests):
+    `list_raises` — raised on any `gh pr list` call (e.g. a non-zero gh exit
+    surfacing as `subprocess.CalledProcessError`). `list_returns` — overrides
+    `gh pr list` stdout with a raw string (e.g. garbage that fails JSON parse).
+    `view_raises` — raised on any `gh pr view` call, simulating a sub-call
+    that fails INSIDE commit-count after pr-list already succeeded.
     """
     merged = merged or []
     closed = closed or []
@@ -74,10 +86,16 @@ def _gh_runner_from(
         if absent:
             raise FileNotFoundError(argv[0])
         if argv[:3] == ["gh", "pr", "list"]:
+            if list_raises is not None:
+                raise list_raises
+            if list_returns is not None:
+                return list_returns
             state = argv[argv.index("--state") + 1]
             records = merged if state == "merged" else closed
             return json.dumps(records)
         if argv[:3] == ["gh", "pr", "view"]:
+            if view_raises is not None:
+                raise view_raises
             number = int(argv[3])
             count = commits_by_number.get(number, 1)
             return json.dumps({"commits": [{} for _ in range(count)]})
@@ -418,6 +436,116 @@ def test_should_not_create_file_when_gh_absent_and_no_prior_state(
     janitor_trust.reconcile(trust_path, runs_path, gh_runner=runner)
 
     assert not trust_path.exists()
+
+
+def _seed_trust(trust_path: Path) -> str:
+    """Write a prior preview-with-streak trust file; return its exact bytes.
+
+    Used by the degrade-path tests to assert the file is left byte-untouched
+    (content + mtime) when a gh-boundary failure forces the documented no-op.
+    """
+    original = (
+        "schema_version: 1\n"
+        "categories:\n"
+        "  lint-format: {trust: preview, clean_streak: 4, promoted_at: null}\n"
+    )
+    trust_path.write_text(original, encoding="utf-8")
+    return original
+
+
+def test_should_no_op_when_gh_pr_list_exits_nonzero(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # gh healthy but a non-zero exit (no remote, auth scope, rate limit)
+    # surfaces as CalledProcessError → degrade to the documented no-op.
+    trust_path = tmp_path / "trust.yaml"
+    runs_path = tmp_path / "runs.jsonl"
+    _write_runs(
+        runs_path, [{"branch": "claude/janitor/x", "categories": ["lint-format"]}]
+    )
+    original = _seed_trust(trust_path)
+    before_mtime = trust_path.stat().st_mtime_ns
+    runner = _gh_runner_from(
+        list_raises=subprocess.CalledProcessError(1, ["gh", "pr", "list"])
+    )
+
+    with caplog.at_level("WARNING"):
+        result = janitor_trust.reconcile(trust_path, runs_path, gh_runner=runner)
+
+    assert result is False
+    assert trust_path.read_text(encoding="utf-8") == original
+    assert trust_path.stat().st_mtime_ns == before_mtime
+    assert "CalledProcessError" in caplog.text
+
+
+def test_should_no_op_when_gh_returns_garbage_json(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Malformed gh output (truncated stream, non-JSON banner) → JSONDecodeError
+    # must degrade to the no-op, not crash the CLI.
+    trust_path = tmp_path / "trust.yaml"
+    runs_path = tmp_path / "runs.jsonl"
+    _write_runs(
+        runs_path, [{"branch": "claude/janitor/x", "categories": ["lint-format"]}]
+    )
+    original = _seed_trust(trust_path)
+    before_mtime = trust_path.stat().st_mtime_ns
+    runner = _gh_runner_from(list_returns="not json at all <<<")
+
+    with caplog.at_level("WARNING"):
+        result = janitor_trust.reconcile(trust_path, runs_path, gh_runner=runner)
+
+    assert result is False
+    assert trust_path.read_text(encoding="utf-8") == original
+    assert trust_path.stat().st_mtime_ns == before_mtime
+    assert "JSONDecodeError" in caplog.text
+
+
+def test_should_no_op_when_commit_count_subcall_fails(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # pr-list succeeds but a sub-call INSIDE _collect_events
+    # (_gh_branch_commit_count → gh pr view) fails — the field-reported shape.
+    # The whole gh-deriving span must degrade, not just the two pr-list calls.
+    trust_path = tmp_path / "trust.yaml"
+    runs_path = tmp_path / "runs.jsonl"
+    _write_runs(
+        runs_path,
+        [{"branch": "claude/janitor/lint-format-0", "categories": ["lint-format"]}],
+    )
+    original = _seed_trust(trust_path)
+    before_mtime = trust_path.stat().st_mtime_ns
+    merged = [_pr(1, "claude/janitor/lint-format-0", "2026-05-20T10:00:00Z")]
+    runner = _gh_runner_from(
+        merged=merged,
+        view_raises=subprocess.CalledProcessError(1, ["gh", "pr", "view"]),
+    )
+
+    with caplog.at_level("WARNING"):
+        result = janitor_trust.reconcile(trust_path, runs_path, gh_runner=runner)
+
+    assert result is False
+    assert trust_path.read_text(encoding="utf-8") == original
+    assert trust_path.stat().st_mtime_ns == before_mtime
+    assert "CalledProcessError" in caplog.text
+
+
+def test_should_propagate_unexpected_error_not_at_gh_boundary(
+    tmp_path: Path,
+) -> None:
+    # A real bug in our own code (here: a non-gh-boundary failure) must still
+    # crash loudly — the fix must not widen to a bare `except Exception`.
+    trust_path = tmp_path / "trust.yaml"
+    runs_path = tmp_path / "runs.jsonl"
+    _write_runs(
+        runs_path, [{"branch": "claude/janitor/x", "categories": ["lint-format"]}]
+    )
+
+    def _boom(argv: list[str]) -> str:
+        raise ZeroDivisionError("not a gh-boundary failure")
+
+    with pytest.raises(ZeroDivisionError, match="not a gh-boundary failure"):
+        janitor_trust.reconcile(trust_path, runs_path, gh_runner=_boom)
 
 
 def test_should_ignore_prs_without_a_matching_run_ledger_entry(

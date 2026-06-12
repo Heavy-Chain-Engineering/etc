@@ -22,8 +22,9 @@ Safety invariants:
       autonomy below the threshold is read back as ``preview``.
     - Missing OR malformed ``trust.yaml`` → every category ``preview``
       (edge 11 / AC-008): never silently assume ``autonomous``.
-    - ``gh`` unavailable → ``reconcile`` is a no-op; ``trust.yaml`` is left
-      UNTOUCHED (never falsely promotes).
+    - Any gh-boundary failure (binary absent, non-zero gh exit, or malformed
+      gh output) → ``reconcile`` is a no-op; ``trust.yaml`` is left UNTOUCHED
+      (never falsely promotes). A non-boundary error still crashes loudly.
 
 All state lives under ``.etc_sdlc/janitor/`` (AC-011). The whole-file write
 is atomic (temp file + ``os.replace``). Stdlib + PyYAML only. Every git/gh
@@ -79,6 +80,21 @@ _JANITOR_AUTHOR: str = "@me"
 # A clean janitor PR carries exactly the single initial janitor commit; any
 # additional commit means the operator edited the branch before merge.
 _CLEAN_COMMIT_COUNT: int = 1
+
+# The gh-boundary failure classes that degrade reconcile to the documented
+# no-op (module docstring, ADR-003): the binary is absent
+# (FileNotFoundError), gh exits non-zero — no remote, auth scope, rate limit
+# — (CalledProcessError, since the default runner uses ``check=True``), or gh
+# emits malformed output (JSONDecodeError). This tuple is deliberately
+# narrow: a non-zero exit, a missing binary, or unparseable JSON is an
+# expected environment condition, not a bug in our own code. A failure of any
+# OTHER class still propagates and crashes loudly (never widen to
+# ``except Exception``).
+_GH_BOUNDARY_ERRORS: tuple[type[Exception], ...] = (
+    FileNotFoundError,
+    subprocess.CalledProcessError,
+    json.JSONDecodeError,
+)
 
 # The seam every git/gh call flows through: argv list → captured stdout.
 # Injectable so tests stay hermetic; the default shells `gh` via subprocess.
@@ -323,19 +339,29 @@ def reconcile(
     """Recompute trust from gh/git history and persist (ADR-003).
 
     Returns True if ``trust.yaml`` was (re)written, False if reconciliation
-    was skipped because ``gh`` is unavailable — in which case the file is left
-    UNTOUCHED (never falsely promotes).
+    was skipped because of a gh-boundary failure — ``gh`` absent, a non-zero
+    gh exit (no remote, auth scope, rate limit), or malformed gh output. In
+    every skip case the file is left UNTOUCHED (never falsely promotes); a
+    failure of any other class still propagates and crashes loudly.
     """
     runner = gh_runner or _default_gh_runner
+    branch_to_category = _load_branch_to_category(runs_path)
+    # The WHOLE gh-deriving span lives in this try: both ``_gh_pr_list`` calls
+    # AND ``_collect_events`` (which fans out to ``_gh_branch_commit_count`` →
+    # more gh sub-calls). Any gh-boundary failure anywhere in the span — not
+    # just the two pr-list calls — degrades to the documented no-op so a
+    # sub-call failure can never crash the CLI nor falsely promote a category.
     try:
         merged = _gh_pr_list(runner, "merged", limit)
         closed = _gh_pr_list(runner, "closed", limit)
-    except FileNotFoundError:
-        LOGGER.warning("gh CLI unavailable; skipping trust reconciliation.")
+        events = _collect_events(merged + closed, branch_to_category, runner)
+    except _GH_BOUNDARY_ERRORS as exc:
+        LOGGER.warning(
+            "gh boundary failure (%s); skipping trust reconciliation, "
+            "trust.yaml left untouched.",
+            type(exc).__name__,
+        )
         return False
-
-    branch_to_category = _load_branch_to_category(runs_path)
-    events = _collect_events(merged + closed, branch_to_category, runner)
 
     state = empty_state()
     for category, category_events in events.items():
