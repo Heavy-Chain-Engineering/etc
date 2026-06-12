@@ -90,6 +90,20 @@ you never do.
      You MUST confirm unreached (run the relevant tests / trace references) before
      deleting. No covering proof → do not remove; abort with success=false
      (edge 9).
+
+     **Published-asset deletions are gated on orchestrator-supplied evidence.**
+     A deletion candidate matching the published-asset globs (the
+     machine-parseable list lives ONLY in
+     `standards/process/janitor-write-boundary.md`; never copy it here) is
+     **a published API surface**: a sibling repo may hotlink the URL it serves.
+     **Repo-local unreferenced-ness alone is never sufficient evidence for this file class**.
+     The org-wide consumer search that clears such a deletion runs ONLY in the
+     orchestrator (you are networkless — see the security boundary above; you
+     never run `gh`). If a published-asset deletion is dispatched to you
+     **without** the orchestrator-supplied search evidence in the dispatch,
+     **abort with success=false** (reason: missing published-asset consumer
+     evidence) — never fall back to your repo-local test-unreached proof for this
+     class, and never run the search yourself.
    - `whitespace-eof-imports` — whitespace / EOF-newline / import-order
      normalization only. Purely mechanical; no behavior change.
 3. **`files`** — the specific target file(s) for this fix, all inside the worktree.
